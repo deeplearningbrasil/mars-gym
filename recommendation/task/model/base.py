@@ -141,6 +141,20 @@ class BaseModelTraining(luigi.Task):
             self._test_dataset = self.project_config.dataset_class(test_df, self.project_config)
         return self._test_dataset
 
+    @property
+    def n_users(self):
+        if not hasattr(self, "_n_users"):
+            train_df = pd.read_csv(self.input()[0].path)
+            self._n_users = train_df.iloc[0][self.project_config.n_users_column]
+        return self._n_users
+
+    @property
+    def n_items(self):
+        if not hasattr(self, "_n_items"):
+            train_df = pd.read_csv(self.input()[0].path)
+            self._n_items = train_df.iloc[0][self.project_config.n_items_column]
+        return self._n_items
+
     @abc.abstractmethod
     def train(self):
         pass

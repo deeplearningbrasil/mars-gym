@@ -54,17 +54,54 @@ class ConvertYelpReviewsToCsvAndRemoveText(luigi.Task):
                     writer.writerow(review)
 
 
-class IndexUsersAndBusinessesOfYelpReviews(luigi.Task):
+class ConvertYelpBusinessesToCsv(luigi.Task):
     def requires(self):
-        return ConvertYelpReviewsToCsvAndRemoveText()
+        return UnzipYelpDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_reviews.csv")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "user_indices.csv")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "business_indices.csv"))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "businesses.csv"))
 
     def run(self):
-        df = pd.read_csv(self.input().path)
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
+        with open(self.output().path, "w") as csvfile:
+            fieldnames = ["business_id", "name", "address", "city", "state", "postal_code", "latitude", "longitude",
+                          "stars", "review_count", "is_open", "attributes", "categories", "hours"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+
+            with open(os.path.join(self.input().path, "yelp_academic_dataset_business.json"), "r") as json_file:
+                for business_line in json_file:
+                    review = json.loads(business_line)
+                    writer.writerow(review)
+
+
+class IndexUsersAndBusinessesOfYelpReviews(luigi.Task):
+    filter_restaurants: bool = luigi.BoolParameter(default=False)
+
+    def requires(self):
+        return ConvertYelpReviewsToCsvAndRemoveText(), ConvertYelpBusinessesToCsv()
+
+    def output(self):
+        if self.filter_restaurants:
+            return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_reviews_for_restaurants.csv")), \
+                   luigi.LocalTarget(os.path.join(DATASET_DIR, "user_indices_for_restaurants.csv")), \
+                   luigi.LocalTarget(os.path.join(DATASET_DIR, "business_indices_for_restaurants.csv"))
+        else:
+            return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_reviews.csv")), \
+                   luigi.LocalTarget(os.path.join(DATASET_DIR, "user_indices.csv")), \
+                   luigi.LocalTarget(os.path.join(DATASET_DIR, "business_indices.csv"))
+
+    def run(self):
+        df = pd.read_csv(self.input()[0].path)
+
+        if self.filter_restaurants:
+            business_df = pd.read_csv(self.input()[1].path)
+            restaurant_df = business_df[(~business_df.categories.isna()) &
+                                        (business_df.categories.str.contains("Restaurant"))]
+            restaurant_ids = set(restaurant_df["business_id"].values)
+
+            df = df[df["business_id"].isin(restaurant_ids)]
 
         df["user_id"] = df["user_id"].astype("category")
         df["business_id"] = df["business_id"].astype("category")
@@ -79,25 +116,11 @@ class IndexUsersAndBusinessesOfYelpReviews(luigi.Task):
             .to_csv(self.output()[2].path, index=False)
 
 
-class PrepareYelpIndividualRatingDataFrames(BasePrepareDataFrames):
-    def requires(self):
-        return IndexUsersAndBusinessesOfYelpReviews()
-
-    @property
-    def dataset_dir(self) -> str:
-        return DATASET_DIR
-
-    @property
-    def stratification_property(self) -> str:
-        return None
-
-    def read_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
-
-
 class PrepareYelpRatingsDataFrames(BasePrepareDataFrames):
+    filter_restaurants: bool = luigi.BoolParameter(default=False)
+
     def requires(self):
-        return IndexUsersAndBusinessesOfYelpReviews()
+        return IndexUsersAndBusinessesOfYelpReviews(filter_restaurants=self.filter_restaurants)
 
     @property
     def dataset_dir(self) -> str:
@@ -130,8 +153,10 @@ class PrepareYelpRatingsDataFrames(BasePrepareDataFrames):
 
 
 class PrepareYelpAllUserRatingsDataFrames(BasePrepareDataFrames):
+    filter_restaurants: bool = luigi.BoolParameter(default=False)
+
     def requires(self):
-        return IndexUsersAndBusinessesOfYelpReviews()
+        return IndexUsersAndBusinessesOfYelpReviews(filter_restaurants=self.filter_restaurants)
 
     @property
     def dataset_dir(self) -> str:
@@ -170,8 +195,10 @@ class PrepareYelpAllUserRatingsDataFrames(BasePrepareDataFrames):
 
 
 class PrepareYelpAllBusinessRatingsDataFrames(BasePrepareDataFrames):
+    filter_restaurants: bool = luigi.BoolParameter(default=False)
+
     def requires(self):
-        return IndexUsersAndBusinessesOfYelpReviews()
+        return IndexUsersAndBusinessesOfYelpReviews(filter_restaurants=self.filter_restaurants)
 
     @property
     def dataset_dir(self) -> str:

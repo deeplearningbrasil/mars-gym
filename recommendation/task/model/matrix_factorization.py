@@ -15,8 +15,8 @@ class MatrixFactorizationTraining(BaseTorchModelTraining):
     def create_module(self) -> nn.Module:
         model_cls = BiasedMatrixFactorization if self.biased else MatrixFactorization
         return model_cls(
-            n_users=self.project_config.n_users,
-            n_items=self.project_config.n_items,
+            n_users=self.n_users,
+            n_items=self.n_items,
             n_factors=self.n_factors,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
         )

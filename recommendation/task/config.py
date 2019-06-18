@@ -11,8 +11,6 @@ PROJECTS: Dict[str, ProjectConfig] = {
         dataset_class=RatingsDataset,
         input_columns=[Column("user_idx", IOType.INDEX), Column("business_idx", IOType.INDEX)],
         output_column=Column("stars", IOType.NUMBER),
-        n_users=1637138,
-        n_items=192606,
     ),
     "yelp_user_autoencoder": ProjectConfig(
         base_dir=yelp.BASE_DIR,
@@ -20,8 +18,6 @@ PROJECTS: Dict[str, ProjectConfig] = {
         dataset_class=RatingsArrayDataset,
         input_columns=[Column("stars_per_business", IOType.ARRAY, length=192606)],
         output_column=Column("stars_per_business", IOType.ARRAY, length=192606),
-        n_users=1637138,
-        n_items=192606,
     ),
     "yelp_business_autoencoder": ProjectConfig(
         base_dir=yelp.BASE_DIR,
@@ -29,7 +25,5 @@ PROJECTS: Dict[str, ProjectConfig] = {
         dataset_class=RatingsArrayDataset,
         input_columns=[Column("stars_per_user", IOType.ARRAY, length=1637138)],
         output_column=Column("stars_per_user", IOType.ARRAY, length=1637138),
-        n_users=192606,
-        n_items=1637138,
     ),
 }

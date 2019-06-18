@@ -24,8 +24,8 @@ class ProjectConfig(object):
                  dataset_class: Type[Dataset],
                  input_columns: List[Column],
                  output_column: Column,
-                 n_users: int,
-                 n_items: int,
+                 n_users_column: str = "n_users",
+                 n_items_column: str = "n_items",
                  default_balance_fields: List[str] = [],
                  ) -> None:
         self.base_dir = base_dir
@@ -33,6 +33,6 @@ class ProjectConfig(object):
         self.dataset_class = dataset_class
         self.input_columns = input_columns
         self.output_column = output_column
-        self.n_users = n_users
-        self.n_items = n_items
+        self.n_users_column = n_users_column
+        self.n_items_column = n_items_column
         self.default_balance_fields = default_balance_fields
