@@ -1,0 +1,20 @@
+#!/usr/bin/env python
+
+import os
+
+import torch
+
+from recommendation.task.cuda import CudaRepository
+
+if __name__ == "__main__":
+    CudaRepository.fill()
+
+    luigi_resources_path = os.path.join("output", "luigi_resources.cfg")
+
+    with open(luigi_resources_path, "w") as f:
+        f.write(f"[resources]\ncuda={torch.cuda.device_count()}")
+
+    os.environ["LUIGI_CONFIG_PATH"] = luigi_resources_path
+
+    from luigi.cmdline import luigid
+    luigid()
