@@ -231,11 +231,12 @@ class BaseTorchModelTraining(BaseModelTraining):
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
             with redirect_stdout(summary_file):
-                sample_inputs = [torch.zeros(input_column.length) if input_column.type == IOType.ARRAY
-                                 else torch.zeros(1,
-                                                  dtype=torch.int64 if input_column.type == IOType.INDEX else torch.float32)
-                                 for input_column in self.project_config.input_columns]
-                summary(module, torch.tensor(sample_inputs).reshape(1, -1))
+                if len(self.project_config.input_columns) == 1 and self.project_config.input_columns[0].type == IOType.ARRAY:
+                    summary(module, torch.zeros(1, self.project_config.input_columns[0].length))
+                else:
+                    sample_inputs = [torch.zeros(1, dtype=torch.int64 if input_column.type == IOType.INDEX else torch.float32)
+                                     for input_column in self.project_config.input_columns]
+                    summary(module, torch.tensor(sample_inputs).reshape(1, -1))
         mlflow.log_artifact(summary_path)
 
         trial = self.create_trial(module)
