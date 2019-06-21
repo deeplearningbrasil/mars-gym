@@ -5,6 +5,7 @@ import torch.nn as nn
 import luigi
 
 from recommendation.model.auto_encoder import UnconstrainedAutoEncoder
+from recommendation.task.meta_config import RecommenderType
 from recommendation.task.model.base import BaseTorchModelTraining, TORCH_ACTIVATION_FUNCTIONS, TORCH_WEIGHT_INIT, \
     TORCH_DROPOUT_MODULES
 from recommendation.torch import MaskedZeroesLoss
@@ -24,8 +25,10 @@ class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
         return MaskedZeroesLoss(super()._get_loss_function())
 
     def create_module(self) -> nn.Module:
-        return UnconstrainedAutoEncoder(self.project_config.input_columns[0].length, self.encoder_layers, self.decoder_layers, dropout_prob=self.dropout_prob,
-                                        activation_function=TORCH_ACTIVATION_FUNCTIONS[
-                                                     self.activation_function],
+        dim = self.n_users \
+            if self.project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
+            else self.n_items
+        return UnconstrainedAutoEncoder(dim, self.encoder_layers, self.decoder_layers, dropout_prob=self.dropout_prob,
+                                        activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
                                         weight_init=TORCH_WEIGHT_INIT[self.weight_init],
                                         dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module])
