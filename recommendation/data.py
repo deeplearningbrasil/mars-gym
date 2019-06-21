@@ -22,7 +22,7 @@ class CorruptionTransformation(object):
         pass
 
     @abc.abstractmethod
-    def __call__(self, data: csr_matrix) -> np.ndarray:
+    def __call__(self, data: csr_matrix) -> csr_matrix:
         pass
 
 
@@ -30,17 +30,22 @@ class SupportBasedCorruptionTransformation(CorruptionTransformation):
     def setup(self, data: csr_matrix):
         self._supports = np.asarray(data.astype(bool).sum(axis=0)).flatten() / data.shape[0]
 
-    def __call__(self, data: csr_matrix) -> np.ndarray:
+    def __call__(self, data: csr_matrix) -> csr_matrix:
         u = self._random_state.uniform(0, 1, len(data.indices))
         support: np.ndarray = self._supports[data.indices]
         # Normalize
         support = support / support.sum()
 
-        indices_kept = data.indices[u > support]
+        removed_indices = data.indices[u < support]
 
-        if len(indices_kept) == 0:
-            return data.indices
-        return np.array(indices_kept, dtype=np.int64)
+        if len(removed_indices) == 0 or len(removed_indices) == len(data.indices):
+            return data
+
+        data = data.copy()
+        data[0, removed_indices] = 0
+        data.eliminate_zeros()
+
+        return data
 
 
 class MaskingNoiseCorruptionTransformation(CorruptionTransformation):
@@ -48,11 +53,18 @@ class MaskingNoiseCorruptionTransformation(CorruptionTransformation):
         super().__init__(seed)
         self.fraction = fraction
 
-    def __call__(self, data: csr_matrix) -> np.ndarray:
+    def __call__(self, data: csr_matrix) -> csr_matrix:
         n = len(data.indices)
-        indices_kept = self._random_state.choice(data.indices, n - round(self.fraction * n), replace=False)
+        removed_indices = self._random_state.choice(data.indices, round(self.fraction * n), replace=False)
 
-        return np.array(indices_kept, dtype=np.int64)
+        if len(removed_indices) == 0:
+            return data
+
+        data = data.copy()
+        data[0, removed_indices] = 0
+        data.eliminate_zeros()
+
+        return data
 
 
 class SaltAndPepperNoiseCorruptionTransformation(CorruptionTransformation):
@@ -60,14 +72,19 @@ class SaltAndPepperNoiseCorruptionTransformation(CorruptionTransformation):
         super().__init__(seed)
         self.fraction = fraction
 
-    def __call__(self, data: csr_matrix) -> np.ndarray:
+    def __call__(self, data: csr_matrix) -> csr_matrix:
         removed_indices = self._random_state.choice(data.indices, round(self.fraction * len(data.indices)),
                                                     replace=False)
         removed_indices = removed_indices[self._random_state.uniform(0, 1, len(removed_indices)) > 0.5]
 
-        indices_kept = np.setdiff1d(data.indices, removed_indices)
+        if len(removed_indices) == 0:
+            return data
 
-        return np.array(indices_kept, dtype=np.int64)
+        data = data.copy()
+        data[0, removed_indices] = 0
+        data.eliminate_zeros()
+
+        return data
 
 
 class RatingsDataset(Dataset):
@@ -106,7 +123,7 @@ class RatingsArrayDataset(Dataset):
         i, j, data = zip(*((i, int(t[0]), t[1]) for i, row in enumerate(data_frame[target_col]) for t in row))
         self._data = csr_matrix((data, (i, j)), shape=(max(i) + 1, dim))
 
-        if type(transformation) is CorruptionTransformation:
+        if isinstance(transformation, CorruptionTransformation):
             transformation.setup(self._data)
         self._transformation = transformation
 
