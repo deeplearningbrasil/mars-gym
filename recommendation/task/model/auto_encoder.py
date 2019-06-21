@@ -25,9 +25,9 @@ class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
         return MaskedZeroesLoss(super()._get_loss_function())
 
     def create_module(self) -> nn.Module:
-        dim = self.n_users \
+        dim = self.n_items \
             if self.project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
-            else self.n_items
+            else self.n_users
         return UnconstrainedAutoEncoder(dim, self.encoder_layers, self.decoder_layers, dropout_prob=self.dropout_prob,
                                         activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
                                         weight_init=TORCH_WEIGHT_INIT[self.weight_init],

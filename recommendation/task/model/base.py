@@ -231,7 +231,8 @@ class BaseTorchModelTraining(BaseModelTraining):
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
             with redirect_stdout(summary_file):
-                summary(module, self.train_dataset[0][0].reshape(1, -1))
+                sample_input = collate_fn([self.train_dataset[0][0]])
+                summary(module, sample_input)
         mlflow.log_artifact(summary_path)
 
         trial = self.create_trial(module)

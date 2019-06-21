@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from scipy.sparse.csr import csr_matrix
 
-from recommendation.task.meta_config import ProjectConfig, IOType
+from recommendation.task.meta_config import ProjectConfig, IOType, RecommenderType
 from recommendation.torch import coo_matrix_to_sparse_tensor
 
 
@@ -94,12 +94,17 @@ class RatingsArrayDataset(Dataset):
         assert len(project_config.input_columns) == 1
         assert project_config.input_columns[0].name == project_config.output_column.name
 
+        dim_column = project_config.n_items_column \
+            if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
+            else project_config.n_users_column
+        dim = data_frame.iloc[0][dim_column]
+
         target_col = project_config.output_column.name
         if type(data_frame.iloc[0][target_col]) is str:
             data_frame[target_col] = data_frame[target_col].apply(lambda value: ast.literal_eval(value))
 
         i, j, data = zip(*((i, int(t[0]), t[1]) for i, row in enumerate(data_frame[target_col]) for t in row))
-        self._data = csr_matrix((data, (i, j)), shape=(max(i) + 1, project_config.input_columns[0].length))
+        self._data = csr_matrix((data, (i, j)), shape=(max(i) + 1, dim))
 
         if type(transformation) is CorruptionTransformation:
             transformation.setup(self._data)
