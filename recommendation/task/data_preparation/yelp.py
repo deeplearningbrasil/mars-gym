@@ -153,7 +153,7 @@ class PrepareYelpRatingsDataFrames(BasePrepareDataFrames):
 
 
 class PrepareYelpAllUserRatingsDataFrames(BasePrepareDataFrames):
-    filter_restaurants: bool = luigi.BoolParameter(default=False)
+    filter_restaurants: bool = luigi.BoolParameter(default=True)
 
     def requires(self):
         return IndexUsersAndBusinessesOfYelpReviews(filter_restaurants=self.filter_restaurants)

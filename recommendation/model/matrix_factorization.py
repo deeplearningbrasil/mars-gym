@@ -1,14 +1,15 @@
-from typing import Callable
+from typing import Callable, List, Type, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from recommendation.utils import lecun_normal_init
 
 
 class MatrixFactorization(nn.Module):
 
-    def __init__(self, n_users: int, n_items: int, n_factors: int = 20,
+    def __init__(self, n_users: int, n_items: int, n_factors: int,
                  weight_init: Callable = lecun_normal_init):
         super().__init__()
         self.user_embeddings = nn.Embedding(n_users, n_factors)
@@ -26,7 +27,7 @@ class MatrixFactorization(nn.Module):
 
 class BiasedMatrixFactorization(nn.Module):
 
-    def __init__(self, n_users: int, n_items: int, n_factors: int = 20,
+    def __init__(self, n_users: int, n_items: int, n_factors: int,
                  weight_init: Callable = lecun_normal_init):
         super().__init__()
         self.user_embeddings = nn.Embedding(n_users, n_factors)
@@ -53,3 +54,50 @@ class BiasedMatrixFactorization(nn.Module):
         dot = (user_embedding * item_embedding).sum(1)
 
         return dot + user_bias + item_bias
+
+
+class DeepMatrixFactorization(nn.Module):
+
+    def __init__(self, n_users: int, n_items: int, n_factors: int,
+                 dense_layers: List[int], dropout_between_layers_prob: float,
+                 bn_between_layers: bool, activation_function: Callable = F.selu,
+                 weight_init: Callable = lecun_normal_init,
+                 dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
+        super().__init__()
+        self.user_embeddings = nn.Embedding(n_users, n_factors)
+        self.item_embeddings = nn.Embedding(n_items, n_factors)
+
+        self.dense_layers = nn.ModuleList(
+            [nn.Linear(
+                2 * n_factors if i == 0 else dense_layers[i - 1],
+                layer_size
+            ) for i, layer_size in enumerate(dense_layers)])
+        self.last_dense_layer = nn.Linear(dense_layers[-1], 1)
+        if dropout_between_layers_prob:
+            self.dropout: nn.Module = dropout_module(dropout_between_layers_prob)
+
+        weight_init(self.user_embeddings.weight)
+        weight_init(self.item_embeddings.weight)
+
+        self.bn_between_layers = bn_between_layers
+        self.activation_function = activation_function
+
+    def forward(self, user_item_tuple: torch.Tensor) -> torch.Tensor:
+        user_ids: torch.Tensor = user_item_tuple[:, 0].to(torch.int64)
+        item_ids: torch.Tensor = user_item_tuple[:, 1].to(torch.int64)
+
+        user_embedding = self.user_embeddings(user_ids)
+        item_embedding = self.item_embeddings(item_ids)
+
+        x = torch.cat((user_embedding, item_embedding), 1)
+        for layer in self.dense_layers:
+            x = layer(x)
+            if self.bn_between_layers:
+                x = F.batch_norm(x)
+            x = self.activation_function(x)
+            if hasattr(self, "dropout"):
+                x = self.dropout(x)
+
+        x = self.last_dense_layer(x)
+
+        return x
