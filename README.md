@@ -1,3 +1,3 @@
 # recommendation-system
 
-Projeto para treinamento dos algoritmos do sistema de recomendações de itens para guias hospitalares.
+PYTHONPATH="." luigi --module recommendation.task.model.auto_encoder UnconstrainedAutoEncoderTraining --project yelp_business_autoencoder --local-scheduler

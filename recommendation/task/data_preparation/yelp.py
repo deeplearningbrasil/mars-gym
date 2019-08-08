@@ -37,7 +37,7 @@ class ConvertYelpReviewsToCsvAndRemoveText(luigi.Task):
         return UnzipYelpDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "reviews.csv"))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "filter_reviews.csv"))
 
     def run(self):
         os.makedirs(DATASET_DIR, exist_ok=True)
@@ -47,7 +47,7 @@ class ConvertYelpReviewsToCsvAndRemoveText(luigi.Task):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
-            with open(os.path.join(self.input().path, "yelp_academic_dataset_review.json"), "r") as json_file:
+            with open(os.path.join(self.input().path, "review.json"), "r") as json_file:
                 for review_line in json_file:
                     review = json.loads(review_line)
                     del review["text"]
@@ -59,7 +59,7 @@ class ConvertYelpBusinessesToCsv(luigi.Task):
         return UnzipYelpDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "businesses.csv"))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "filter_businesses.csv"))
 
     def run(self):
         os.makedirs(DATASET_DIR, exist_ok=True)
@@ -70,7 +70,7 @@ class ConvertYelpBusinessesToCsv(luigi.Task):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
-            with open(os.path.join(self.input().path, "yelp_academic_dataset_business.json"), "r") as json_file:
+            with open(os.path.join(self.input().path, "business.json"), "r") as json_file:
                 for business_line in json_file:
                     review = json.loads(business_line)
                     writer.writerow(review)
