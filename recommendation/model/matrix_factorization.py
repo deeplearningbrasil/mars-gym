@@ -9,11 +9,13 @@ from recommendation.utils import lecun_normal_init
 
 class MatrixFactorization(nn.Module):
 
-    def __init__(self, n_users: int, n_items: int, n_factors: int,
+    def __init__(self, n_users: int, n_items: int, n_factors: int, binary: bool,
                  weight_init: Callable = lecun_normal_init):
         super().__init__()
         self.user_embeddings = nn.Embedding(n_users, n_factors)
         self.item_embeddings = nn.Embedding(n_items, n_factors)
+
+        self.binary = binary
 
         weight_init(self.user_embeddings.weight)
         weight_init(self.item_embeddings.weight)
@@ -22,18 +24,23 @@ class MatrixFactorization(nn.Module):
         user_ids: torch.Tensor = user_item_tuple[:, 0].to(torch.int64)
         item_ids: torch.Tensor = user_item_tuple[:, 1].to(torch.int64)
 
-        return (self.user_factors(user_ids) * self.item_factors(item_ids)).sum(1)
+        output = (self.user_embeddings(user_ids) * self.item_embeddings(item_ids)).sum(1)
+        if self.binary:
+            return torch.sigmoid(output)
+        return output
 
 
 class BiasedMatrixFactorization(nn.Module):
 
-    def __init__(self, n_users: int, n_items: int, n_factors: int,
+    def __init__(self, n_users: int, n_items: int, n_factors: int, binary: bool,
                  weight_init: Callable = lecun_normal_init):
         super().__init__()
         self.user_embeddings = nn.Embedding(n_users, n_factors)
         self.item_embeddings = nn.Embedding(n_items, n_factors)
         self.user_bias = nn.Embedding(n_users, 1)
         self.item_bias = nn.Embedding(n_items, 1)
+
+        self.binary = binary
 
         weight_init(self.user_embeddings.weight)
         weight_init(self.item_embeddings.weight)
@@ -53,7 +60,10 @@ class BiasedMatrixFactorization(nn.Module):
 
         dot = (user_embedding * item_embedding).sum(1)
 
-        return dot + user_bias + item_bias
+        output = dot + user_bias + item_bias
+        if self.binary:
+            return torch.sigmoid(output)
+        return output
 
 
 class DeepMatrixFactorization(nn.Module):

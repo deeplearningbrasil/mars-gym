@@ -1,7 +1,7 @@
 from typing import Dict
 
 from recommendation.data import RatingsArrayDataset, RatingsDataset
-from recommendation.task.data_preparation import yelp
+from recommendation.task.data_preparation import yelp, ifood
 from recommendation.task.meta_config import *
 
 PROJECTS: Dict[str, ProjectConfig] = {
@@ -28,5 +28,13 @@ PROJECTS: Dict[str, ProjectConfig] = {
         input_columns=[Column("stars_per_user", IOType.ARRAY)],
         output_column=Column("stars_per_user", IOType.ARRAY),
         recommender_type=RecommenderType.ITEM_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_binary_buys_cf": ProjectConfig(
+        base_dir=yelp.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
+        dataset_class=RatingsDataset,
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        output_column=Column("buys", IOType.NUMBER),
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
 }

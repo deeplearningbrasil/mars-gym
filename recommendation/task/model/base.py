@@ -38,7 +38,8 @@ from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_deriva
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
-from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, collate_fn
+from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, collate_fn, \
+    FocalLoss
 from recommendation.utils import lecun_normal_init, he_init
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -48,7 +49,8 @@ TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransforma
                                   salt_and_pepper_noise=SaltAndPepperNoiseCorruptionTransformation,
                                   none=None)
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax)
-TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss)
+TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss,
+                            focal=FocalLoss)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)
@@ -145,14 +147,14 @@ class BaseModelTraining(luigi.Task):
     def n_users(self):
         if not hasattr(self, "_n_users"):
             train_df = pd.read_csv(self.input()[0].path, nrows=1)
-            self._n_users = train_df.iloc[0][self.project_config.n_users_column]
+            self._n_users = int(train_df.iloc[0][self.project_config.n_users_column])
         return self._n_users
 
     @property
     def n_items(self):
         if not hasattr(self, "_n_items"):
             train_df = pd.read_csv(self.input()[0].path, nrows=1)
-            self._n_items = train_df.iloc[0][self.project_config.n_items_column]
+            self._n_items = int(train_df.iloc[0][self.project_config.n_items_column])
         return self._n_items
 
     @abc.abstractmethod
@@ -191,6 +193,7 @@ class BaseTorchModelTraining(BaseModelTraining):
     lr_scheduler: str = luigi.ChoiceParameter(choices=TORCH_LR_SCHEDULERS.keys(), default=None)
     lr_scheduler_params: dict = luigi.DictParameter(default={})
     loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="mse")
+    loss_function_params: dict = luigi.DictParameter(default={})
     early_stopping_patience: int = luigi.IntParameter(default=10)
     early_stopping_min_delta: float = luigi.FloatParameter(default=1e-6)
     generator_workers: int = luigi.IntParameter(default=min(multiprocessing.cpu_count(), 20))
@@ -247,6 +250,10 @@ class BaseTorchModelTraining(BaseModelTraining):
         plot_history(history_df).savefig(os.path.join(self.output().path, "history.jpg"))
 
         mlflow.log_artifact(get_weights_path(self.output().path))
+        self.after_fit()
+
+    def after_fit(self):
+        pass
 
     def lr_find(self):
         train_loader = self.get_train_generator()
@@ -278,7 +285,7 @@ class BaseTorchModelTraining(BaseModelTraining):
                      metrics=self.metrics).to(self.torch_device)
 
     def _get_loss_function(self):
-        return TORCH_LOSS_FUNCTIONS[self.loss_function]()
+        return TORCH_LOSS_FUNCTIONS[self.loss_function](**self.loss_function_params)
 
     def _get_optimizer(self, module) -> Optimizer:
         return TORCH_OPTIMIZERS[self.optimizer](module.parameters(), lr=self.learning_rate,

@@ -1,7 +1,8 @@
+import os
 from typing import List
 
+import numpy as np
 import torch.nn as nn
-
 import luigi
 
 from recommendation.model.matrix_factorization import MatrixFactorization, BiasedMatrixFactorization, \
@@ -13,6 +14,7 @@ from recommendation.task.model.base import BaseTorchModelTraining, TORCH_WEIGHT_
 class MatrixFactorizationTraining(BaseTorchModelTraining):
     biased: bool = luigi.BoolParameter(default=False)
     n_factors: int = luigi.IntParameter(default=20)
+    binary: bool = luigi.BoolParameter(default=False)
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
 
     def create_module(self) -> nn.Module:
@@ -21,6 +23,7 @@ class MatrixFactorizationTraining(BaseTorchModelTraining):
             n_users=self.n_users,
             n_items=self.n_items,
             n_factors=self.n_factors,
+            binary=self.binary,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
         )
 
@@ -47,3 +50,8 @@ class DeepMatrixFactorizationTraining(BaseTorchModelTraining):
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
             dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module]
         )
+
+    def after_fit(self):
+        module: MatrixFactorization = self.get_trained_module()
+        item_embeddings: np.ndarray = module.item_embeddings.weight.data.cpu().numpy()
+        np.savetxt(os.path.join(self.output().path, "item_embeddings.tsv"), item_embeddings, delimiter="\t")

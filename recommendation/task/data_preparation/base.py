@@ -6,7 +6,10 @@ from typing import List, Tuple, Dict
 import luigi
 import abc
 
+import psutil
 import requests
+from luigi.contrib.spark import PySparkTask
+from pyspark import SparkConf
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
@@ -178,3 +181,16 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
             index_resampled = index_resampled.flatten()
 
         return df.loc[index_resampled]
+
+
+class BasePySparkTask(PySparkTask):
+    def setup(self, conf: SparkConf):
+        conf.set("spark.local.dir", os.path.join("output", "spark"))
+        conf.set("spark.driver.maxResultSize", self._get_available_memory())
+
+    @property
+    def driver_memory(self):
+        return self._get_available_memory()
+
+    def _get_available_memory(self) -> str:
+        return f"{int(psutil.virtual_memory().available / (1024 * 1024 * 1024))}g"
