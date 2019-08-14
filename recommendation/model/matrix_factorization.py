@@ -4,54 +4,38 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from recommendation.model.embedding import UserAndItemEmbedding
 from recommendation.utils import lecun_normal_init
 
 
-class MatrixFactorization(nn.Module):
+class MatrixFactorization(UserAndItemEmbedding):
 
     def __init__(self, n_users: int, n_items: int, n_factors: int, binary: bool,
                  weight_init: Callable = lecun_normal_init):
-        super().__init__()
-        self.user_embeddings = nn.Embedding(n_users, n_factors)
-        self.item_embeddings = nn.Embedding(n_items, n_factors)
-
+        super().__init__(n_users, n_items, n_factors, weight_init)
         self.binary = binary
 
-        weight_init(self.user_embeddings.weight)
-        weight_init(self.item_embeddings.weight)
-
-    def forward(self, user_item_tuple: torch.Tensor) -> torch.Tensor:
-        user_ids: torch.Tensor = user_item_tuple[:, 0].to(torch.int64)
-        item_ids: torch.Tensor = user_item_tuple[:, 1].to(torch.int64)
-
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor) -> torch.Tensor:
         output = (self.user_embeddings(user_ids) * self.item_embeddings(item_ids)).sum(1)
         if self.binary:
             return torch.sigmoid(output)
         return output
 
 
-class BiasedMatrixFactorization(nn.Module):
+class BiasedMatrixFactorization(UserAndItemEmbedding):
 
     def __init__(self, n_users: int, n_items: int, n_factors: int, binary: bool,
                  weight_init: Callable = lecun_normal_init):
-        super().__init__()
-        self.user_embeddings = nn.Embedding(n_users, n_factors)
-        self.item_embeddings = nn.Embedding(n_items, n_factors)
+        super().__init__(n_users, n_items, n_factors, weight_init)
         self.user_bias = nn.Embedding(n_users, 1)
         self.item_bias = nn.Embedding(n_items, 1)
 
         self.binary = binary
 
-        weight_init(self.user_embeddings.weight)
-        weight_init(self.item_embeddings.weight)
-
         self.user_bias.weight.data.zero_()
         self.item_bias.weight.data.zero_()
 
-    def forward(self, user_item_tuple: torch.Tensor) -> torch.Tensor:
-        user_ids: torch.Tensor = user_item_tuple[:, 0].to(torch.int64)
-        item_ids: torch.Tensor = user_item_tuple[:, 1].to(torch.int64)
-
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor) -> torch.Tensor:
         user_embedding = self.user_embeddings(user_ids)
         item_embedding = self.item_embeddings(item_ids)
 
@@ -66,17 +50,14 @@ class BiasedMatrixFactorization(nn.Module):
         return output
 
 
-class DeepMatrixFactorization(nn.Module):
+class DeepMatrixFactorization(UserAndItemEmbedding):
 
     def __init__(self, n_users: int, n_items: int, n_factors: int,
                  dense_layers: List[int], dropout_between_layers_prob: float,
                  bn_between_layers: bool, activation_function: Callable = F.selu,
                  weight_init: Callable = lecun_normal_init,
                  dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
-        super().__init__()
-        self.user_embeddings = nn.Embedding(n_users, n_factors)
-        self.item_embeddings = nn.Embedding(n_items, n_factors)
-
+        super().__init__(n_users, n_items, n_factors, weight_init)
         self.dense_layers = nn.ModuleList(
             [nn.Linear(
                 2 * n_factors if i == 0 else dense_layers[i - 1],
@@ -86,16 +67,10 @@ class DeepMatrixFactorization(nn.Module):
         if dropout_between_layers_prob:
             self.dropout: nn.Module = dropout_module(dropout_between_layers_prob)
 
-        weight_init(self.user_embeddings.weight)
-        weight_init(self.item_embeddings.weight)
-
         self.bn_between_layers = bn_between_layers
         self.activation_function = activation_function
 
-    def forward(self, user_item_tuple: torch.Tensor) -> torch.Tensor:
-        user_ids: torch.Tensor = user_item_tuple[:, 0].to(torch.int64)
-        item_ids: torch.Tensor = user_item_tuple[:, 1].to(torch.int64)
-
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor) -> torch.Tensor:
         user_embedding = self.user_embeddings(user_ids)
         item_embedding = self.item_embeddings(item_ids)
 

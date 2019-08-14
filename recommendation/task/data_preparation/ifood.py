@@ -105,3 +105,49 @@ class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
         df["n_items"] = self.num_businesses
 
         return df
+
+
+class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
+
+    def requires(self):
+        return GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(), \
+               IndexAccountsAndMerchantsOfInteractionsDataset()
+
+    @property
+    def dataset_dir(self) -> str:
+        return DATASET_DIR
+
+    @property
+    def stratification_property(self) -> str:
+        return "buys"
+
+    @property
+    def num_users(self):
+        if not hasattr(self, "_num_users"):
+            accounts_df = pd.read_csv(self.input()[0][0].path)
+            self._num_users = len(accounts_df)
+        return self._num_users
+
+    @property
+    def num_businesses(self):
+        if not hasattr(self, "_num_businesses"):
+            merchants_df = pd.read_csv(self.input()[0][1].path)
+            self._num_businesses = len(merchants_df)
+        return self._num_businesses
+
+    def read_data_frame(self) -> pd.DataFrame:
+        df = pd.read_csv(self.input()[1].path)
+        df["buys"] = (df["buys"] > 0).astype(float)
+
+        return df
+
+    def transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df[df["buys"] > 0]
+        df = df[["account_idx", "merchant_idx", "buys"]]
+        df = df.groupby('account_idx')[['merchant_idx', 'buys']].apply(lambda x: x.values.tolist()).reset_index()
+        df.columns = ["account_idx", "buys_per_merchant"]
+
+        df["n_users"] = self.num_users
+        df["n_items"] = self.num_businesses
+
+        return df

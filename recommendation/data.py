@@ -87,40 +87,46 @@ class SaltAndPepperNoiseCorruptionTransformation(CorruptionTransformation):
         return data
 
 
-class RatingsDataset(Dataset):
+class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
                  transformation: Union[Callable] = None) -> None:
-        assert len(project_config.input_columns) == 2
+        assert len(project_config.input_columns) >= 2
         assert all(input_column.type == IOType.INDEX for input_column in project_config.input_columns)
 
         self._data_frame = data_frame
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
         self._output_column = project_config.output_column.name
 
+        self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
+        self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
+
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         row: pd.Series = self._data_frame.iloc[index]
-        return torch.tensor([row[self._input_columns[0]], row[self._input_columns[1]]]), torch.tensor(row[self._output_column])
+        return (torch.tensor(row[self._input_columns[0]], dtype=torch.int64),
+                torch.tensor(row[self._input_columns[1]], dtype=torch.int64)), torch.tensor(row[self._output_column])
 
 
-class RatingsArrayDataset(Dataset):
+class InteractionsMatrixDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
                  transformation: Union[CorruptionTransformation, Callable] = None) -> None:
         assert len(project_config.input_columns) == 1
         assert project_config.input_columns[0].name == project_config.output_column.name
 
-        dim_column = project_config.n_items_column \
-            if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
-            else project_config.n_users_column
-        dim = data_frame.iloc[0][dim_column]
+        self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
+        self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
+        dim = self._n_items if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
+            else self._n_users
 
         target_col = project_config.output_column.name
         if type(data_frame.iloc[0][target_col]) is str:
             data_frame[target_col] = data_frame[target_col].apply(lambda value: ast.literal_eval(value))
 
-        i, j, data = zip(*((i, int(t[0]), t[1]) for i, row in enumerate(data_frame[target_col]) for t in row))
+        i, j, data = zip(
+            *((index, int(t[0]), t[1]) for index, row in zip(data_frame[data_frame.columns[0]], data_frame[target_col])
+              for t in row))
         self._data = csr_matrix((data, (i, j)), shape=(max(i) + 1, dim))
 
         if isinstance(transformation, CorruptionTransformation):
@@ -138,3 +144,53 @@ class RatingsArrayDataset(Dataset):
             input_row = self._transformation(row)
 
         return coo_matrix_to_sparse_tensor(input_row.tocoo()), coo_matrix_to_sparse_tensor(output_row.tocoo())
+
+
+class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
+
+    def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
+                 transformation: Union[Callable] = None) -> None:
+        data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
+        super().__init__(data_frame, project_config, transformation)
+        self._non_zero_indices = set(
+            data_frame[[self._input_columns[0], self._input_columns[0]]].itertuples(index=False, name=None))
+
+    def __len__(self) -> int:
+        return super().__len__() * 2
+
+    def _generate_negative_indices(self) -> Tuple[int, int]:
+        while True:
+            user_index = np.random.randint(0, self._n_users)
+            item_index = np.random.randint(0, self._n_items)
+            if (user_index, item_index) not in self._non_zero_indices:
+                return user_index, item_index
+
+    def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+        if index < super().__len__():
+            return super().__getitem__(index)
+        else:
+            user_index, item_index = self._generate_negative_indices()
+            return (torch.tensor(user_index, dtype=torch.int64),
+                    torch.tensor(item_index, dtype=torch.int64)), torch.tensor(0.0)
+
+
+class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWithOnlineRandomNegativeGenerationDataset):
+    def __len__(self) -> int:
+        return self._data_frame.shape[0]
+
+    def _generate_negative_item_index(self, user_index: int) -> int:
+        while True:
+            item_index = np.random.randint(0, self._n_items)
+            if (user_index, item_index) not in self._non_zero_indices:
+                return item_index
+
+    def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], list]:
+        row: pd.Series = self._data_frame.iloc[index]
+        user_index = row[self._input_columns[0]]
+        positive_item_index = row[self._input_columns[1]]
+        negative_item_index = self._generate_negative_item_index(user_index)
+
+        return (torch.tensor(user_index, dtype=torch.int64),
+                torch.tensor(positive_item_index, dtype=torch.int64),
+                torch.tensor(negative_item_index, dtype=torch.int64)), \
+               []  # not used

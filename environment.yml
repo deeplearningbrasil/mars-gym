@@ -24,5 +24,6 @@ dependencies:
 - pip
 - pip:
   - imbalanced-learn==0.4.3
-  - torchbearer==0.3.2
+#  - torchbearer==0.3.2
+  - lib/torchbearer-1.0.0.dev0-py3-none-any.whl
   - mlflow==1.0.0

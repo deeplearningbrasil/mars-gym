@@ -34,12 +34,12 @@ from recommendation.data import SupportBasedCorruptionTransformation, \
     MaskingNoiseCorruptionTransformation, SaltAndPepperNoiseCorruptionTransformation
 from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
+from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss
 from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
-from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, collate_fn, \
-    FocalLoss
+from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, collate_fn
 from recommendation.utils import lecun_normal_init, he_init
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -50,7 +50,8 @@ TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransforma
                                   none=None)
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax)
 TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss,
-                            focal=FocalLoss)
+                            focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
+                            bpr_triplet=BayesianPersonalizedRankingTripletLoss)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)
@@ -199,7 +200,7 @@ class BaseTorchModelTraining(BaseModelTraining):
     generator_workers: int = luigi.IntParameter(default=min(multiprocessing.cpu_count(), 20))
     pin_memory: bool = luigi.BoolParameter(default=False)
 
-    metrics = luigi.ListParameter(default=["loss", "mse"])
+    metrics = luigi.ListParameter(default=["loss"])
 
     @property
     def resources(self):
@@ -295,10 +296,9 @@ class BaseTorchModelTraining(BaseModelTraining):
         callbacks = [
             *self._get_extra_callbacks(),
             ModelCheckpoint(get_weights_path(self.output().path), save_best_only=True),
-            EarlyStopping(patience=self.early_stopping_patience, min_delta=self.early_stopping_min_delta,
-                          verbose=True),
+            EarlyStopping(patience=self.early_stopping_patience, min_delta=self.early_stopping_min_delta),
             CSVLogger(get_history_path(self.output().path)), MLFlowLogger(),
-            TensorBoard(get_tensorboard_logdir(self.task_id)),
+            TensorBoard(get_tensorboard_logdir(self.task_id), write_graph=False),
         ]
         if self.lr_scheduler:
             callbacks.append(TORCH_LR_SCHEDULERS[self.lr_scheduler](**self.lr_scheduler_params))

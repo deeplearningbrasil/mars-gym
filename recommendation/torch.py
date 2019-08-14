@@ -304,49 +304,6 @@ class MaskedZeroesLoss(nn.Module):
         return self._wrapped_loss.forward(input, target)
 
 
-class FocalLoss(nn.Module):
-    """Focal loss for multi-classification
-    FL(p_t)=-alpha(1-p_t)^{gamma}ln(p_t)
-    Notice: y_pred is probability after softmax
-    gradient is d(Fl)/d(p_t) not d(Fl)/d(x) as described in paper
-    d(Fl)/d(p_t) * [p_t(1-p_t)] = d(Fl)/d(x)
-    Focal Loss for Dense Object Detection
-    https://arxiv.org/abs/1708.02002
-    Keyword Arguments:
-        gamma {float} -- (default: {2.0})
-        alpha {float} -- (default: {4.0})
-    """
-
-    def __init__(self, gamma: float = 2.0, alpha: float = 4.0, size_average=True):
-        super(FocalLoss, self).__init__()
-        self.gamma = gamma
-        self.alpha = alpha
-        self.size_average = size_average
-
-    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        """
-        :param input:  model's output, shape of [batch_size, num_cls]
-        :param target: ground truth labels, shape of [batch_size, num_cls]
-        :return: loss
-        """
-        epsilon = 1.e-9
-
-        t: torch.Tensor = targets.to(torch.float32)
-        p: torch.Tensor = inputs.to(torch.float32) + epsilon
-
-        pt: torch.Tensor = p * t + (1 - p) * (1 - t)  # pt = p if t > 0 else 1-p
-        ce: torch.Tensor = -torch.log(pt)
-        weight: torch.Tensor = (1. - pt) ** self.gamma
-        loss: torch.Tensor = weight * self.alpha * ce
-        if loss.dim() == 2:  # softmax
-            loss: torch.Tensor = loss[:, 0]
-
-        if self.size_average:
-            return loss.mean()
-        else:
-            return loss.sum()
-
-
 def coo_matrix_to_sparse_tensor(coo: coo_matrix) -> torch.Tensor:
     values = coo.data
     indices = np.vstack((coo.row, coo.col))

@@ -71,7 +71,8 @@ def summary(model, x, *args, **kwargs):
 
     model.apply(register_hook)
     with torch.no_grad():
-        model(x) if not (kwargs or args) else model(x, *args, **kwargs)
+        input_params = x if isinstance(x, list) or isinstance(x, tuple) else [x]
+        model(*input_params) if not (kwargs or args) else model(*input_params, *args, **kwargs)
 
     for hook in hooks:
         hook.remove()
