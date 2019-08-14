@@ -1,14 +1,11 @@
 import torch.nn as nn
-import luigi
+
 from recommendation.model.triplet_net import TripletNet
-from recommendation.task.model.base import BaseTorchModelTraining, TORCH_WEIGHT_INIT
+from recommendation.task.model.base import TORCH_WEIGHT_INIT
+from recommendation.task.model.embedding import UserAndItemEmbeddingTraining
 
 
-class TripletNetTraining(BaseTorchModelTraining):
-    loss_function: str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet"], default="triplet_margin")
-
-    n_factors: int = luigi.IntParameter(default=20)
-    weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
+class TripletNetTraining(UserAndItemEmbeddingTraining):
 
     def create_module(self) -> nn.Module:
         return TripletNet(
