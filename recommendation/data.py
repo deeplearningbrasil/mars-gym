@@ -102,8 +102,8 @@ class InteractionsDataset(Dataset):
 
     def __getitem__(self, index: int) -> Tuple[Tuple[int, int], float]:
         row: pd.Series = self._data_frame.iloc[index]
-        return (row[self._input_columns[0]],
-                row[self._input_columns[1]]), row[self._output_column]
+        return (int(row[self._input_columns[0]]),
+                int(row[self._input_columns[1]])), row[self._output_column]
 
 
 class BatchInteractionsDataset(InteractionsDataset):
@@ -196,8 +196,8 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
 
     def __getitem__(self, index: int) -> Tuple[Tuple[int, int, int], list]:
         row: pd.Series = self._data_frame.iloc[index]
-        user_index = row[self._input_columns[0]]
-        positive_item_index = row[self._input_columns[1]]
+        user_index = int(row[self._input_columns[0]])
+        positive_item_index = int(row[self._input_columns[1]])
         negative_item_index = self._generate_negative_item_index(user_index)
 
         return (user_index,
