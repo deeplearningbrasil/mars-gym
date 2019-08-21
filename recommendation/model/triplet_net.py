@@ -10,7 +10,7 @@ class TripletNet(MatrixFactorization):
 
     def __init__(self, n_users: int, n_items: int, n_factors: int,
                  weight_init: Callable = lecun_normal_init):
-        super().__init__(n_users, n_items, n_factors, True, weight_init)
+        super().__init__(n_users, n_items, n_factors, False, weight_init)
 
     def forward(self, user_ids: torch.Tensor, positive_item_ids: torch.Tensor,
                 negative_item_ids: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:

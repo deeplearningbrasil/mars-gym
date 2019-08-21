@@ -324,21 +324,18 @@ class BaseTorchModelTraining(BaseModelTraining):
         return self._torch_device
 
     def get_train_generator(self) -> DataLoader:
-        fn = functools.partial(collate_fn, use_shared_memory=self.generator_workers > 0)
         return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=self.generator_workers, collate_fn=fn,
+                          num_workers=self.generator_workers, collate_fn=collate_fn,
                           pin_memory=self.pin_memory if self.device == "cuda" else False)
 
     def get_val_generator(self) -> DataLoader:
-        fn = functools.partial(collate_fn, use_shared_memory=self.generator_workers > 0)
         return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.generator_workers, collate_fn=fn,
+                          num_workers=self.generator_workers, collate_fn=collate_fn,
                           pin_memory=self.pin_memory if self.device == "cuda" else False)
 
     def get_test_generator(self) -> DataLoader:
-        fn = functools.partial(collate_fn, use_shared_memory=self.generator_workers > 0)
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.generator_workers, collate_fn=fn,
+                          num_workers=self.generator_workers, collate_fn=collate_fn,
                           pin_memory=True if self.device == "cuda" else False)
 
 
