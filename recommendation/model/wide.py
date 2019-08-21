@@ -6,7 +6,6 @@ import torch.nn.functional as F
 
 from recommendation.utils import lecun_normal_init
 
-
 class WideCTR(nn.Module):
     def __init__(self, input_dim: int,  dropout_prob: float,
                  activation_function: Callable = F.selu, weight_init: Callable = lecun_normal_init,
@@ -16,7 +15,8 @@ class WideCTR(nn.Module):
         #self.activation_function = activation_function
         self.weight_init         = weight_init
 
-        self.layers = nn.Sequential(
+        # Logistic Loss
+        self.logistic = nn.Sequential(
             nn.Linear(input_dim, 1),
             nn.Sigmoid()
         )
@@ -32,6 +32,6 @@ class WideCTR(nn.Module):
         
         x = torch.cat((xd.float(), xc.float()), 1)
         #x = x.view(-1)
-        x = self.layers(x)
+        x = self.logistic(x)
 
         return x
