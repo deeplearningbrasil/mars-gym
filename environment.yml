@@ -22,6 +22,7 @@ dependencies:
 - pyspark=2.4.3
 - psutil=5.2.2
 - pip
+- category_encoders
 - pip:
   - imbalanced-learn==0.4.3
 #  - torchbearer==0.3.2
