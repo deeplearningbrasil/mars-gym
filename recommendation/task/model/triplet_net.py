@@ -1,3 +1,4 @@
+import luigi
 import torch.nn as nn
 
 from recommendation.model.triplet_net import TripletNet
@@ -6,6 +7,7 @@ from recommendation.task.model.embedding import UserAndItemEmbeddingTraining
 
 
 class TripletNetTraining(UserAndItemEmbeddingTraining):
+    loss_function: str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet"], default="triplet_margin")
 
     def create_module(self) -> nn.Module:
         return TripletNet(
