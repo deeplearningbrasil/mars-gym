@@ -122,16 +122,23 @@ class InteractionsDataset(Dataset):
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
         self._output_column = project_config.output_column.name
 
-        self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
-        self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
-
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+    def __getitem__(self, index: int) -> Tuple[Tuple[int, int], float]:
         row: pd.Series = self._data_frame.iloc[index]
-        return (torch.tensor(row[self._input_columns[0]], dtype=torch.int64),
-                torch.tensor(row[self._input_columns[1]], dtype=torch.int64)), torch.tensor(row[self._output_column])
+        return (row[self._input_columns[0]],
+                row[self._input_columns[1]]), row[self._output_column]
+
+
+class BatchInteractionsDataset(InteractionsDataset):
+
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[int, int], float]:
+        if isinstance(indices, int):
+            indices = [indices]
+        rows: pd.Series = self._data_frame.iloc[indices]
+        return (rows[self._input_columns[0]].values,
+                rows[self._input_columns[1]].values), rows[self._output_column].values
 
 
 class InteractionsMatrixDataset(Dataset):
@@ -180,6 +187,9 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         self._non_zero_indices = set(
             data_frame[[self._input_columns[0], self._input_columns[0]]].itertuples(index=False, name=None))
 
+        self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
+        self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
+
     def __len__(self) -> int:
         return super().__len__() * 2
 
@@ -190,13 +200,13 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
             if (user_index, item_index) not in self._non_zero_indices:
                 return user_index, item_index
 
-    def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+    def __getitem__(self, index: int) -> Tuple[Tuple[int, int], float]:
         if index < super().__len__():
             return super().__getitem__(index)
         else:
             user_index, item_index = self._generate_negative_indices()
-            return (torch.tensor(user_index, dtype=torch.int64),
-                    torch.tensor(item_index, dtype=torch.int64)), torch.tensor(0.0)
+            return (user_index,
+                    item_index), 0.0
 
 
 class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWithOnlineRandomNegativeGenerationDataset):
@@ -209,13 +219,13 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
             if (user_index, item_index) not in self._non_zero_indices:
                 return item_index
 
-    def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], list]:
+    def __getitem__(self, index: int) -> Tuple[Tuple[int, int, int], list]:
         row: pd.Series = self._data_frame.iloc[index]
         user_index = row[self._input_columns[0]]
         positive_item_index = row[self._input_columns[1]]
         negative_item_index = self._generate_negative_item_index(user_index)
 
-        return (torch.tensor(user_index, dtype=torch.int64),
-                torch.tensor(positive_item_index, dtype=torch.int64),
-                torch.tensor(negative_item_index, dtype=torch.int64)), \
+        return (user_index,
+                positive_item_index,
+                negative_item_index), \
                []  # not used

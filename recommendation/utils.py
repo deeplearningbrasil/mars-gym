@@ -1,5 +1,5 @@
 from math import sqrt
-from typing import List
+from typing import List, Union
 
 import torch
 import torch.nn as nn
@@ -38,3 +38,9 @@ def deep_ndarray_to_tensor(batch, device, dtype):
         batch = torch.from_numpy(batch).to(device, dtype)
 
     return batch
+
+
+def chunks(l: Union[list, range], n: int) -> Union[list, range]:
+    """Yield successive n-sized chunks from l."""
+    for i in range(0, len(l), n):
+        yield l[i:i + n]

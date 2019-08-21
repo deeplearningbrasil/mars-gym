@@ -4,7 +4,7 @@ import luigi
 import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import create_map, udf
+from pyspark.sql.functions import col, explode, collect_set
 from pyspark.sql.types import IntegerType
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
@@ -59,8 +59,8 @@ class IndexAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
         spark = SparkSession(sc)
 
         train_df = spark.read.parquet(self.input()[0][0].path)
-        account_df = spark.read.csv(self.input()[1][0].path, header=True)
-        merchant_df = spark.read.csv(self.input()[1][1].path, header=True)
+        account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+        merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True)
 
         train_df = train_df.join(account_df, train_df.account_id == account_df.account_id)
         train_df = train_df.join(merchant_df, train_df.merchant_id == merchant_df.merchant_id)
@@ -151,3 +151,58 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
         df["n_items"] = self.num_businesses
 
         return df
+
+
+class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
+    def requires(self):
+        return CheckInteractionsDataset(), GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_orders_test_data.parquet"))
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
+        spark = SparkSession(sc)
+
+        orders_df = spark.read.parquet(self.input()[0][1].path)
+        account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+        merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True)
+
+        orders_df = orders_df.select("order_id", "account_id", "merchant_id", "merc_list")\
+            .join(account_df, orders_df.account_id == account_df.account_id, how="inner")\
+            .join(merchant_df, orders_df.merchant_id == merchant_df.merchant_id, how="inner")\
+            .select("order_id", "account_idx", "merchant_idx", "merc_list")\
+            .withColumn("merchant_id_from_list", explode(orders_df.merc_list))\
+            .drop("merc_list")
+
+        merchant_for_list_df = merchant_df.select(col("merchant_id").alias("merchant_id_for_list"), col("merchant_idx").alias("merchant_idx_for_list"))
+        orders_df = orders_df.join(merchant_for_list_df, orders_df.merchant_id_from_list == merchant_for_list_df.merchant_id_for_list, how="inner") \
+            .groupBy(["order_id", "account_idx", "merchant_idx"])\
+            .agg(collect_set("merchant_idx_for_list").alias("merchant_idx_list"))\
+            .select("order_id", "account_idx", "merchant_idx", "merchant_idx_list")
+
+        orders_df.write.parquet(self.output().path)
+
+
+class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
+    def requires(self):
+        return PrepareIfoodIndexedOrdersTestData()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "account_merchant_tuples_from_test_data.parquet"))
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
+        spark = SparkSession(sc)
+
+        df = spark.read.parquet(self.input().path)
+
+        tuples_df = df.select("account_idx", "merchant_idx")
+
+        tuples_df = tuples_df.union(df.select("account_idx", "merchant_idx_list")
+                                    .withColumn("merchant_idx", explode(df.merchant_idx_list))
+                                    .select("account_idx", "merchant_idx")).dropDuplicates()
+
+        tuples_df.write.parquet(self.output().path)
