@@ -16,7 +16,7 @@ tqdm.pandas()
 from recommendation.utils import chunks
 import math
 import numpy as np
-
+import os
 
 class DeepTraining(BaseTorchModelTraining):
     input_d_dim: int = luigi.IntParameter(default=100)
@@ -92,9 +92,9 @@ class DeepTraining(BaseTorchModelTraining):
             scores.extend(batch_scores.detach().cpu().numpy().tolist())
             
         # Save csv
-        df = pd.DataFrame({'Predicted': scores.reshape(scores,-1)})
+        df = pd.DataFrame({'Predicted':  np.reshape(scores,-1)})
         df['Id'] = [60000000+(x) for x in range(len(df))]
-        df.to_csv(os.path.join(output_path, "submission.csv"), index=False)
+        df.to_csv(os.path.join(self.output().path, "submission.csv"), index=False)
 
     @property
     def test_dataset(self) -> Dataset:
