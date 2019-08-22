@@ -1,12 +1,20 @@
 from typing import Dict
 
-from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, \
+from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, CriteoDataset, \
     BinaryInteractionsWithOnlineRandomNegativeGenerationDataset, UserTripletWithOnlineRandomNegativeGenerationDataset
-from recommendation.task.data_preparation import yelp, ifood
+from recommendation.task.data_preparation import yelp, ifood, criteo
 from recommendation.task.data_preparation.ifood import PrepareIfoodAccountMatrixWithBinaryBuysDataFrames
 from recommendation.task.meta_config import *
 
 PROJECTS: Dict[str, ProjectConfig] = {
+    "criteo": ProjectConfig(
+        base_dir=criteo.BASE_DIR,
+        prepare_data_frames_task=criteo.PrepareDataFrames,
+        dataset_class=CriteoDataset,
+        input_columns=[Column('dense', IOType.ARRAY), Column('categories', IOType.ARRAY)],
+        output_column=Column("TARGET", IOType.NUMBER),
+        recommender_type=RecommenderType.CONTENT_BASED,
+    ),
     "yelp": ProjectConfig(
         base_dir=yelp.BASE_DIR,
         prepare_data_frames_task=yelp.PrepareYelpRatingsDataFrames,

@@ -6,16 +6,15 @@ from torch.utils.data import Dataset
 from recommendation.task.data_preparation.base import BasePrepareDataFrames
 
 class IOType(Enum):
-    INDEX = auto()
+    INDEX  = auto()
     NUMBER = auto()
-    ARRAY = auto()
+    ARRAY  = auto()
 
 
 class RecommenderType(Enum):
     USER_BASED_COLLABORATIVE_FILTERING = auto()
     ITEM_BASED_COLLABORATIVE_FILTERING = auto()
     CONTENT_BASED = auto()
-
 
 class Column(object):
     def __init__(self, name: str, type: IOType) -> None:

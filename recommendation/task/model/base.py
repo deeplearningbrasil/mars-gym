@@ -49,7 +49,7 @@ TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransforma
                                   salt_and_pepper_noise=SaltAndPepperNoiseCorruptionTransformation,
                                   none=None)
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax)
-TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss,
+TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss,
                             focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
                             bpr_triplet=BayesianPersonalizedRankingTripletLoss)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
@@ -228,8 +228,7 @@ class BaseTorchModelTraining(BaseModelTraining):
 
     def fit(self):
         train_loader = self.get_train_generator()
-        val_loader = self.get_val_generator()
-
+        val_loader   = self.get_val_generator()
         module = self.create_module()
 
         summary_path = os.path.join(self.output().path, "summary.txt")
