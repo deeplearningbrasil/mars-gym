@@ -93,23 +93,27 @@ class CriteoDataset(Dataset):
         
         self._data_frame    = data_frame
 
-        self.categorical_columns = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13', 'C14', 
+        self._dense_columns       = ['I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10', 'I11', 'I12', 'I13']
+        self._categorical_columns = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13', 'C14', 
                                     'C15', 'C16', 'C17', 'C18', 'C19', 'C20', 'C21', 'C22', 'C23', 'C24', 'C25', 'C26']
+
 
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
         self._output_column = project_config.output_column.name
-
+        self._train         = True
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
     def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         row: pd.Series = self._data_frame.iloc[index]
-        row_dense      = row[['I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10', 'I11', 'I12', 'I13']]
-        row_categories = row[self.categorical_columns]
+        row_dense      = torch.tensor(row[self._dense_columns],       dtype=torch.float64)
+        row_categories = torch.tensor(row[self._categorical_columns], dtype=torch.int64)
 
-        return (torch.tensor(row_dense, dtype=torch.float64), torch.tensor(row_categories, dtype=torch.int64)), \
-                    torch.tensor(row[self._output_column])
+        if self._train:
+            return (row_dense, row_categories), torch.tensor(row[self._output_column])
+        else:
+            return (row_dense, row_categories)
 
 
 class InteractionsDataset(Dataset):
