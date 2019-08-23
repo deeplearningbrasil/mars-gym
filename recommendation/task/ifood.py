@@ -9,32 +9,37 @@ from multiprocessing.pool import Pool
 from typing import Dict, Tuple, List
 
 import luigi
+import numpy as np
 import pandas as pd
-import dask.dataframe as dd
-from dask.diagnostics import ProgressBar
 import torch
 from tqdm import tqdm
 
 from recommendation.rank_metrics import precision_at_k, average_precision, ndcg_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
-    ListAccountMerchantTuplesForIfoodIndexedOrdersTestData
+    ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfInteractionsDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks
 
-tqdm.pandas()
-ProgressBar().register()
+
+def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int],
+                             scores_per_tuple: Dict[Tuple[int, int], float]) -> List[int]:
+    scores = list(map(lambda merchant_idx: scores_per_tuple[(account_idx, merchant_idx)], merchant_idx_list))
+    sorted_merchant_idx_list = [merchant_idx for _, merchant_idx in
+                                sorted(zip(scores, merchant_idx_list), reverse=True)]
+    return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
 
-class GenerateRelevanteListFunction(object):
+def _generate_random_relevance_list(ordered_merchant_idx: int, merchant_idx_list: List[int]) -> List[int]:
+    np.random.shuffle(merchant_idx_list)
+    return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in merchant_idx_list]
 
-    def __init__(self, scores_per_tuple: Dict[Tuple[int, int], float]) -> None:
-        self.scores_per_tuple = scores_per_tuple
 
-    def generate(self, account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int]) -> List[int]:
-        scores = list(map(lambda merchant_idx: self.scores_per_tuple[(account_idx, merchant_idx)], merchant_idx_list))
-        sorted_merchant_idx_list = [merchant_idx for _, merchant_idx in
-                                    sorted(zip(scores, merchant_idx_list), reverse=True)]
-        return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
+def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, merchant_idx_list: List[int],
+                                                  scores_per_merchant: Dict[int, float]) -> List[int]:
+    scores = list(map(lambda merchant_idx: scores_per_merchant[merchant_idx], merchant_idx_list))
+    sorted_merchant_idx_list = [merchant_idx for _, merchant_idx in
+                                sorted(zip(scores, merchant_idx_list), reverse=True)]
+    return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
 
 class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
@@ -67,7 +72,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
             batch_scores: torch.Tensor = module(
                 torch.tensor(rows["account_idx"].values, dtype=torch.int64).to(self.model_training.torch_device),
                 torch.tensor(rows["merchant_idx"].values, dtype=torch.int64).to(self.model_training.torch_device))
-            scores.extend(batch_scores.detach().cpu().numpy().tolist())
+            scores.extend(batch_scores.detach().cpu().numpy())
 
         print("Creating the dictionary of scores...")
         return {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
@@ -86,7 +91,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
         print("Generating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
-            starmap(GenerateRelevanteListFunction(scores_per_tuple).generate,
+            starmap(functools.partial(_generate_relevance_list, scores_per_tuple=scores_per_tuple),
                     zip(orders_df["account_idx"], orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
             total=len(orders_df)))
 
@@ -94,9 +99,9 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         #     shared_scores_per_tuple: Dict[Tuple[int, int], float] = manager.dict(scores_per_tuple)
         #     with manager.Pool(self.num_processes) as p:
         #         orders_df["relevance_list"] = list(tqdm(
-        #                     p.starmap(GenerateRelevanteListFunction(shared_scores_per_tuple).generate,
-        #                               zip(orders_df["account_idx"], orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
-        #                     total=len(orders_df)))
+        #             starmap(functools.partial(_generate_relevance_list, scores_per_tuple=shared_scores_per_tuple),
+        #                     zip(orders_df["account_idx"], orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
+        #             total=len(orders_df)))
 
         print("Saving the output file...")
         orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
@@ -161,3 +166,83 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         df.to_csv(self.output()[0].path)
         with open(self.output()[1].path, "w") as metrics_file:
             json.dump(metrics, metrics_file, indent=4)
+
+
+class GenerateRandomRelevanceLists(luigi.Task):
+
+    def requires(self):
+        return PrepareIfoodIndexedOrdersTestData()
+
+    def output(self):
+        return luigi.LocalTarget(
+            os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.task_id, "orders_with_relevance_lists.csv"))
+
+    def run(self):
+        os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
+
+        print("Reading the orders DataFrame...")
+        orders_df: pd.DataFrame = pd.read_parquet(self.input().path)
+
+        print("Filtering orders where the ordered merchant isn't in the list...")
+        orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
+
+        print("Generating the relevance lists...")
+        orders_df["relevance_list"] = list(tqdm(
+            starmap(_generate_random_relevance_list,
+                    zip(orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
+            total=len(orders_df)))
+
+        print("Saving the output file...")
+        orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
+
+
+class EvaluateRandomIfoodModel(EvaluateIfoodModel):
+    model_task_id: str = luigi.Parameter(default="none")
+
+    def requires(self):
+        return GenerateRandomRelevanceLists()
+
+
+class GenerateMostPopularRelevanceLists(luigi.Task):
+
+    def requires(self):
+        return IndexAccountsAndMerchantsOfInteractionsDataset(), PrepareIfoodIndexedOrdersTestData()
+
+    def output(self):
+        return luigi.LocalTarget(
+            os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.task_id, "orders_with_relevance_lists.csv"))
+
+    def run(self):
+        os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
+
+        print("Reading the interactions DataFrame...")
+        interactions_df: pd.DataFrame = pd.read_csv(self.input()[0].path)
+        print("Generating the scores")
+        scores: pd.Series = interactions_df.groupby("merchant_idx")["buys"].sum()
+        scores_dict: Dict[int, float] = {merchant_idx: score for merchant_idx, score
+                                         in tqdm(zip(scores.index, scores),
+                                                 total=len(scores))}
+
+        print("Reading the orders DataFrame...")
+        orders_df: pd.DataFrame = pd.read_parquet(self.input()[1].path)
+
+        print("Filtering orders where the ordered merchant isn't in the list...")
+        orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
+
+        print("Generating the relevance lists...")
+        orders_df["relevance_list"] = list(tqdm(
+            starmap(functools.partial(_generate_relevance_list_from_merchant_scores, scores_per_merchant=scores_dict),
+                    zip(orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
+            total=len(orders_df)))
+
+        print("Saving the output file...")
+        orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
+
+
+class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
+    model_task_id: str = luigi.Parameter(default="none")
+
+    def requires(self):
+        return GenerateMostPopularRelevanceLists()
