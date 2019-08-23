@@ -148,3 +148,4 @@ class DeepCTR(nn.Module):
         x = self.logistic(x)
 
         return x
+

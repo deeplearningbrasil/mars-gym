@@ -4,6 +4,20 @@ from typing import List, Union
 import torch
 import torch.nn as nn
 from torch.nn.init import _calculate_fan_in_and_fan_out
+from recommendation.files import get_params, get_task_dir
+
+def load_torch_model_training_from_task_dir(model_cls,
+                                            task_dir: str):
+    model_training = model_cls(**get_params(task_dir))
+    model_training._output_path = task_dir
+    return model_training
+
+
+def load_torch_model_training_from_task_id(model_cls,
+                                           task_id: str):
+    task_dir = get_task_dir(model_cls, task_id)
+
+    return load_torch_model_training_from_task_dir(model_cls, task_dir)
 
 
 def lecun_normal_init(tensor: torch.Tensor):
