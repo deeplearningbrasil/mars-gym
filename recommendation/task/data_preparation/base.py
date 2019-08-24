@@ -64,7 +64,7 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
     seed: int = luigi.IntParameter(default=42)
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
 
     @property
     @abc.abstractmethod
@@ -188,8 +188,8 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
 
 
 class BasePySparkTask(PySparkTask):
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
-    
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
+
     def setup(self, conf: SparkConf):
         conf.set("spark.local.dir", os.path.join("output", "spark"))
         conf.set("spark.driver.maxResultSize", self._get_available_memory())

@@ -10,6 +10,7 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     model_module: str = luigi.Parameter(default="datalife.task.model.matrix_factorization")
     model_cls: str = luigi.Parameter(default="MatrixFactorizationTraining")
     model_task_id: str = luigi.Parameter()
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
 
     @property
     def model_training(self) -> BaseTorchModelTraining:

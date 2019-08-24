@@ -45,7 +45,6 @@ def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, mer
 
 class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
 
     # num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
@@ -112,7 +111,6 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
 
     def requires(self):
         return GenerateRelevanceListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
@@ -159,6 +157,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             # "precision_at_5": df["precision_at_5"].mean(),
             # "precision_at_10": df["precision_at_10"].mean(),
             # "precision_at_15": df["precision_at_15"].mean(),
+            "count": len(df),
             "average_precision": df["average_precision"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
             "ndcg_at_10": df["ndcg_at_10"].mean(),
@@ -173,7 +172,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
 
 class GenerateRandomRelevanceLists(luigi.Task):
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
 
     def requires(self):
         return PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter)
@@ -211,7 +210,7 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
 
 class GenerateMostPopularRelevanceLists(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
 
     def requires(self):
         return IndexAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter), \
