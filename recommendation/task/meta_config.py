@@ -29,7 +29,7 @@ class ProjectConfig(object):
                  input_columns: List[Column],
                  output_column: Column,
                  recommender_type: RecommenderType,
-                 window_filter: str = "all",
+                 window_filter: str = "one_week",
                  n_users_column: str = "n_users",
                  n_items_column: str = "n_items",
                  default_balance_fields: List[str] = [],
