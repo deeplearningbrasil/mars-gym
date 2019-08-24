@@ -4,6 +4,7 @@ import importlib
 import luigi
 
 from recommendation.task.model.base import BaseTorchModelTraining, load_torch_model_training_from_task_id
+from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
 
 
 class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
