@@ -19,6 +19,7 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfInteractionsDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks
+from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
 
 
 def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int],
@@ -44,11 +45,13 @@ def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, mer
 
 class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
 
     # num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData(), ListAccountMerchantTuplesForIfoodIndexedOrdersTestData()
+        return PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter), \
+            ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(window_filter=self.window_filter)
 
     def output(self):
         return luigi.LocalTarget(
@@ -109,10 +112,11 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
 
     def requires(self):
         return GenerateRelevanceListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                   model_task_id=self.model_task_id)
+                                                   model_task_id=self.model_task_id,window_filter=self.window_filter)
 
     def output(self):
         model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
@@ -169,9 +173,10 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
 
 class GenerateRandomRelevanceLists(luigi.Task):
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
 
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData()
+        return PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter)
 
     def output(self):
         return luigi.LocalTarget(
@@ -201,13 +206,16 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return GenerateRandomRelevanceLists()
+        return GenerateRandomRelevanceLists(window_filter=self.window_filter)
 
 
 class GenerateMostPopularRelevanceLists(luigi.Task):
+    model_task_id: str = luigi.Parameter(default="none")
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="all")
 
     def requires(self):
-        return IndexAccountsAndMerchantsOfInteractionsDataset(), PrepareIfoodIndexedOrdersTestData()
+        return IndexAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter), \
+                PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter)
 
     def output(self):
         return luigi.LocalTarget(
@@ -245,4 +253,4 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return GenerateMostPopularRelevanceLists()
+        return GenerateMostPopularRelevanceLists(window_filter=self.window_filter)
