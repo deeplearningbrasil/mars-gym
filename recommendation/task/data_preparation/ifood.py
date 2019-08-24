@@ -6,12 +6,20 @@ from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, explode, collect_set
 from pyspark.sql.types import IntegerType
+from pyspark.sql.functions import explode, first
+import pyspark.sql.functions as f
+from pyspark.sql.functions import col, expr, when
+from pyspark.sql.types import DateType
+import pyspark
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
 
 BASE_DIR: str = os.path.join("output", "ifood")
 DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
 
+# df train 2019-03-26 at 2019-06-17
+#
+WINDOW_FILTER_DF = dict(one_week='2019-06-10', one_month='2019-05-17', all='2019-03-26')
 
 class CheckInteractionsDataset(luigi.Task):
     def output(self):
@@ -22,17 +30,54 @@ class CheckInteractionsDataset(luigi.Task):
         raise AssertionError(
             f"As seguintes pastas são esperadas com o dataset: '{self.output()[0].path}' e '{self.output()[1].path}'")
 
-
-class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
+class FilterDataset(BasePySparkTask):
     def requires(self):
         return CheckInteractionsDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "accounts_indices_for_interactions_data.csv")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "merchants_indices_for_interactions_data.csv"))
+        return luigi.LocalTarget(os.path.join(BASE_DIR, "interactions_training_data_{}".format(self.window_filter))), \
+               luigi.LocalTarget(os.path.join(BASE_DIR, "interactions_test_data"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        #os.makedirs(os.path.join(BASE_DIR, "interactions_training_data_{}".format(self.window_filter)), exist_ok=True)
+
+        spark = SparkSession(sc)
+
+        df    = spark.read.parquet(self.input()[0].path)
+        print(df.printSchema())
+
+        if self.window_filter != 'all':
+
+            # Explode to Filter
+            df_t = df.select(df.account_id, df.merchant_id, 
+                             explode(df.visit_events).alias('visit_event'),
+                             f.col('purchase_events')[0].alias('purchase_event'))
+            df_t = df_t.withColumn("visit_event",df_t['visit_event'].cast(DateType()))
+            df_t = df_t.withColumn('buys', when(df_t.purchase_event == df_t.visit_event, 1).otherwise(0)).persist( pyspark.StorageLevel.MEMORY_AND_DISK_2 )
+
+            # Filter
+            df_f = df_t.filter(f.col("visit_event") > f.lit(WINDOW_FILTER_DF[self.window_filter])).cache()
+
+            # Implode
+            df = df_f.groupby([df_f.account_id, df_f.merchant_id]).agg(
+                f.count('visit_event').alias('visits'),
+                f.collect_list('visit_event').alias('visit_events'),
+                when(f.sum('buys') >= 1, 1).alias('buys'),
+                when(f.size(f.collect_set('purchase_event')) == 0, f.lit(None)).otherwise(f.collect_set('purchase_event')).alias('purchase_events')
+            ).cache()
+
+        df.write.parquet(self.output()[0].path)
+
+class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
+    def requires(self):
+        return FilterDataset(window_filter=self.window_filter)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, self.window_filter, "accounts_indices_for_interactions_data.csv")), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, self.window_filter, "merchants_indices_for_interactions_data.csv"))
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(os.path.join(DATASET_DIR, self.window_filter), exist_ok=True)
 
         spark = SparkSession(sc)
 
@@ -46,15 +91,15 @@ class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTas
 
 
 class IndexAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
-
     def requires(self):
-        return CheckInteractionsDataset(), GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset()
+        return FilterDataset(window_filter=self.window_filter), \
+                    GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_interactions_data.csv"))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, self.window_filter, "indexed_interactions_data.csv"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(os.path.join(DATASET_DIR, self.window_filter), exist_ok=True)
 
         spark = SparkSession(sc)
 
@@ -71,14 +116,13 @@ class IndexAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
 
 
 class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
-
     def requires(self):
-        return GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(),\
-               IndexAccountsAndMerchantsOfInteractionsDataset()
+        return GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter),\
+               IndexAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter)
 
     @property
     def dataset_dir(self) -> str:
-        return DATASET_DIR
+        return os.path.join(DATASET_DIR, self.window_filter)
 
     @property
     def stratification_property(self) -> str:
@@ -108,14 +152,13 @@ class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
 
 
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
-
     def requires(self):
-        return GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(), \
-               IndexAccountsAndMerchantsOfInteractionsDataset()
+        return GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter), \
+               IndexAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter)
 
     @property
     def dataset_dir(self) -> str:
-        return DATASET_DIR
+        return os.path.join(DATASET_DIR, self.window_filter)
 
     @property
     def stratification_property(self) -> str:
@@ -155,13 +198,14 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
 
 class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
     def requires(self):
-        return CheckInteractionsDataset(), GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset()
+        return FilterDataset(window_filter=self.window_filter), \
+                GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_orders_test_data.parquet"))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, self.window_filter, "indexed_orders_test_data.parquet"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(os.path.join(DATASET_DIR, self.window_filter), exist_ok=True)
 
         spark = SparkSession(sc)
 
@@ -187,13 +231,13 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
 
 class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData()
+        return PrepareIfoodIndexedOrdersTestData(self.window_filter)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "account_merchant_tuples_from_test_data.parquet"))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, self.window_filter, "account_merchant_tuples_from_test_data.parquet"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(os.path.join(DATASET_DIR, self.window_filter), exist_ok=True)
 
         spark = SparkSession(sc)
 

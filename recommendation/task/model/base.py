@@ -41,6 +41,7 @@ from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
 from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, collate_fn
 from recommendation.utils import lecun_normal_init, he_init
+from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -84,6 +85,7 @@ class BaseModelTraining(luigi.Task):
     eq_filters: Dict[str, any] = luigi.DictParameter(default={})
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
+    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
 
     seed: int = luigi.IntParameter(default=SEED)
 
@@ -100,6 +102,7 @@ class BaseModelTraining(luigi.Task):
                                                             eq_filters=self.eq_filters,
                                                             neq_filters=self.neq_filters,
                                                             isin_filters=self.isin_filters,
+                                                            window_filter=self.window_filter,
                                                             seed=self.seed,
                                                             **self.data_frames_preparation_extra_params)
 
