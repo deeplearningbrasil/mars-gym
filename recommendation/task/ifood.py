@@ -147,12 +147,8 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
-    cdae_eval: bool = luigi.BoolParameter(default=False)
 
     def requires(self):
-        if self.cdae_eval:
-            return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
-                                                            model_task_id=self.model_task_id, window_filter=self.window_filter)
         return GenerateRelevanceListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                                    model_task_id=self.model_task_id,window_filter=self.window_filter)
 
@@ -240,6 +236,10 @@ class GenerateRandomRelevanceLists(luigi.Task):
         print("Saving the output file...")
         orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
+class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
+    def requires(self):
+        return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
+                                                            model_task_id=self.model_task_id, window_filter=self.window_filter)
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
