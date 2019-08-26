@@ -39,7 +39,7 @@ from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_deriva
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
-from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, collate_fn, \
+from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, \
     NoAutoCollationDataLoader
 from recommendation.utils import lecun_normal_init, he_init
 from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
