@@ -63,4 +63,12 @@ PROJECTS: Dict[str, ProjectConfig] = {
         output_column=Column("buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
+    "ifood_user_cdae": ProjectConfig(
+        base_dir=yelp.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodAccountMatrixWithBinaryBuysDataFrames,
+        dataset_class=InteractionsMatrixDataset,
+        input_columns=[Column("buys_per_merchant", IOType.ARRAY)],
+        output_column=Column("buys_per_merchant", IOType.ARRAY),
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),
 }

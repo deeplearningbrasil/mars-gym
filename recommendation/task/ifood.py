@@ -7,12 +7,14 @@ from itertools import starmap
 import multiprocessing as mp
 from multiprocessing.pool import Pool
 from typing import Dict, Tuple, List
+import numpy as np
 
 import luigi
 import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
+import timeit
 
 from recommendation.rank_metrics import precision_at_k, average_precision, ndcg_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
@@ -41,7 +43,6 @@ def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, mer
     sorted_merchant_idx_list = [merchant_idx for _, merchant_idx in
                                 sorted(zip(scores, merchant_idx_list), reverse=True)]
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
-
 
 class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
@@ -109,10 +110,49 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
+class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel):
+
+    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
+        print("Reading tuples files...")
+        tuples_df = pd.read_parquet(self.input()[1].path)
+
+        print("Grouping by account index...")
+        groups = tuples_df.groupby('account_idx')['merchant_idx'].apply(list)
+
+        int_matrix = self.model_training.train_dataset
+
+        assert self.model_training.project_config.input_columns[0].name == "buys_per_merchant"
+
+        print("Loading trained model...")
+        module = self.model_training.get_trained_module()
+
+        rel_dict: Dict[Tuple[int, int], float] = {}
+
+        print("Running the model for every account and merchant tuple...")
+        for indices in tqdm(chunks(list(groups.keys()), self.batch_size),
+                            total=math.ceil(len(groups.keys()) / self.batch_size)):
+            batch_tensors: torch.Tensor = module(
+                torch.tensor(int_matrix[indices][0]).to(self.model_training.torch_device))
+            merchants_lists = list(map(lambda _: groups[_], indices))
+            merchants_tensor_ids = tuple(np.concatenate([ i * np.ones(len(merchants_lists[i]), dtype=np.int32) for i in range(len(merchants_lists))]).ravel())
+            account_ids = tuple(np.concatenate([ indices[i] * np.ones(len(merchants_lists[i]), dtype=np.int32) for i in range(len(merchants_lists))]).ravel())
+            merchants_lists = tuple([y for x in merchants_lists for y in x])
+            batch_np_tensors = batch_tensors.detach().cpu().numpy()
+            batch_scores = batch_np_tensors[[merchants_tensor_ids, merchants_lists]]
+
+            rel_dict.update( {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
+                in zip(account_ids, merchants_lists, batch_scores)} )
+            
+        return rel_dict
+
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
+    cdae_eval: bool = luigi.BoolParameter(default=False)
 
     def requires(self):
+        if self.cdae_eval:
+            return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
+                                                            model_task_id=self.model_task_id, window_filter=self.window_filter)
         return GenerateRelevanceListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                                    model_task_id=self.model_task_id,window_filter=self.window_filter)
 
