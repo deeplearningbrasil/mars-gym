@@ -1,7 +1,7 @@
 # Project
 output/
 mlruns/
-
+metastore_db/
 # Spyder project settings
 .spyderproject
 .spyproject
