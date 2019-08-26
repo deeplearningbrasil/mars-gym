@@ -105,16 +105,19 @@ class CriteoDataset(Dataset):
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
-        row: pd.Series = self._data_frame.iloc[index]
-        row_dense = torch.tensor(row[self._dense_columns], dtype=torch.float64)
-        row_categories = torch.tensor(row[self._categorical_columns], dtype=torch.int64)
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]:
+        if isinstance(indices, int):
+            indices = [indices]
+        rows: pd.Series = self._data_frame.iloc[indices]
+
+
+        rows_dense      = rows[self._dense_columns].values#)#.astype(float)
+        rows_categories = rows[self._categorical_columns].values#)#.astype(float)
 
         if self._train:
-            return (row_dense, row_categories), torch.tensor(row[self._output_column])
+            return (rows_dense, rows_categories), torch.FloatTensor(rows[self._output_column].values)
         else:
-            return (row_dense, row_categories)
-
+            return (rows_dense, rows_categories)
 
 class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
