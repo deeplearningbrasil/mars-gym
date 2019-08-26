@@ -1,5 +1,3 @@
-import re
-from collections import Mapping, Sequence
 from typing import List, Union
 
 import torch
@@ -9,7 +7,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from torch import nn
 from torch.optim.optimizer import Optimizer
-from torch.utils.data._utils.collate import default_collate_err_msg_format, np_str_obj_array_pattern
+from torch.utils.data.dataloader import DataLoader
 from torchbearer.callbacks import Callback
 import mlflow
 from torchbearer.callbacks.torch_scheduler import TorchScheduler, StepLR
@@ -313,46 +311,14 @@ def coo_matrix_to_sparse_tensor(coo: coo_matrix) -> torch.Tensor:
 
     return torch.sparse_coo_tensor(i, v, coo.shape)
 
-def collate_fn(batch, use_shared_memory=False):
-    r"""Puts each data field into a tensor with outer dimension batch size"""
 
-    error_msg = "batch must contain tensors, numbers, dicts or lists; found {}"
-    elem_type = type(batch[0])
-    if isinstance(batch[0], torch.Tensor):
-        out = None
-        if use_shared_memory:
-            # If we're in a background process, concatenate directly into a
-            # shared memory tensor to avoid an extra copy
-            numel = sum([x.numel() for x in batch])
-            storage = batch[0].storage()._new_shared(numel)
-            out = batch[0].new(storage)
-        if len(batch[0].shape) > 1:
-            return torch.cat(batch, 0, out=out)
-        else:
-            return torch.stack(batch, 0, out=out)
-    elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
-            and elem_type.__name__ != 'string_':
-        elem = batch[0]
-        if elem_type.__name__ == 'ndarray':
-            # array of string classes and object
-            if re.search('[SaUO]', elem.dtype.str) is not None:
-                raise TypeError(error_msg.format(elem.dtype))
+class NoAutoCollationDataLoader(DataLoader):
+    @property
+    def _auto_collation(self):
+        return False
 
-            return torch.stack([torch.from_numpy(b) for b in batch], 0)
-        if elem.shape == ():  # scalars
-            return torch.as_tensor(batch)
-    elif isinstance(batch[0], int):
-        return torch.LongTensor(batch)
-    elif isinstance(batch[0], float):
-        return torch.DoubleTensor(batch)
-    elif isinstance(batch[0], str):
-        return batch
-    elif isinstance(batch[0], Mapping):
-        return {key: collate_fn([d[key] for d in batch]) for key in batch[0]}
-    elif isinstance(batch[0], Sequence):
-        transposed = zip(*batch)
-        return [collate_fn(samples) for samples in transposed]
-
-    raise TypeError((error_msg.format(type(batch[0]))))
+    @property
+    def _index_sampler(self):
+        return self.batch_sampler
 
 

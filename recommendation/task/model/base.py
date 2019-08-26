@@ -1,5 +1,4 @@
 import abc
-import functools
 import json
 import logging
 import multiprocessing
@@ -21,6 +20,7 @@ from torch.optim.adagrad import Adagrad
 from torch.optim.adamax import Adamax
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
+from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
 from torchbearer import Trial
 from torchbearer.callbacks.checkpointers import ModelCheckpoint
@@ -39,7 +39,8 @@ from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_deriva
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
-from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, collate_fn
+from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, collate_fn, \
+    NoAutoCollationDataLoader
 from recommendation.utils import lecun_normal_init, he_init
 from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
 
@@ -237,7 +238,7 @@ class BaseTorchModelTraining(BaseModelTraining):
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
             with redirect_stdout(summary_file):
-                sample_input = collate_fn([self.train_dataset[0][0]])
+                sample_input = default_convert(self.train_dataset[0][0])
                 summary(module, sample_input)
         mlflow.log_artifact(summary_path)
 
@@ -326,21 +327,18 @@ class BaseTorchModelTraining(BaseModelTraining):
         return self._torch_device
 
     def get_train_generator(self) -> DataLoader:
-        fn = functools.partial(collate_fn, use_shared_memory=self.generator_workers > 0)
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=self.generator_workers, collate_fn=fn,
+        return NoAutoCollationDataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
+                          num_workers=self.generator_workers,
                           pin_memory=self.pin_memory if self.device == "cuda" else False)
 
     def get_val_generator(self) -> DataLoader:
-        fn = functools.partial(collate_fn, use_shared_memory=self.generator_workers > 0)
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.generator_workers, collate_fn=fn,
+        return NoAutoCollationDataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,
+                          num_workers=self.generator_workers,
                           pin_memory=self.pin_memory if self.device == "cuda" else False)
 
     def get_test_generator(self) -> DataLoader:
-        fn = functools.partial(collate_fn, use_shared_memory=self.generator_workers > 0)
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.generator_workers, collate_fn=fn,
+        return NoAutoCollationDataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False,
+                          num_workers=self.generator_workers,
                           pin_memory=True if self.device == "cuda" else False)
 
 

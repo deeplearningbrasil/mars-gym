@@ -40,7 +40,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         recommender_type=RecommenderType.ITEM_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_binary_buys_cf": ProjectConfig(
-        base_dir=yelp.BASE_DIR,
+        base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=InteractionsDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
@@ -48,7 +48,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_binary_buys_cf_with_random_negative": ProjectConfig(
-        base_dir=yelp.BASE_DIR,
+        base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=BinaryInteractionsWithOnlineRandomNegativeGenerationDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
@@ -56,7 +56,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_binary_buys_triplet_with_random_negative": ProjectConfig(
-        base_dir=yelp.BASE_DIR,
+        base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=UserTripletWithOnlineRandomNegativeGenerationDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],

@@ -84,7 +84,7 @@ class DeepMatrixFactorization(UserAndItemEmbedding):
             if hasattr(self, "dropout"):
                 x = self.dropout(x)
 
-        x = self.last_dense_layer(x)
+        x = self.last_dense_layer(x).flatten()
 
         if self.binary:
             return torch.sigmoid(x)
