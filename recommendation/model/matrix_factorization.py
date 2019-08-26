@@ -52,7 +52,7 @@ class BiasedMatrixFactorization(UserAndItemEmbedding):
 
 class DeepMatrixFactorization(UserAndItemEmbedding):
 
-    def __init__(self, n_users: int, n_items: int, n_factors: int,
+    def __init__(self, n_users: int, n_items: int, n_factors: int, binary: bool,
                  dense_layers: List[int], dropout_between_layers_prob: float,
                  bn_between_layers: bool, activation_function: Callable = F.selu,
                  weight_init: Callable = lecun_normal_init,
@@ -69,6 +69,7 @@ class DeepMatrixFactorization(UserAndItemEmbedding):
 
         self.bn_between_layers = bn_between_layers
         self.activation_function = activation_function
+        self.binary = binary
 
     def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor) -> torch.Tensor:
         user_embedding = self.user_embeddings(user_ids)
@@ -85,4 +86,6 @@ class DeepMatrixFactorization(UserAndItemEmbedding):
 
         x = self.last_dense_layer(x)
 
+        if self.binary:
+            return torch.sigmoid(x)
         return x

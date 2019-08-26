@@ -33,18 +33,20 @@ class DeepMatrixFactorizationTraining(UserAndItemEmbeddingTraining):
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
     bn_between_layers: bool = luigi.BoolParameter(default=False)
+    binary: bool = luigi.BoolParameter(default=False)
 
     def create_module(self) -> nn.Module:
         return DeepMatrixFactorization(
             n_users=self.n_users,
             n_items=self.n_items,
             n_factors=self.n_factors,
+            binary=self.binary,
             dense_layers=self.dense_layers,
             dropout_between_layers_prob=self.dropout_between_layers_prob,
             bn_between_layers=self.bn_between_layers,
             activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
-            dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module]
+            dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],
         )
 
 
