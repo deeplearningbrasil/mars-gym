@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.loss import _Loss
+from typing import List
 
 
 class FocalLoss(nn.Module):
@@ -118,3 +119,17 @@ class BayesianPersonalizedRankingTripletLoss(_Loss):
             return loss.mean()
         else:
             return loss.sum()
+
+
+class VAELoss(nn.Module):
+    def __init__(self, anneal=1.0):
+        super(VAELoss, self).__init__()
+        self.anneal = anneal
+
+    def forward(self, recon_x, mu, logvar, targets):
+        targets = targets.to_dense()
+        BCE = -torch.mean(torch.sum(F.log_softmax(recon_x, 1) * targets, -1))
+        KLD = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
+
+        loss = BCE + self.anneal * KLD
+        return loss
