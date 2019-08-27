@@ -90,31 +90,34 @@ class SaltAndPepperNoiseCorruptionTransformation(CorruptionTransformation):
 class CriteoDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
                  transformation: Union[Callable] = None) -> None:
-        
-        self._data_frame    = data_frame
 
-        self._dense_columns       = ['I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10', 'I11', 'I12', 'I13']
-        self._categorical_columns = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13', 'C14', 
-                                    'C15', 'C16', 'C17', 'C18', 'C19', 'C20', 'C21', 'C22', 'C23', 'C24', 'C25', 'C26']
+        self._data_frame = data_frame
 
+        self._dense_columns = ['I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10', 'I11', 'I12', 'I13']
+        self._categorical_columns = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13',
+                                     'C14',
+                                     'C15', 'C16', 'C17', 'C18', 'C19', 'C20', 'C21', 'C22', 'C23', 'C24', 'C25', 'C26']
 
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
         self._output_column = project_config.output_column.name
-        self._train         = True
+        self._train = True
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def __getitem__(self, index: int) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
-        row: pd.Series = self._data_frame.iloc[index]
-        row_dense      = torch.tensor(row[self._dense_columns],       dtype=torch.float64)
-        row_categories = torch.tensor(row[self._categorical_columns], dtype=torch.int64)
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]:
+        if isinstance(indices, int):
+            indices = [indices]
+        rows: pd.Series = self._data_frame.iloc[indices]
+
+
+        rows_dense      = rows[self._dense_columns].values#)#.astype(float)
+        rows_categories = rows[self._categorical_columns].values#)#.astype(float)
 
         if self._train:
-            return (row_dense, row_categories), torch.tensor(row[self._output_column])
+            return (rows_dense, rows_categories), torch.FloatTensor(rows[self._output_column].values)
         else:
-            return (row_dense, row_categories)
-
+            return (rows_dense, rows_categories)
 
 class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
@@ -129,15 +132,7 @@ class InteractionsDataset(Dataset):
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def __getitem__(self, index: int) -> Tuple[Tuple[int, int], float]:
-        row: pd.Series = self._data_frame.iloc[index]
-        return (int(row[self._input_columns[0]]),
-                int(row[self._input_columns[1]])), row[self._output_column]
-
-
-class BatchInteractionsDataset(InteractionsDataset):
-
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[int, int], float]:
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]:
         if isinstance(indices, int):
             indices = [indices]
         rows: pd.Series = self._data_frame.iloc[indices]
@@ -172,14 +167,15 @@ class InteractionsMatrixDataset(Dataset):
     def __len__(self) -> int:
         return self._data.shape[0]
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        row: csr_matrix = self._data[index]
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[torch.Tensor, torch.Tensor]:
+        if isinstance(indices, int):
+            indices = [indices]
+        rows: csr_matrix = self._data[indices]
 
-        input_row, output_row = row, row
         if self._transformation:
-            input_row = self._transformation(row)
-
-        return coo_matrix_to_sparse_tensor(input_row.tocoo()), coo_matrix_to_sparse_tensor(output_row.tocoo())
+            input_rows = self._transformation(rows)
+            return coo_matrix_to_sparse_tensor(input_rows.tocoo()), coo_matrix_to_sparse_tensor(rows.tocoo())
+        return (coo_matrix_to_sparse_tensor(rows.tocoo()),) * 2
 
 
 class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
@@ -204,13 +200,27 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
             if (user_index, item_index) not in self._non_zero_indices:
                 return user_index, item_index
 
-    def __getitem__(self, index: int) -> Tuple[Tuple[int, int], float]:
-        if index < super().__len__():
-            return super().__getitem__(index)
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]:
+        if isinstance(indices, int):
+            indices = [indices]
+
+        n = super().__len__()
+
+        positive_indices = [index for index in indices if index < n]
+        num_of_negatives = len(indices) - len(positive_indices)
+
+        positive_batch: Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray] = super().__getitem__(positive_indices)
+        if num_of_negatives > 0:
+            negative_batch: Tuple[Tuple[List[int], List[int]], np.ndarray] = (tuple(zip(*[
+                self._generate_negative_indices()
+                for _ in
+                range(num_of_negatives)])), np.zeros(num_of_negatives))
+
+            return (np.append(positive_batch[0][0], negative_batch[0][0]),
+                    np.append(positive_batch[0][1], negative_batch[0][1])), \
+                   np.append(positive_batch[1], negative_batch[1])
         else:
-            user_index, item_index = self._generate_negative_indices()
-            return (user_index,
-                    item_index), 0.0
+            return (positive_batch[0][0], positive_batch[0][1]), positive_batch[1]
 
 
 class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWithOnlineRandomNegativeGenerationDataset):
@@ -223,13 +233,14 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
             if (user_index, item_index) not in self._non_zero_indices:
                 return item_index
 
-    def __getitem__(self, index: int) -> Tuple[Tuple[int, int, int], list]:
-        row: pd.Series = self._data_frame.iloc[index]
-        user_index = int(row[self._input_columns[0]])
-        positive_item_index = int(row[self._input_columns[1]])
-        negative_item_index = self._generate_negative_item_index(user_index)
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray, np.ndarray],
+                                                                   list]:
+        if isinstance(indices, int):
+            indices = [indices]
 
-        return (user_index,
-                positive_item_index,
-                negative_item_index), \
-               []  # not used
+        rows: pd.Series = self._data_frame.iloc[indices]
+        user_indices = rows[self._input_columns[0]].values
+        positive_item_indices = rows[self._input_columns[1]].values
+        negative_item_indices = np.array(
+            [self._generate_negative_item_index(user_index) for user_index in user_indices], dtype=np.int64)
+        return (user_indices, positive_item_indices, negative_item_indices), []
