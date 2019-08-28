@@ -39,8 +39,6 @@ class FocalLoss(nn.Module):
         ce: torch.Tensor = -torch.log(pt)
         weight: torch.Tensor = (1. - pt) ** self.gamma
         loss: torch.Tensor = weight * self.alpha * ce
-        if loss.dim() == 2:  # softmax
-            loss: torch.Tensor = loss[:, 0]
 
         if self.size_average:
             return loss.mean()
