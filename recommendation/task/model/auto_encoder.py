@@ -12,7 +12,7 @@ from recommendation.torch import MaskedZeroesLoss
 
 
 class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
-    metrics = luigi.ListParameter(default=["loss", "masked_zeroes_mse"])
+    metrics = luigi.ListParameter(default=["loss"])
 
     encoder_layers: List[int] = luigi.ListParameter(default=[256, 128, 128, 64])
     decoder_layers: List[int] = luigi.ListParameter(default=[128, 128, 256])
@@ -20,9 +20,13 @@ class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
+    masked_zeroes_loss: bool = luigi.BoolParameter(default=False)
 
     def _get_loss_function(self):
-        return MaskedZeroesLoss(super()._get_loss_function())
+        if self.masked_zeroes_loss:
+            return MaskedZeroesLoss(super()._get_loss_function())
+        else:
+            return super()._get_loss_function()
 
     def create_module(self) -> nn.Module:
         dim = self.n_items \
