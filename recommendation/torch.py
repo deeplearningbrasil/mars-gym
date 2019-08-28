@@ -302,6 +302,17 @@ class MaskedZeroesLoss(nn.Module):
         return self._wrapped_loss.forward(input, target)
 
 
+class SparseTensorLoss(nn.Module):
+    def __init__(self, loss: nn.Module) -> None:
+        super().__init__()
+        self._wrapped_loss = loss
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor):
+        if target.layout == torch.sparse_coo:
+            target = target.to_dense()
+        return self._wrapped_loss.forward(input, target)
+
+
 def coo_matrix_to_sparse_tensor(coo: coo_matrix) -> torch.Tensor:
     values = coo.data
     indices = np.vstack((coo.row, coo.col))
