@@ -8,6 +8,8 @@ from torchbearer.metrics import default_for_key, running_mean, mean
 @metrics.to_dict
 @metrics.lambda_metric("binary_accuracy", on_epoch=False)
 def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5):
+    if y_true.layout == torch.sparse_coo:
+        y_true = y_true.to_dense()
     y_pred = _convert_pred(y_pred, threshold)
     y_true = y_true.float()
 
@@ -20,6 +22,8 @@ def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float
 @metrics.to_dict
 @metrics.lambda_metric("precision", on_epoch=False)
 def precision(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+    if y_true.layout == torch.sparse_coo:
+        y_true = y_true.to_dense()
     y_pred = _convert_pred(y_pred, threshold)
     y_true = y_true.float()
 
@@ -32,6 +36,8 @@ def precision(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5
 @metrics.to_dict
 @metrics.lambda_metric("recall", on_epoch=False)
 def recall(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+    if y_true.layout == torch.sparse_coo:
+        y_true = y_true.to_dense()
     y_pred = _convert_pred(y_pred, threshold)
     y_true = y_true.float()
 

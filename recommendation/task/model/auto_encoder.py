@@ -12,7 +12,7 @@ from recommendation.torch import MaskedZeroesLoss, SparseTensorLoss
 
 
 class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
-    metrics = luigi.ListParameter(default=["loss"])
+    metrics = luigi.ListParameter(default=["loss", "precision", "recall"])
 
     encoder_layers: List[int] = luigi.ListParameter(default=[256, 128, 128, 64])
     decoder_layers: List[int] = luigi.ListParameter(default=[128, 128, 256])
