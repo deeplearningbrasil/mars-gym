@@ -164,7 +164,7 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
 
     @property
     def stratification_property(self) -> str:
-        return "buys"
+        return "buys" if not self.split_per_user else None
 
     @property
     def num_users(self):
