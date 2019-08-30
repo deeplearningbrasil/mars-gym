@@ -8,7 +8,7 @@ from recommendation.model.auto_encoder import UnconstrainedAutoEncoder, Variatio
 from recommendation.task.meta_config import RecommenderType
 from recommendation.task.model.base import BaseTorchModelTraining, TORCH_ACTIVATION_FUNCTIONS, TORCH_WEIGHT_INIT, \
     TORCH_DROPOUT_MODULES
-from recommendation.torch import MaskedZeroesLoss, SparseTensorLoss
+from recommendation.torch import MaskedZeroesLoss, SparseTensorLoss, MaskedZeroesWithNegativeSamplingLoss
 
 
 class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
@@ -20,14 +20,15 @@ class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
-    masked_zeroes_loss: bool = luigi.BoolParameter(default=False)
+    loss_wrapper: str = luigi.ChoiceParameter(choices=["masked_zeroes", "masked_zeroes_with_negative_sampling", "none"],
+                                              default="masked_zeroes")
     binary: bool = luigi.BoolParameter(default=False)
 
     def _get_loss_function(self):
-        if self.masked_zeroes_loss:
-            return MaskedZeroesLoss(super()._get_loss_function())
-        else:
-            return SparseTensorLoss(super()._get_loss_function())
+        loss_wrapper = dict(masked_zeroes=MaskedZeroesLoss,
+                            masked_zeroes_with_negative_sampling=MaskedZeroesWithNegativeSamplingLoss,
+                            none=SparseTensorLoss)[self.loss_wrapper]
+        return loss_wrapper(super()._get_loss_function())
 
     def create_module(self) -> nn.Module:
         dim = self.n_items \
