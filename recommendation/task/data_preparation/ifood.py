@@ -40,32 +40,43 @@ class FilterDataset(BasePySparkTask):
 
     def main(self, sc: SparkContext, *args):
         #os.makedirs(os.path.join(BASE_DIR, "interactions_training_data_{}".format(self.window_filter)), exist_ok=True)
+        limit_interactions = 4
 
         spark = SparkSession(sc)
 
         df    = spark.read.parquet(self.input()[0].path)
         print(df.printSchema())
 
-        if self.window_filter != 'all':
+        # Explode to Filter
+        df_t = df.select(df.account_id, df.merchant_id, 
+                         explode(df.visit_events).alias('visit_event'),
+                         f.col('purchase_events')[0].alias('purchase_event'))
+        df_t = df_t.withColumn("visit_event",df_t['visit_event'].cast(DateType()))
+        df_t = df_t.withColumn('buys', when(df_t.purchase_event == df_t.visit_event, 1).otherwise(0)).persist( pyspark.StorageLevel.MEMORY_AND_DISK_2 )
 
-            # Explode to Filter
-            df_t = df.select(df.account_id, df.merchant_id, 
-                             explode(df.visit_events).alias('visit_event'),
-                             f.col('purchase_events')[0].alias('purchase_event'))
-            df_t = df_t.withColumn("visit_event",df_t['visit_event'].cast(DateType()))
-            df_t = df_t.withColumn('buys', when(df_t.purchase_event == df_t.visit_event, 1).otherwise(0)).persist( pyspark.StorageLevel.MEMORY_AND_DISK_2 )
+        
+        df_user_limit = df.select(col('account_id').alias('account_id_2'), df.visits)\
+                            .groupby([col('account_id_2')]).agg(
+                                f.sum('visits').alias('count')
+                            ).where("count >= {}".format(limit_interactions)).cache()
 
-            # Filter
-            df_f = df_t.filter(f.col("visit_event") > f.lit(WINDOW_FILTER_DF[self.window_filter])).cache()
+        # Filter Time
+        df_f = df_t.filter(f.col("visit_event") > f.lit(WINDOW_FILTER_DF[self.window_filter])).cache()
 
-            # Implode
-            df = df_f.groupby([df_f.account_id, df_f.merchant_id]).agg(
-                f.count('visit_event').alias('visits'),
-                f.collect_list('visit_event').alias('visit_events'),
-                when(f.sum('buys') >= 1, 1).alias('buys'),
-                when(f.size(f.collect_set('purchase_event')) == 0, f.lit(None)).otherwise(f.collect_set('purchase_event')).alias('purchase_events')
-            ).cache()
+        # Filter user
+        df_f = df_f.join(df_user_limit, df_f.account_id == df_user_limit.account_id_2)
 
+        # Implode
+        df = df_f.groupby([df_f.account_id, df_f.merchant_id]).agg(
+            f.count('visit_event').alias('visits'),
+            f.collect_list('visit_event').alias('visit_events'),
+            f.max('visit_event').alias('visit_last'),
+            when(f.sum('buys') >= 1, 1).alias('buys'),
+            when(f.size(f.collect_set('purchase_event')) == 0, f.lit(None)).otherwise(f.collect_set('purchase_event')).alias('purchase_events')
+        ).cache()
+
+        print(df.printSchema())
+        print(df.show(2))
         df.write.parquet(self.output()[0].path)
 
 class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):

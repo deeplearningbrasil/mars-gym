@@ -18,7 +18,7 @@ class AllModels(luigi.WrapperTask):
 
     def requires(self):
 
-        
+
         for window_filter, _v in WINDOW_FILTER_DF.items():
 
           # Random
