@@ -311,7 +311,8 @@ class MaskedZeroesWithNegativeSamplingLoss(nn.Module):
         if target.layout == torch.sparse_coo:
             target = target.to_dense()
         positive_mask = target.ne(0)
-        negative_mask: torch.Tensor = torch.rand(target.size()) < torch.nonzero(positive_mask).size(0) / (
+        nonzero_num = torch.nonzero(positive_mask).size(0)
+        negative_mask: torch.Tensor = torch.rand_like(target, dtype=torch.float32) < nonzero_num / (
                     target.size(0) * target.size(1))
         mask = positive_mask | negative_mask
 
