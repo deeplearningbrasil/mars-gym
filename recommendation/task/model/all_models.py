@@ -22,10 +22,10 @@ class AllModels(luigi.WrapperTask):
         for window_filter, _v in WINDOW_FILTER_DF.items():
 
           # Random
-          yield EvaluateRandomIfoodModel(window_filter=window_filter, model_task_id one_week)
+          yield EvaluateRandomIfoodModel(window_filter=window_filter, model_task_id=one_week)
 
           # MostPopular
-          yield EvaluateMostPopularIfoodModel(window_filter=window_filter, model_task_id one_week)
+          yield EvaluateMostPopularIfoodModel(window_filter=window_filter, model_task_id=one_week)
 
           # MatrixFactorizationTraining____500_False_c8c16debd0
           # PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationTraining --project ifood_binary_buys_cf_with_random_negative --n-factors 50 --binary --loss-function bce --metrics '["loss", "acc"]' --optimizer adam --learning-rate 1e-3 --batch-size 500 --pin-memory --local-scheduler
