@@ -163,6 +163,8 @@ class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
 
 
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
+    split_per_user: bool = luigi.BoolParameter(default=False)
+
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter), \
                IndexAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter)
@@ -173,7 +175,7 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
 
     @property
     def stratification_property(self) -> str:
-        return "buys"
+        return "buys" if not self.split_per_user else None
 
     @property
     def num_users(self):
@@ -189,13 +191,7 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
             self._num_businesses = len(merchants_df)
         return self._num_businesses
 
-    def read_data_frame(self) -> pd.DataFrame:
-        df = pd.read_csv(self.input()[1].path)
-        df["buys"] = (df["buys"] > 0).astype(float)
-
-        return df
-
-    def transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df[df["buys"] > 0]
         df = df[["account_idx", "merchant_idx", "buys"]]
         df = df.groupby('account_idx')[['merchant_idx', 'buys']].apply(lambda x: x.values.tolist()).reset_index()
@@ -205,6 +201,20 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
         df["n_items"] = self.num_businesses
 
         return df
+
+    def read_data_frame(self) -> pd.DataFrame:
+        df = pd.read_csv(self.input()[1].path)
+        df["buys"] = (df["buys"] > 0).astype(float)
+        if self.split_per_user:
+            df = self._transform_data_frame(df)
+
+        return df
+
+    def transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        if not self.split_per_user:
+            return self._transform_data_frame(df)
+        return df
+
 
 
 class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):

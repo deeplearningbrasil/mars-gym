@@ -156,7 +156,7 @@ class InteractionsMatrixDataset(Dataset):
             data_frame[target_col] = data_frame[target_col].apply(lambda value: ast.literal_eval(value))
 
         i, j, data = zip(
-            *((index, int(t[0]), t[1]) for index, row in zip(data_frame[data_frame.columns[0]], data_frame[target_col])
+            *((index, int(t[0]), t[1]) for index, row in enumerate(data_frame[target_col])
               for t in row))
         self._data = csr_matrix((data, (i, j)), shape=(max(i) + 1, dim))
 

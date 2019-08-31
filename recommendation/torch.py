@@ -302,6 +302,36 @@ class MaskedZeroesLoss(nn.Module):
         return self._wrapped_loss.forward(input, target)
 
 
+class MaskedZeroesWithNegativeSamplingLoss(nn.Module):
+    def __init__(self, loss: nn.Module) -> None:
+        super().__init__()
+        self._wrapped_loss = loss
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor):
+        if target.layout == torch.sparse_coo:
+            target = target.to_dense()
+        positive_mask = target.ne(0)
+        nonzero_num = torch.nonzero(positive_mask).size(0)
+        negative_mask: torch.Tensor = torch.rand_like(target, dtype=torch.float32) < nonzero_num / (
+                    target.size(0) * target.size(1))
+        mask = positive_mask | negative_mask
+
+        input = input.masked_select(mask)
+        target = target.masked_select(mask)
+        return self._wrapped_loss.forward(input, target)
+
+
+class SparseTensorLoss(nn.Module):
+    def __init__(self, loss: nn.Module) -> None:
+        super().__init__()
+        self._wrapped_loss = loss
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor):
+        if target.layout == torch.sparse_coo:
+            target = target.to_dense()
+        return self._wrapped_loss.forward(input, target)
+
+
 def coo_matrix_to_sparse_tensor(coo: coo_matrix) -> torch.Tensor:
     values = coo.data
     indices = np.vstack((coo.row, coo.col))
@@ -320,5 +350,3 @@ class NoAutoCollationDataLoader(DataLoader):
     @property
     def _index_sampler(self):
         return self.batch_sampler
-
-
