@@ -13,6 +13,7 @@ import luigi
 import numpy as np
 import pandas as pd
 import torch
+from scipy.sparse import csr_matrix
 from tqdm import tqdm
 import timeit
 
@@ -26,7 +27,7 @@ from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
 
 def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int],
                              scores_per_tuple: Dict[Tuple[int, int], float]) -> List[int]:
-    scores = list(map(lambda merchant_idx: scores_per_tuple[(account_idx, merchant_idx)], merchant_idx_list))
+    scores = list(map(lambda merchant_idx: scores_per_tuple.get((account_idx, merchant_idx), -1.0), merchant_idx_list))
     sorted_merchant_idx_list = [merchant_idx for _, merchant_idx in
                                 sorted(zip(scores, merchant_idx_list), reverse=True)]
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
@@ -44,6 +45,7 @@ def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, mer
                                 sorted(zip(scores, merchant_idx_list), reverse=True)]
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
+
 class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
 
@@ -51,7 +53,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
     def requires(self):
         return PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter), \
-            ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(window_filter=self.window_filter)
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(window_filter=self.window_filter)
 
     def output(self):
         return luigi.LocalTarget(
@@ -112,45 +114,69 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
 class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel):
 
+    def _eval_buys_per_merchant_column(self, df: pd.DataFrame):
+        if type(df.iloc[0]["buys_per_merchant"]) is str:
+            df["buys_per_merchant"] = df["buys_per_merchant"].apply(lambda value: ast.literal_eval(value))
+        return df
+
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
+        assert self.model_training.project_config.input_columns[0].name == "buys_per_merchant"
+        assert self.model_training.project_config.output_column.name == "buys_per_merchant"
+
         print("Reading tuples files...")
         tuples_df = pd.read_parquet(self.input()[1].path)
 
         print("Grouping by account index...")
-        groups = tuples_df.groupby('account_idx')['merchant_idx'].apply(list)
+        merchant_indices_per_account_idx: pd.Series = tuples_df.groupby('account_idx')['merchant_idx'].apply(list)
+        del tuples_df
 
-        int_matrix = self.model_training.train_dataset
+        print("Reading train, val and test DataFrames...")
+        train_df = self._eval_buys_per_merchant_column(pd.read_csv(self.model_training.input()[0].path))
+        val_df = self._eval_buys_per_merchant_column(pd.read_csv(self.model_training.input()[1].path))
+        test_df = self._eval_buys_per_merchant_column(pd.read_csv(self.model_training.input()[2].path))
+        df: pd.DataFrame = pd.concat((train_df, val_df, test_df))
 
-        assert self.model_training.project_config.input_columns[0].name == "buys_per_merchant"
+        # Needed if split_per_user=False
+        df = df.groupby("account_idx")["buys_per_merchant"] \
+            .apply(lambda lists: [inner for outer in lists for inner in outer]).reset_index()
 
         print("Loading trained model...")
         module = self.model_training.get_trained_module()
 
-        rel_dict: Dict[Tuple[int, int], float] = {}
+        scores_per_tuple: List[Tuple[Tuple[int, int], float]] = []
 
         print("Running the model for every account and merchant tuple...")
-        for indices in tqdm(chunks(list(groups.keys()), self.batch_size),
-                            total=math.ceil(len(groups.keys()) / self.batch_size)):
-            batch_tensors: torch.Tensor = module(
-                torch.tensor(int_matrix[indices][0]).to(self.model_training.torch_device))
-            merchants_lists = list(map(lambda _: groups[_], indices))
-            merchants_tensor_ids = tuple(np.concatenate([ i * np.ones(len(merchants_lists[i]), dtype=np.int32) for i in range(len(merchants_lists))]).ravel())
-            account_ids = tuple(np.concatenate([ indices[i] * np.ones(len(merchants_lists[i]), dtype=np.int32) for i in range(len(merchants_lists))]).ravel())
-            merchants_lists = tuple([y for x in merchants_lists for y in x])
-            batch_np_tensors = batch_tensors.detach().cpu().numpy()
-            batch_scores = batch_np_tensors[[merchants_tensor_ids, merchants_lists]]
+        for indices in tqdm(chunks(range(len(df)), self.batch_size),
+                            total=math.ceil(len(df) / self.batch_size)):
+            rows: pd.DataFrame = df.iloc[indices]
 
-            rel_dict.update( {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
-                in zip(account_ids, merchants_lists, batch_scores)} )
-            
-        return rel_dict
+            i, j, data = zip(
+                *((index, int(t[0]), t[1]) for index, row in enumerate(rows["buys_per_merchant"])
+                  for t in row))
+            batch_tensor = torch.sparse_coo_tensor(
+                indices=torch.tensor([i, j]),
+                values=torch.tensor(data),
+                size=[len(rows), self.model_training.n_items]).to(self.model_training.torch_device)
+
+            batch_output_tensor: torch.Tensor = module(batch_tensor)
+            batch_output: np.ndarray = batch_output_tensor.detach().cpu().numpy()
+
+            for account_idx, row in zip(rows["account_idx"], batch_output):
+                if account_idx in merchant_indices_per_account_idx:
+                    merchant_indices = merchant_indices_per_account_idx[account_idx]
+                    scores_per_tuple.extend([((account_idx, merchant_idx), row[merchant_idx])
+                                             for merchant_idx in merchant_indices])
+
+        print("Creating the dictionary of scores...")
+        return dict(scores_per_tuple)
+
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     def requires(self):
         return GenerateRelevanceListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                   model_task_id=self.model_task_id,window_filter=self.window_filter)
+                                                   model_task_id=self.model_task_id, window_filter=self.window_filter)
 
     def output(self):
         model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
@@ -236,10 +262,13 @@ class GenerateRandomRelevanceLists(luigi.Task):
         print("Saving the output file...")
         orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
+
 class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
-                                                            model_task_id=self.model_task_id, window_filter=self.window_filter)
+                                                      model_task_id=self.model_task_id,
+                                                      window_filter=self.window_filter)
+
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
@@ -254,7 +283,7 @@ class GenerateMostPopularRelevanceLists(luigi.Task):
 
     def requires(self):
         return IndexAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter), \
-                PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter)
+               PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter)
 
     def output(self):
         return luigi.LocalTarget(
