@@ -113,6 +113,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
 
 class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel):
+    batch_size: int = luigi.IntParameter(default=500)
 
     def _eval_buys_per_merchant_column(self, df: pd.DataFrame):
         if type(df.iloc[0]["buys_per_merchant"]) is str:
