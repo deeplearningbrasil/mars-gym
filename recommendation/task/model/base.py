@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
 from torchbearer import Trial
+from torchbearer.callbacks import GradientNormClipping
 from torchbearer.callbacks.checkpointers import ModelCheckpoint
 from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
@@ -199,6 +200,8 @@ class BaseTorchModelTraining(BaseModelTraining):
     lr_scheduler_params: dict = luigi.DictParameter(default={})
     loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="mse")
     loss_function_params: dict = luigi.DictParameter(default={})
+    gradient_norm_clipping: float = luigi.FloatParameter(default=0.0)
+    gradient_norm_clipping_type: float = luigi.IntParameter(default=2)
     early_stopping_patience: int = luigi.IntParameter(default=10)
     early_stopping_min_delta: float = luigi.FloatParameter(default=1e-6)
     generator_workers: int = luigi.IntParameter(default=min(multiprocessing.cpu_count(), 20))
@@ -303,6 +306,8 @@ class BaseTorchModelTraining(BaseModelTraining):
             CSVLogger(get_history_path(self.output().path)), MLFlowLogger(),
             TensorBoard(get_tensorboard_logdir(self.task_id), write_graph=False),
         ]
+        if self.gradient_norm_clipping:
+            callbacks.append(GradientNormClipping(self.gradient_norm_clipping, self.gradient_norm_clipping_type))
         if self.lr_scheduler:
             callbacks.append(TORCH_LR_SCHEDULERS[self.lr_scheduler](**self.lr_scheduler_params))
         return callbacks
