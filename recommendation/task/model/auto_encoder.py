@@ -47,7 +47,7 @@ class VariationalAutoEncoderTraining(BaseTorchModelTraining):
     dropout_prob: float = luigi.FloatParameter(default=None)
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
-    loss_function: str = "vae_loss"
+    loss_function: str = luigi.ChoiceParameter(choices=["vae_loss"], default="vae_loss")
     dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
 
     def create_module(self) -> nn.Module:

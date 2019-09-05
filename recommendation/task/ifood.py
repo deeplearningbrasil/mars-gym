@@ -23,6 +23,7 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks
 from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
+from recommendation.plot import plot_histogram
 
 
 def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int],
@@ -109,10 +110,14 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         #             total=len(orders_df)))
 
         print("Saving the output file...")
+
+        plot_histogram(scores_per_tuple.values()).savefig(os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
         orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
 class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel):
+    variational = luigi.BoolParameter(default=False)
+    
     batch_size: int = luigi.IntParameter(default=500)
 
     def _eval_buys_per_merchant_column(self, df: pd.DataFrame):
@@ -159,7 +164,12 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
                 values=torch.tensor(data),
                 size=[len(rows), self.model_training.n_items]).to(self.model_training.torch_device)
 
-            batch_output_tensor: torch.Tensor = module(batch_tensor)
+           
+            batch_output_tensor = module(batch_tensor)
+
+            if self.variational:
+                batch_output_tensor, _, _ = batch_output_tensor
+
             batch_output: np.ndarray = batch_output_tensor.detach().cpu().numpy()
 
             for account_idx, row in zip(rows["account_idx"], batch_output):
@@ -269,7 +279,13 @@ class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id,
                                                       window_filter=self.window_filter)
-
+                        
+class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
+    def requires(self):
+        return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
+                                                      model_task_id=self.model_task_id,
+                                                      window_filter=self.window_filter,
+                                                      variational=True)
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
