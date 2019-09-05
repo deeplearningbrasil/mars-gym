@@ -56,3 +56,15 @@ def plot_loss_derivatives_per_lr(learning_rates: List[float], loss_derivatives: 
     fig.tight_layout()
 
     return fig
+
+def plot_histogram(values: list):
+    fig = plt.figure(figsize=(15, 10))
+
+    ax = fig.add_subplot(1, 1, 1)
+    ax.hist(values, bins=50)
+    ax.set_xlabel('scores')
+    ax.set_ylabel('frequency')
+
+    fig.tight_layout()
+
+    return fig
