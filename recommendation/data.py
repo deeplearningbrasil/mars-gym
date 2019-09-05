@@ -12,9 +12,7 @@ from recommendation.task.meta_config import ProjectConfig, IOType, RecommenderTy
 from recommendation.torch import coo_matrix_to_sparse_tensor
 
 
-class CorruptionTransformation(object):
-    __metaclass__ = abc.ABCMeta
-
+class CorruptionTransformation(object, metaclass=abc.ABCMeta):
     def __init__(self, seed: int = 42) -> None:
         self._random_state = np.random.RandomState(seed)
 
@@ -26,65 +24,60 @@ class CorruptionTransformation(object):
         pass
 
 
-class SupportBasedCorruptionTransformation(CorruptionTransformation):
+class RemovalCorruptionTransformation(CorruptionTransformation, metaclass=abc.ABCMeta):
+
+    @abc.abstractmethod
+    def select_col_indices_to_remove(self, row_index: int, col_indices: np.ndarray) -> np.ndarray:
+        pass
+
+    def __call__(self, data: csr_matrix) -> csr_matrix:
+        removed_row_indices = []
+        removed_col_indices = []
+        for i in range(data.shape[0]):
+            col_indices = data.indices[data.indptr[i]:data.indptr[i + 1]]
+            col_indices_to_remove = self.select_col_indices_to_remove(i, col_indices)
+            if len(col_indices_to_remove) > 0:
+                removed_row_indices.extend([i for _ in range(len(col_indices_to_remove))])
+                removed_col_indices.extend(col_indices_to_remove)
+
+        if len(removed_row_indices) == 0:
+            return data
+
+        data = data.copy()
+        data[removed_row_indices, removed_col_indices] = 0
+        data.eliminate_zeros()
+
+        return data
+
+
+class SupportBasedCorruptionTransformation(RemovalCorruptionTransformation):
     def setup(self, data: csr_matrix):
         self._supports = np.asarray(data.astype(bool).sum(axis=0)).flatten() / data.shape[0]
 
-    def __call__(self, data: csr_matrix) -> csr_matrix:
-        u = self._random_state.uniform(0, 1, len(data.indices))
-        support: np.ndarray = self._supports[data.indices]
-        # Normalize
+    def select_col_indices_to_remove(self, row_index: int, col_indices: np.ndarray) -> np.ndarray:
+        u = self._random_state.uniform(0, 1, len(col_indices))
+        support: np.ndarray = self._supports[col_indices]
         support = support / support.sum()
-
-        removed_indices = data.indices[u < support]
-
-        if len(removed_indices) == 0 or len(removed_indices) == len(data.indices):
-            return data
-
-        data = data.copy()
-        data[0, removed_indices] = 0
-        data.eliminate_zeros()
-
-        return data
+        return col_indices[u < support]
 
 
-class MaskingNoiseCorruptionTransformation(CorruptionTransformation):
+class MaskingNoiseCorruptionTransformation(RemovalCorruptionTransformation):
     def __init__(self, fraction: float = 0.25, seed: int = 42) -> None:
         super().__init__(seed)
         self.fraction = fraction
 
-    def __call__(self, data: csr_matrix) -> csr_matrix:
-        n = len(data.indices)
-        removed_indices = self._random_state.choice(data.indices, round(self.fraction * n), replace=False)
-
-        if len(removed_indices) == 0:
-            return data
-
-        data = data.copy()
-        data[0, removed_indices] = 0
-        data.eliminate_zeros()
-
-        return data
+    def select_col_indices_to_remove(self, row_index: int, col_indices: np.ndarray) -> np.ndarray:
+        return self._random_state.choice(col_indices, round(self.fraction * len(col_indices)), replace=False)
 
 
-class SaltAndPepperNoiseCorruptionTransformation(CorruptionTransformation):
+class SaltAndPepperNoiseCorruptionTransformation(MaskingNoiseCorruptionTransformation):
     def __init__(self, fraction: float = 0.25, seed: int = 42) -> None:
         super().__init__(seed)
         self.fraction = fraction
 
-    def __call__(self, data: csr_matrix) -> csr_matrix:
-        removed_indices = self._random_state.choice(data.indices, round(self.fraction * len(data.indices)),
-                                                    replace=False)
-        removed_indices = removed_indices[self._random_state.uniform(0, 1, len(removed_indices)) > 0.5]
-
-        if len(removed_indices) == 0:
-            return data
-
-        data = data.copy()
-        data[0, removed_indices] = 0
-        data.eliminate_zeros()
-
-        return data
+    def select_col_indices_to_remove(self, row_index: int, col_indices: np.ndarray) -> np.ndarray:
+        removed_indices = super().select_col_indices_to_remove(row_index, col_indices)
+        return removed_indices[self._random_state.uniform(0, 1, len(removed_indices)) > 0.5]
 
 
 class CriteoDataset(Dataset):
@@ -118,6 +111,7 @@ class CriteoDataset(Dataset):
             return (rows_dense, rows_categories), torch.FloatTensor(rows[self._output_column].values)
         else:
             return (rows_dense, rows_categories)
+
 
 class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
