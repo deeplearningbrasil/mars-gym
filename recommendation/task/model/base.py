@@ -125,21 +125,25 @@ class BaseModelTraining(luigi.Task):
         for key, value in self.param_kwargs.items():
             mlflow.log_param(key, value)
 
+    def get_data_transformation(self):
+        transformation = TORCH_DATA_TRANSFORMATIONS[self.data_transformation](**self.data_transformation_params) \
+            if self.data_transformation != "none" else None
+        return transformation
+
     @property
     def train_dataset(self) -> Dataset:
         if not hasattr(self, "_train_dataset"):
             train_df = pd.read_csv(self.input()[0].path)
-            transformation = TORCH_DATA_TRANSFORMATIONS[self.data_transformation](**self.data_transformation_params) \
-                if self.data_transformation != "none" else None
             self._train_dataset = self.project_config.dataset_class(train_df, self.project_config,
-                                                                    transformation=transformation)
+                                                                    transformation=self.get_data_transformation())
         return self._train_dataset
 
     @property
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
             val_df = pd.read_csv(self.input()[1].path)
-            self._val_dataset = self.project_config.dataset_class(val_df, self.project_config)
+            self._val_dataset = self.project_config.dataset_class(val_df, self.project_config,
+                                                                  transformation=self.get_data_transformation())
         return self._val_dataset
 
     @property
