@@ -94,7 +94,7 @@ class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTas
 
         train_df = spark.read.parquet(self.input()[1].path)
         availability_df = spark.read.parquet(self.input()[0][0].path)
-        restaurant_df = spark.read.parquet(self.input()[0][1].path)
+        restaurant_df = spark.read.parquet(self.input()[0][4].path)
 
         account_df = train_df.select("account_id").distinct()
         merchant_df = train_df.select("merchant_id").distinct()
