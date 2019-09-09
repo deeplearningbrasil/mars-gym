@@ -45,7 +45,7 @@ class SplitSessionDataset(BasePySparkTask):
 
         spark = SparkSession(sc)
 
-        df = spark.read.parquet(self.input()[6])
+        df = spark.read.parquet(self.input()[6].path)
         df = df.filter(df.account_id.isNotNull())
 
         count = df.count()
