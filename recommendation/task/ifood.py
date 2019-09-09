@@ -22,7 +22,6 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfInteractionsDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks
-from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
 from recommendation.plot import plot_histogram
 
 
@@ -53,7 +52,8 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
     # num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter), \
+        test_size = self.model_training.requires().session_test_size
+        return PrepareIfoodIndexedOrdersTestData(test_size=test_size), \
                ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(window_filter=self.window_filter)
 
     def output(self):
@@ -245,8 +245,6 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
 
 class GenerateRandomRelevanceLists(luigi.Task):
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
-
     def requires(self):
         return PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter)
 
@@ -296,7 +294,6 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
 
 class GenerateMostPopularRelevanceLists(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
 
     def requires(self):
         return IndexAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter), \

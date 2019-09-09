@@ -17,9 +17,6 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.under_sampling import RandomUnderSampler
 
-# df train 2019-03-26 at 2019-06-17
-#
-WINDOW_FILTER_DF = dict(one_week='2019-06-10', one_month='2019-05-17', all='2019-03-26')
 
 class BaseDownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -64,7 +61,6 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
     seed: int = luigi.IntParameter(default=42)
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
 
     @property
     @abc.abstractmethod
@@ -117,7 +113,10 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         for field, value in self.isin_filters.items():
             df = df[df[field].isin(value)]
 
-        train_df, test_df = self.train_test_split(df, test_size=self.test_size)
+        if self.test_size:
+            train_df, test_df = self.train_test_split(df, test_size=self.test_size)
+        else:
+            train_df, test_df = df, df[:0]
         if self.dataset_split_method == "holdout":
             train_df, val_df = self.train_test_split(train_df, test_size=self.val_size)
         else:
@@ -188,8 +187,6 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
 
 
 class BasePySparkTask(PySparkTask):
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
-
     def setup(self, conf: SparkConf):
         conf.set("spark.local.dir", os.path.join("output", "spark"))
         conf.set("spark.driver.maxResultSize", self._get_available_memory())

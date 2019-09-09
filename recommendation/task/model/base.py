@@ -8,8 +8,9 @@ from contextlib import redirect_stdout
 from typing import Type, Dict, List
 
 import luigi
-import pandas as pd
+import mlflow
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,7 +30,6 @@ from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from torchbearer.callbacks.torch_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau, StepLR
-import mlflow
 
 from recommendation.data import SupportBasedCorruptionTransformation, \
     MaskingNoiseCorruptionTransformation, SaltAndPepperNoiseCorruptionTransformation
@@ -38,12 +38,11 @@ from recommendation.files import get_params_path, get_weights_path, get_params, 
 from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss, VAELoss
 from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
 from recommendation.summary import summary
-from recommendation.task.config import PROJECTS, IOType
+from recommendation.task.config import PROJECTS
 from recommendation.task.cuda import CudaRepository
 from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, \
     NoAutoCollationDataLoader
 from recommendation.utils import lecun_normal_init, he_init
-from recommendation.task.data_preparation.base import WINDOW_FILTER_DF
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -52,7 +51,8 @@ TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransforma
                                   salt_and_pepper_noise=SaltAndPepperNoiseCorruptionTransformation,
                                   none=None)
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax)
-TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss,
+TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss,
+                            mlm=nn.MultiLabelMarginLoss,
                             focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
                             bpr_triplet=BayesianPersonalizedRankingTripletLoss, vae_loss=VAELoss)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
@@ -87,7 +87,7 @@ class BaseModelTraining(luigi.Task):
     eq_filters: Dict[str, any] = luigi.DictParameter(default={})
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
-    window_filter: str = luigi.ChoiceParameter(choices=WINDOW_FILTER_DF.keys(), default="one_week")
+    window_filter: str = luigi.Parameter(default="one_week")  # deprecated
 
     seed: int = luigi.IntParameter(default=SEED)
 
@@ -239,7 +239,7 @@ class BaseTorchModelTraining(BaseModelTraining):
 
     def fit(self):
         train_loader = self.get_train_generator()
-        val_loader   = self.get_val_generator()
+        val_loader = self.get_val_generator()
         module = self.create_module()
 
         summary_path = os.path.join(self.output().path, "summary.txt")
@@ -337,18 +337,18 @@ class BaseTorchModelTraining(BaseModelTraining):
 
     def get_train_generator(self) -> DataLoader:
         return NoAutoCollationDataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                          num_workers=self.generator_workers,
-                          pin_memory=self.pin_memory if self.device == "cuda" else False)
+                                         num_workers=self.generator_workers,
+                                         pin_memory=self.pin_memory if self.device == "cuda" else False)
 
     def get_val_generator(self) -> DataLoader:
         return NoAutoCollationDataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.generator_workers,
-                          pin_memory=self.pin_memory if self.device == "cuda" else False)
+                                         num_workers=self.generator_workers,
+                                         pin_memory=self.pin_memory if self.device == "cuda" else False)
 
     def get_test_generator(self) -> DataLoader:
         return NoAutoCollationDataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.generator_workers,
-                          pin_memory=True if self.device == "cuda" else False)
+                                         num_workers=self.generator_workers,
+                                         pin_memory=True if self.device == "cuda" else False)
 
 
 def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraining],

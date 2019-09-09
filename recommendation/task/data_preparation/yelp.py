@@ -47,7 +47,7 @@ class ConvertYelpReviewsToCsvAndRemoveText(luigi.Task):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
-            with open(os.path.join(self.input().path, "review.json"), "r") as json_file:
+            with open(os.path.join(self.input().path, "yelp_academic_dataset_review.json"), "r") as json_file:
                 for review_line in json_file:
                     review = json.loads(review_line)
                     del review["text"]
@@ -70,7 +70,7 @@ class ConvertYelpBusinessesToCsv(luigi.Task):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
 
-            with open(os.path.join(self.input().path, "business.json"), "r") as json_file:
+            with open(os.path.join(self.input().path, "yelp_academic_dataset_business.json"), "r") as json_file:
                 for business_line in json_file:
                     review = json.loads(business_line)
                     writer.writerow(review)
@@ -154,6 +154,7 @@ class PrepareYelpRatingsDataFrames(BasePrepareDataFrames):
 
 class PrepareYelpAllUserRatingsDataFrames(BasePrepareDataFrames):
     filter_restaurants: bool = luigi.BoolParameter(default=True)
+    split_per_user: bool = luigi.BoolParameter(default=False)
 
     def requires(self):
         return IndexUsersAndBusinessesOfYelpReviews(filter_restaurants=self.filter_restaurants)
@@ -167,7 +168,10 @@ class PrepareYelpAllUserRatingsDataFrames(BasePrepareDataFrames):
         return None
 
     def read_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
+        df = pd.read_csv(self.input()[0].path)
+        if self.split_per_user:
+            df = self._transform_data_frame(df)
+        return df
 
     @property
     def num_users(self):
@@ -183,7 +187,7 @@ class PrepareYelpAllUserRatingsDataFrames(BasePrepareDataFrames):
             self._num_businesses = len(business_indices_df)
         return self._num_businesses
 
-    def transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df[["user_idx", "business_idx", "stars"]]
         df = df.groupby('user_idx')[['business_idx', 'stars']].apply(lambda x: x.values.tolist()).reset_index()
         df.columns = ["user_idx", "stars_per_business"]
@@ -192,6 +196,18 @@ class PrepareYelpAllUserRatingsDataFrames(BasePrepareDataFrames):
         df["n_items"] = self.num_businesses
 
         return df
+
+    def transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        if not self.split_per_user:
+            return self._transform_data_frame(df)
+        return df
+
+
+class PrepareYelpAllUserBinaryRatingsDataFrames(PrepareYelpAllUserRatingsDataFrames):
+
+    def transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        df["stars"] = df["stars"].apply(lambda stars: 1 if stars > 0 else 0)
+        return super().transform_data_frame(df)
 
 
 class PrepareYelpAllBusinessRatingsDataFrames(BasePrepareDataFrames):
