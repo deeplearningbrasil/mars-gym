@@ -58,7 +58,7 @@ class SplitSessionDataset(BasePySparkTask):
         test_df.write.parquet(self.output()[1].path)
 
 
-class CreateInteractionDataset(luigi.Task):
+class CreateInteractionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
