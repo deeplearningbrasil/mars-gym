@@ -122,7 +122,7 @@ class IndexAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_interactions_data_train_%.2f.csv" % self.test_size))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(os.path.join(DATASET_DIR, self.window_filter), exist_ok=True)
+        os.makedirs(DATASET_DIR, exist_ok=True)
 
         spark = SparkSession(sc)
 
@@ -280,11 +280,9 @@ class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
 
     def output(self):
         return luigi.LocalTarget(
-            os.path.join(DATASET_DIR, self.window_filter, "account_merchant_tuples_from_test_data.parquet"))
+            os.path.join(DATASET_DIR, "account_merchant_tuples_from_test_data.parquet"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(os.path.join(DATASET_DIR, self.window_filter), exist_ok=True)
-
         spark = SparkSession(sc)
 
         df = spark.read.parquet(self.input().path)

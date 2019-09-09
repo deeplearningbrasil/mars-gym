@@ -54,7 +54,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
     def requires(self):
         test_size = self.model_training.requires().session_test_size
         return PrepareIfoodIndexedOrdersTestData(test_size=test_size), \
-               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(window_filter=self.window_filter)
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=test_size)
 
     def output(self):
         return luigi.LocalTarget(
@@ -187,7 +187,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
     def requires(self):
         return GenerateRelevanceListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                   model_task_id=self.model_task_id, window_filter=self.window_filter)
+                                                   model_task_id=self.model_task_id)
 
     def output(self):
         model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
@@ -246,7 +246,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
 class GenerateRandomRelevanceLists(luigi.Task):
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter)
+        test_size = self.model_training.requires().session_test_size
+        return PrepareIfoodIndexedOrdersTestData(test_size=test_size)
 
     def output(self):
         return luigi.LocalTarget(
@@ -275,29 +276,28 @@ class GenerateRandomRelevanceLists(luigi.Task):
 class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
-                                                      model_task_id=self.model_task_id,
-                                                      window_filter=self.window_filter)
+                                                      model_task_id=self.model_task_id)
                         
 class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id,
-                                                      window_filter=self.window_filter,
                                                       variational=True)
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return GenerateRandomRelevanceLists(window_filter=self.window_filter)
+        return GenerateRandomRelevanceLists()
 
 
 class GenerateMostPopularRelevanceLists(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return IndexAccountsAndMerchantsOfInteractionsDataset(window_filter=self.window_filter), \
-               PrepareIfoodIndexedOrdersTestData(window_filter=self.window_filter)
+        test_size = self.model_training.requires().session_test_size
+        return IndexAccountsAndMerchantsOfInteractionsDataset(test_size=test_size), \
+               PrepareIfoodIndexedOrdersTestData(test_size=test_size)
 
     def output(self):
         return luigi.LocalTarget(
@@ -335,4 +335,4 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return GenerateMostPopularRelevanceLists(window_filter=self.window_filter)
+        return GenerateMostPopularRelevanceLists()

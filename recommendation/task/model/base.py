@@ -87,7 +87,6 @@ class BaseModelTraining(luigi.Task):
     eq_filters: Dict[str, any] = luigi.DictParameter(default={})
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
-    window_filter: str = luigi.Parameter(default="one_week")  # deprecated
 
     seed: int = luigi.IntParameter(default=SEED)
 
@@ -104,7 +103,6 @@ class BaseModelTraining(luigi.Task):
                                                             eq_filters=self.eq_filters,
                                                             neq_filters=self.neq_filters,
                                                             isin_filters=self.isin_filters,
-                                                            window_filter=self.window_filter,
                                                             seed=self.seed,
                                                             **self.data_frames_preparation_extra_params)
 
