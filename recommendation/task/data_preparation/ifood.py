@@ -1,13 +1,14 @@
 import math
 import os
+from datetime import datetime
 
 import luigi
 import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
-from pyspark.sql.functions import collect_set, lit, sum
+from pyspark.sql.functions import collect_set, lit, sum, udf
 from pyspark.sql.functions import explode
+from pyspark.sql.types import IntegerType, StringType
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
 
@@ -30,22 +31,69 @@ class CheckDataset(luigi.Task):
             f"As seguintes pastas são esperadas com o dataset: {[output.path for output in self.output()]}")
 
 
-class SplitSessionDataset(BasePySparkTask):
-    test_size: float = luigi.FloatParameter(default=0.2)
+def date_to_day_of_week(date: str) -> int:
+    return int(datetime.strptime(date, '%Y-%m-%d').strftime('%w')) + 1
 
+
+def datetime_to_shift(datetime_: str) -> str:
+    datetime_: datetime = datetime_ if isinstance(datetime_, datetime) else datetime.strptime(datetime_,
+                                                                                              '%Y-%m-%d %H:%M:%S')
+    day_of_week = int(datetime_.strftime('%w'))
+    # 0 - 4:59h - dawn
+    # 5 - 9:59h - breakfast
+    # 10 - 13:59h - lunch
+    # 14 - 16:59h - snack
+    # 17 - 23:59h - dinner
+    if 0 <= datetime_.hour <= 4:
+        shift = "dawn"
+    elif 5 <= datetime_.hour <= 9:
+        shift = "breakfast"
+    elif 10 <= datetime_.hour <= 13:
+        shift = "lunch"
+    elif 14 <= datetime_.hour <= 16:
+        shift = "snack"
+    else:
+        shift = "dinner"
+    return "%s %s" % ("weekday" if day_of_week < 4 else "weekend", shift)
+
+
+class AddShiftAndWeekDayToSessionDataset(BasePySparkTask):
     def requires(self):
         return CheckDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_%.2f" % self.test_size)), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_%.2f" % self.test_size))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session"))
 
     def main(self, sc: SparkContext, *args):
         os.makedirs(DATASET_DIR, exist_ok=True)
 
         spark = SparkSession(sc)
 
+        date_to_day_of_week_udf = udf(date_to_day_of_week, IntegerType())
+        datetime_to_shift_udf = udf(datetime_to_shift, StringType())
+
         df = spark.read.parquet(self.input()[6].path)
+
+        df = df.withColumn("day_of_week", date_to_day_of_week_udf(df.dt_partition))
+        df = df.withColumn("shift", datetime_to_shift_udf(df.click_timestamp))
+
+        df.write.parquet(self.output().path)
+
+
+class SplitSessionDataset(BasePySparkTask):
+    test_size: float = luigi.FloatParameter(default=0.2)
+
+    def requires(self):
+        return AddShiftAndWeekDayToSessionDataset()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_%.2f" % self.test_size)), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_%.2f" % self.test_size))
+
+    def main(self, sc: SparkContext, *args):
+        spark = SparkSession(sc)
+
+        df = spark.read.parquet(self.input().path)
         df = df.filter(df.account_id.isNotNull())
 
         count = df.count()
@@ -250,24 +298,20 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         session_df = spark.read.parquet(self.input()[0][1].path)
         account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
-            .select("merchant_idx", "merchant_id")
+            .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
 
         orders_df = session_df.filter(session_df.buy == 1)
-        orders_df = orders_df \
-            .join(account_df, orders_df.account_id == account_df.account_id, how="inner") \
-            .join(merchant_df, orders_df.merchant_id == merchant_df.merchant_id, how="inner") \
-            .select("session_id", "account_idx", "merchant_idx")
-            # .withColumn("merchant_id_from_list", explode(orders_df.merc_list)) \
-            # .drop("merc_list")
+        orders_df = orders_df.join(merchant_df, [merchant_df.shifts.contains(orders_df.shift),
+                                                 merchant_df.days_of_week.contains(orders_df.day_of_week)]) \
+            .drop(merchant_df.merchant_id) \
+            .select(session_df.columns + ["merchant_idx"])
+        orders_df = orders_df.groupBy(session_df.columns).agg(collect_set("merchant_idx").alias("merchant_idx_list"))\
+            .drop("merchant_idx")
 
-        # merchant_for_list_df = merchant_df.select(col("merchant_id").alias("merchant_id_for_list"),
-        #                                           col("merchant_idx").alias("merchant_idx_for_list"))
-        # orders_df = orders_df.join(merchant_for_list_df,
-        #                            orders_df.merchant_id_from_list == merchant_for_list_df.merchant_id_for_list,
-        #                            how="inner") \
-        #     .groupBy(["order_id", "account_idx", "merchant_idx"]) \
-        #     .agg(collect_set("merchant_idx_for_list").alias("merchant_idx_list")) \
-        #     .select("order_id", "account_idx", "merchant_idx", "merchant_idx_list")
+        orders_df = orders_df \
+            .join(account_df, "account_id", how="inner") \
+            .join(merchant_df, "merchant_id", how="inner") \
+            .select("session_id", "account_idx", "merchant_idx", "merchant_idx_list")
 
         orders_df.write.parquet(self.output().path)
 

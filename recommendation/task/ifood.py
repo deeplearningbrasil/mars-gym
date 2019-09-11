@@ -112,7 +112,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         print("Saving the output file...")
 
         plot_histogram(scores_per_tuple.values()).savefig(os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
-        orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
 class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel):
@@ -245,9 +245,10 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
 
 class GenerateRandomRelevanceLists(luigi.Task):
+    test_size: float = luigi.FloatParameter(default=0.2)
+
     def requires(self):
-        test_size = self.model_training.requires().session_test_size
-        return PrepareIfoodIndexedOrdersTestData(test_size=test_size)
+        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
 
     def output(self):
         return luigi.LocalTarget(
@@ -270,7 +271,7 @@ class GenerateRandomRelevanceLists(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
 class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
@@ -293,11 +294,11 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
 
 class GenerateMostPopularRelevanceLists(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
+    test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
-        test_size = self.model_training.requires().session_test_size
-        return IndexAccountsAndMerchantsOfInteractionsDataset(test_size=test_size), \
-               PrepareIfoodIndexedOrdersTestData(test_size=test_size)
+        return IndexAccountsAndMerchantsOfInteractionsDataset(test_size=self.test_size), \
+               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
 
     def output(self):
         return luigi.LocalTarget(
@@ -328,7 +329,7 @@ class GenerateMostPopularRelevanceLists(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["order_id", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
 class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
