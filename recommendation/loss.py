@@ -124,10 +124,41 @@ class VAELoss(nn.Module):
         super(VAELoss, self).__init__()
         self.anneal = anneal
 
+    def compute_reconstruction_error(self, recon_x, mu, logvar, targets):
+        BCE = -torch.mean(torch.sum(F.log_softmax(recon_x, 1) * targets, -1))
+        return BCE
+
     def forward(self, recon_x, mu, logvar, targets):
         targets = targets.to_dense()
-        BCE = -torch.mean(torch.sum(F.log_softmax(recon_x, 1) * targets, -1))
+        
+        recon_error = self.compute_reconstruction_error(recon_x, mu, logvar, targets)
         KLD = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
 
-        loss = BCE + self.anneal * KLD
+        loss = recon_error + self.anneal * KLD
         return loss
+
+class FocalVAELoss(VAELoss):
+    def __init__(self, anneal: float = 1.0, gamma: float = 2.0, alpha: float = 4.0):
+        super(FocalVAELoss, self).__init__()
+        self.anneal = anneal
+        self.gamma = gamma
+        self.alpha = alpha
+
+    def compute_reconstruction_error(self, recon_x, mu, logvar, targets):
+        BCE_loss = F.binary_cross_entropy_with_logits(recon_x, targets, reduce=False)
+
+        pt = torch.exp(-BCE_loss)
+        F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
+
+        return torch.mean(F_loss)
+        
+        # epsilon = 1.e-9
+
+        # t: torch.Tensor = targets.to(torch.float32)
+        # p: torch.Tensor = recon_x.to(torch.float32) + epsilon
+
+        # pt: torch.Tensor = p * t + (1 - p) * (1 - t)  # pt = p if t > 0 else 1-p
+        # ce: torch.Tensor = -torch.log(pt)
+        # weight: torch.Tensor = (1. - pt) ** self.gamma
+        # loss: torch.Tensor = weight * self.alpha * ce
+        # return loss.mean()

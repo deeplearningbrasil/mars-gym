@@ -65,7 +65,7 @@ class UnconstrainedAutoEncoder(nn.Module):
 
 
 class VariationalAutoEncoder(nn.Module):
-    def __init__(self, input_dim: int, encoder_layers: List[int], decoder_layers: List[int], dropout_prob: float,
+    def __init__(self, input_dim: int, encoder_layers: List[int], decoder_layers: List[int], binary: bool, dropout_prob: float,
                  activation_function: Callable = F.selu, weight_init: Callable = lecun_normal_init,
                  dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
         super().__init__()
@@ -84,6 +84,9 @@ class VariationalAutoEncoder(nn.Module):
                 layer_size
             ) for i, layer_size in enumerate(decoder_layers)])
         self.decoder.append(nn.Linear(decoder_layers[-1], input_dim))
+
+        if binary:
+            self.decoder.append(nn.Sigmoid())
 
         if dropout_prob:
             self.dropout: nn.Module = dropout_module(dropout_prob)
