@@ -145,20 +145,9 @@ class FocalVAELoss(VAELoss):
         self.alpha = alpha
 
     def compute_reconstruction_error(self, recon_x, mu, logvar, targets):
-        BCE_loss = F.binary_cross_entropy_with_logits(recon_x, targets, reduce=False)
+        BCE_loss = -torch.sum(F.log_softmax(recon_x, 1) * targets, -1)
 
         pt = torch.exp(-BCE_loss)
         F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
 
-        return torch.mean(F_loss)
-        
-        # epsilon = 1.e-9
-
-        # t: torch.Tensor = targets.to(torch.float32)
-        # p: torch.Tensor = recon_x.to(torch.float32) + epsilon
-
-        # pt: torch.Tensor = p * t + (1 - p) * (1 - t)  # pt = p if t > 0 else 1-p
-        # ce: torch.Tensor = -torch.log(pt)
-        # weight: torch.Tensor = (1. - pt) ** self.gamma
-        # loss: torch.Tensor = weight * self.alpha * ce
-        # return loss.mean()
+        return F_loss.mean()
