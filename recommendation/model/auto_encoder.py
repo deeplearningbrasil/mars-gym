@@ -24,7 +24,7 @@ class UnconstrainedAutoEncoder(nn.Module):
                 encoder_layers[-1] if i == 0 else decoder_layers[i - 1],
                 layer_size
             ) for i, layer_size in enumerate(decoder_layers)])
-        self.decoder.append(nn.Linear(decoder_layers[-1], input_dim))
+        self.decoder.append(nn.Linear(decoder_layers[-1] if decoder_layers else encoder_layers[-1], input_dim))
 
         if binary:
             self.decoder.append(nn.Sigmoid())
