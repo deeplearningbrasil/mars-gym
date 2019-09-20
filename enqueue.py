@@ -8,7 +8,7 @@ import numpy as np
 ## PYTHONPATH="." ./cuda_luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --workers 4
 # - Para uma única GPU:
 ## PYTHONPATH="." luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --local-scheduler
-from recommendation.task.ifood import EvaluateIfoodCDAEModel
+from recommendation.task.ifood import EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel
 from recommendation.task.model.auto_encoder import UnconstrainedAutoEncoderTraining, AttentiveVariationalAutoEncoderTraining
 
 
@@ -48,6 +48,20 @@ class EnqueueCDAE(luigi.WrapperTask):
                 data_transformation="support_based",
             )
             yield training_model
+
+
+class EnqueueEvaluateAttentiveCVAE(luigi.WrapperTask):
+    task_ids: List[str] = luigi.ListParameter(default=["AttentiveVariationalAutoEncoderTraining_selu__600_____146880a1ec","AttentiveVariationalAutoEncoderTraining_selu__600_____263553b2d1","AttentiveVariationalAutoEncoderTraining_selu__600_____491c066f34","AttentiveVariationalAutoEncoderTraining_selu__600_____59a3ab9647","AttentiveVariationalAutoEncoderTraining_selu__600_____6dd771b4a4","AttentiveVariationalAutoEncoderTraining_selu__600_____6fc4a5b213","AttentiveVariationalAutoEncoderTraining_selu__600_____85cf24edcd","AttentiveVariationalAutoEncoderTraining_selu__600_____99145a796b","AttentiveVariationalAutoEncoderTraining_selu__600_____a155d057ca","AttentiveVariationalAutoEncoderTraining_selu__600_____ab3701179d","AttentiveVariationalAutoEncoderTraining_selu__600_____cc1c8bd0ac","AttentiveVariationalAutoEncoderTraining_selu__600_____de95289241","AttentiveVariationalAutoEncoderTraining_selu__600_____e6824495a8","AttentiveVariationalAutoEncoderTraining_sigmoid__600_____0723ddfc30","AttentiveVariationalAutoEncoderTraining_sigmoid__600_____4fb23a7073","AttentiveVariationalAutoEncoderTraining_sigmoid__600_____582c1e31b3","AttentiveVariationalAutoEncoderTraining_sigmoid__600_____6e9398c04f","AttentiveVariationalAutoEncoderTraining_sigmoid__600_____918a86d4b3","AttentiveVariationalAutoEncoderTraining_sigmoid__600_____a9a8b72a48","AttentiveVariationalAutoEncoderTraining_sigmoid__600_____ed7ab4292e","AttentiveVariationalAutoEncoderTraining_tanh__600_____02dd8e3621","AttentiveVariationalAutoEncoderTraining_tanh__600_____2d77eb65fb","AttentiveVariationalAutoEncoderTraining_tanh__600_____3db754ed95","AttentiveVariationalAutoEncoderTraining_tanh__600_____3f98e7a344","AttentiveVariationalAutoEncoderTraining_tanh__600_____4524cd8410","AttentiveVariationalAutoEncoderTraining_tanh__600_____501b2fe657","AttentiveVariationalAutoEncoderTraining_tanh__600_____97d7c1a88d","AttentiveVariationalAutoEncoderTraining_tanh__600_____c706a492ba","AttentiveVariationalAutoEncoderTraining_tanh__600_____cf70ff3b3d","AttentiveVariationalAutoEncoderTraining_tanh__600_____d7900806f8","AttentiveVariationalAutoEncoderTraining_tanh__600_____eb0bc93eb9"])
+
+    def requires(self):
+        for task_id in self.task_ids:
+            print(task_id)
+            yield EvaluateIfoodAttCVAEModel(
+                model_module="recommendation.task.model.auto_encoder",
+                model_cls="AttentiveVariationalAutoEncoderTraining",
+                model_task_id=task_id,
+            )
+
 
 class EnqueueAttentiveCVAE(luigi.WrapperTask):
     seed: int = luigi.IntParameter(default=42)
