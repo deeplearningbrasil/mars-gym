@@ -51,6 +51,10 @@ class RemovalCorruptionTransformation(CorruptionTransformation, metaclass=abc.AB
 
 
 class SupportBasedCorruptionTransformation(RemovalCorruptionTransformation):
+    def __init__(self, intensity: float = 1.0, seed: int = 42) -> None:
+        super().__init__(seed)
+        self._intensity = intensity
+
     def setup(self, data: csr_matrix):
         self._supports = np.asarray(data.astype(bool).sum(axis=0)).flatten() / data.shape[0]
 
@@ -58,7 +62,7 @@ class SupportBasedCorruptionTransformation(RemovalCorruptionTransformation):
         u = self._random_state.uniform(0, 1, len(col_indices))
         support: np.ndarray = self._supports[col_indices]
         support = support / support.sum()
-        return col_indices[u < support]
+        return col_indices[u / self._intensity < support]
 
 
 class MaskingNoiseCorruptionTransformation(RemovalCorruptionTransformation):
