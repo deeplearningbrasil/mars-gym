@@ -145,10 +145,11 @@ class AttentiveVariationalAutoEncoder(nn.Module):
                  dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
         super().__init__()
 
+        assert encoder_layers[-1] == attention_layers[-1]
 
         self.encoder_output = encoder_layers[-1]
         self.attention_output = attention_layers[-1]
-        self.decoder_input = (self.encoder_output // 2) + (self.attention_output // 2)
+        self.decoder_input = (self.encoder_output // 2)
         
 
         self.encoder = nn.ModuleList(
@@ -205,8 +206,9 @@ class AttentiveVariationalAutoEncoder(nn.Module):
         for layer in self.attention[:-1]:
             att = self.activation_function(layer(att))
         
-        att_output = self.attention[-1](att)
+        att = self.attention[-1](att)
 
+        att_output = 100.0 * F.softmax(att, 1)
 
         att_mu = att_output[:, :(self.attention_output // 2)]
 
@@ -217,7 +219,7 @@ class AttentiveVariationalAutoEncoder(nn.Module):
         return mu, logvar, att_mu, att_logvar
 
     def decode(self, a: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
-        x = torch.cat((a, z), dim=-1)
+        x = a * z
         for layer in self.decoder[:-1]:
             x = self.activation_function(layer(x))
         x = self.decoder[-1](x)
