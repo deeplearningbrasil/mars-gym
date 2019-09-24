@@ -117,6 +117,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
 class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel):
     variational = luigi.BoolParameter(default=False)
+    attentive = luigi.BoolParameter(default=False)
     
     batch_size: int = luigi.IntParameter(default=500)
 
@@ -167,7 +168,9 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
            
             batch_output_tensor = module(batch_tensor)
 
-            if self.variational:
+            if self.attentive:
+                batch_output_tensor, _, _, _, _ = batch_output_tensor
+            elif self.variational:
                 batch_output_tensor, _, _ = batch_output_tensor
 
             batch_output: np.ndarray = batch_output_tensor.detach().cpu().numpy()
@@ -284,6 +287,12 @@ class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id,
                                                       variational=True)
+
+class EvaluateIfoodAttCVAEModel(EvaluateIfoodModel):
+    def requires(self):
+        return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
+                                                      model_task_id=self.model_task_id,
+                                                      attentive=True)
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")

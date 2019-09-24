@@ -124,10 +124,53 @@ class VAELoss(nn.Module):
         super(VAELoss, self).__init__()
         self.anneal = anneal
 
+    def compute_reconstruction_error(self, recon_x, mu, logvar, targets):
+        BCE = -torch.mean(torch.sum(F.log_softmax(recon_x, 1) * targets, -1))
+        return BCE
+
     def forward(self, recon_x, mu, logvar, targets):
         targets = targets.to_dense()
-        BCE = -torch.mean(torch.sum(F.log_softmax(recon_x, 1) * targets, -1))
+        
+        recon_error = self.compute_reconstruction_error(recon_x, mu, logvar, targets)
         KLD = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
 
-        loss = BCE + self.anneal * KLD
+        loss = recon_error + self.anneal * KLD
         return loss
+
+class AttentiveVAELoss(nn.Module):
+    def __init__(self, anneal=1.0, anneal_att=1.0):
+        super(AttentiveVAELoss, self).__init__()
+        self.anneal = anneal
+        self.anneal_att = anneal_att
+
+    def compute_reconstruction_error(self, recon_x, mu, logvar, targets):
+        BCE = -torch.mean(torch.sum(F.log_softmax(recon_x, 1) * targets, -1))
+        return BCE
+
+    def forward(self, recon_x, mu, logvar, att_mu, att_logvar, targets):
+        targets = targets.to_dense()
+        
+        recon_error = self.compute_reconstruction_error(recon_x, mu, logvar, targets)
+        KLD = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
+        KLD_att = -0.5 * torch.mean(torch.sum(1 + att_logvar - att_mu.pow(2) - att_logvar.exp(), dim=1))
+
+        print(recon_error)
+        print(KLD)
+        print(KLD_att)
+        loss = recon_error + self.anneal * KLD + self.anneal_att * KLD_att
+        return loss
+
+class FocalVAELoss(VAELoss):
+    def __init__(self, anneal: float = 1.0, gamma: float = 2.0, alpha: float = 4.0):
+        super(FocalVAELoss, self).__init__()
+        self.anneal = anneal
+        self.gamma = gamma
+        self.alpha = alpha
+
+    def compute_reconstruction_error(self, recon_x, mu, logvar, targets):
+        BCE_loss = -torch.sum(F.log_softmax(recon_x, 1) * targets, -1)
+
+        pt = torch.exp(-BCE_loss)
+        F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
+
+        return F_loss.mean()
