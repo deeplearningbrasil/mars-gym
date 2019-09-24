@@ -290,8 +290,12 @@ class BaseTorchModelTraining(BaseModelTraining):
         mlflow.log_artifact(loss_derivatives_per_lr_path)
 
     def create_trial(self, module: nn.Module) -> Trial:
-        return Trial(module, self._get_optimizer(module), self._get_loss_function(), callbacks=self._get_callbacks(),
-                     metrics=self.metrics).to(self.torch_device)
+        loss_function = self._get_loss_function()
+        trial = Trial(module, self._get_optimizer(module), loss_function, callbacks=self._get_callbacks(),
+                   metrics=self.metrics).to(self.torch_device)
+        if hasattr(loss_function, "torchbearer_state"):
+            loss_function.torchbearer_state = trial.state
+        return trial
 
     def _get_loss_function(self):
         return TORCH_LOSS_FUNCTIONS[self.loss_function](**self.loss_function_params)
