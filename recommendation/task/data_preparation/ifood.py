@@ -1,12 +1,13 @@
 import math
 import os
 from datetime import datetime
+from typing import List
 
 import luigi
 import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import collect_set, lit, sum, udf
+from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws
 from pyspark.sql.functions import explode
 from pyspark.sql.types import IntegerType, StringType
 
@@ -125,11 +126,46 @@ class CreateInteractionDataset(BasePySparkTask):
         train_df.write.parquet(self.output().path)
 
 
+class PrepareRestaurantContentDataset(BasePySparkTask):
+    def requires(self):
+        return CheckDataset()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurants_with_contents.csv"))
+
+    def main(self, sc: SparkContext, *args):
+        spark = SparkSession(sc)
+
+        restaurant_df = spark.read.parquet(self.input()[4].path)
+        availability_df = spark.read.parquet(self.input()[0].path)
+        menu_df = spark.read.parquet(self.input()[3].path)
+        item_df = spark.read.parquet(self.input()[2].path)
+
+        availability_df = availability_df.groupBy("merchant_id") \
+            .agg(collect_set("day_of_week").alias("days_of_week"), collect_set("shift").alias("shifts"))
+
+        menu_df = menu_df.groupBy("merchant_id").agg(collect_set("category_name").alias("category_names"))
+        menu_df = menu_df.withColumn("category_names", concat_ws("|", "category_names"))
+
+        item_df = item_df.withColumn("item_text", concat_ws("\n", item_df.item_name, item_df.item_description))
+        item_df = item_df.groupBy("merchant_id").agg(collect_list("item_text").alias("item_texts"))
+        item_df = item_df.withColumn("item_texts", concat_ws("\n\n", "item_texts"))
+
+        menu_df = menu_df.join(item_df, on="merchant_id", how="full_outer")
+        menu_df = menu_df.withColumn("menu_full_text", concat_ws("\n\n", "item_texts"))
+
+        restaurant_df = restaurant_df.join(availability_df, on="merchant_id", how="left")
+        restaurant_df = restaurant_df.join(menu_df.select("merchant_id", "category_names", "menu_full_text"),
+                                           on="merchant_id", how="left")
+
+        restaurant_df.toPandas().to_csv(self.output().path, index=False)
+
+
 class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
-        return CheckDataset(), CreateInteractionDataset(test_size=self.test_size)
+        return PrepareRestaurantContentDataset(), CreateInteractionDataset(test_size=self.test_size)
 
     def output(self):
         return luigi.LocalTarget(
@@ -141,19 +177,12 @@ class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTas
         spark = SparkSession(sc)
 
         train_df = spark.read.parquet(self.input()[1].path)
-        availability_df = spark.read.parquet(self.input()[0][0].path)
-        restaurant_df = spark.read.parquet(self.input()[0][4].path)
+        restaurant_df = spark.read.parquet(self.input()[0].path)
 
         account_df = train_df.select("account_id").distinct()
         merchant_df = train_df.select("merchant_id").distinct()
 
-        availability_df = availability_df.groupBy("merchant_id") \
-            .agg(collect_set("day_of_week").alias("days_of_week"), collect_set("shift").alias("shifts"))
-
-        merchant_df = merchant_df.join(restaurant_df, merchant_df.merchant_id == restaurant_df.merchant_id) \
-            .join(availability_df, merchant_df.merchant_id == availability_df.merchant_id) \
-            .select(merchant_df.merchant_id, "trading_name", "dish_description", "price_range", "avg_score", "latitude",
-                    "longitude", "days_of_week", "shifts")
+        merchant_df = merchant_df.join(restaurant_df, "merchant_id")
 
         account_df.toPandas().to_csv(self.output()[0].path, index_label="account_idx")
         merchant_df.toPandas().to_csv(self.output()[1].path, index_label="merchant_idx")
@@ -338,3 +367,10 @@ class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
                                     .select("account_idx", "merchant_idx")).dropDuplicates()
 
         tuples_df.write.parquet(self.output().path)
+
+
+
+
+
+
+
