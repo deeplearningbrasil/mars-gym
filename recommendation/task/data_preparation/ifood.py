@@ -177,7 +177,7 @@ class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTas
         spark = SparkSession(sc)
 
         train_df = spark.read.parquet(self.input()[1].path)
-        restaurant_df = spark.read.parquet(self.input()[0].path)
+        restaurant_df = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
 
         account_df = train_df.select("account_id").distinct()
         merchant_df = train_df.select("merchant_id").distinct()
@@ -367,10 +367,3 @@ class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
                                     .select("account_idx", "merchant_idx")).dropDuplicates()
 
         tuples_df.write.parquet(self.output().path)
-
-
-
-
-
-
-
