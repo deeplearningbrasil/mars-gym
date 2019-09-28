@@ -290,6 +290,7 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
 
     def read_data_frame(self) -> pd.DataFrame:
         df = pd.read_parquet(self.input()[1].path)
+        df["buy"] = df["buy"].astype(float)
         df["n_users"] = self.num_users
         df["n_items"] = self.num_businesses
 

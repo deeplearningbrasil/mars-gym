@@ -8,7 +8,7 @@ import luigi
 from recommendation.model.matrix_factorization import MatrixFactorization, BiasedMatrixFactorization, \
     DeepMatrixFactorization, MatrixFactorizationWithShift
 from recommendation.task.model.base import BaseTorchModelTraining, TORCH_WEIGHT_INIT, TORCH_DROPOUT_MODULES, \
-    TORCH_ACTIVATION_FUNCTIONS
+    TORCH_ACTIVATION_FUNCTIONS, TORCH_LOSS_FUNCTIONS
 from recommendation.task.model.embedding import UserAndItemEmbeddingTraining
 
 
@@ -28,6 +28,8 @@ class MatrixFactorizationTraining(UserAndItemEmbeddingTraining):
 
 
 class MatrixFactorizationWithShiftTraining(UserAndItemEmbeddingTraining):
+    loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce")
+
     user_shift_combination: str = luigi.ChoiceParameter(choices=["sum", "multiply"], default="sum")
 
     def create_module(self) -> nn.Module:
