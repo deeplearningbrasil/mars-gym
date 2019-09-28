@@ -343,7 +343,7 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size), \
-               IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size)
+               CreateInteractionDataset(test_size=self.session_test_size)
 
     @property
     def dataset_dir(self) -> str:
