@@ -379,7 +379,7 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
         return df
 
     def read_data_frame(self) -> pd.DataFrame:
-        df = pd.read_csv(self.input()[1].path)
+        df = pd.read_parquet(self.input()[1].path)
         df["buys"] = (df["buys"] > 0).astype(float)
         if self.split_per_user:
             df = self._transform_data_frame(df)
