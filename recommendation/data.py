@@ -130,12 +130,12 @@ class InteractionsDataset(Dataset):
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]:
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
         if isinstance(indices, int):
             indices = [indices]
         rows: pd.Series = self._data_frame.iloc[indices]
-        return (rows[self._input_columns[0]].values,
-                rows[self._input_columns[1]].values), rows[self._output_column].values
+        return tuple(rows[input_column].values for input_column in self._input_columns),\
+               rows[self._output_column].values
 
 
 class InteractionsMatrixDataset(Dataset):

@@ -1,7 +1,6 @@
 import math
 import os
 from datetime import datetime
-from typing import List
 
 import luigi
 import pandas as pd
@@ -33,7 +32,7 @@ class CheckDataset(luigi.Task):
 
 
 def date_to_day_of_week(date: str) -> int:
-    return int(datetime.strptime(date, '%Y-%m-%d').strftime('%w')) + 1
+    return int(datetime.strptime(date, '%Y-%m-%d').strftime('%w'))
 
 
 def datetime_to_shift(datetime_: str) -> str:
@@ -58,9 +57,50 @@ def datetime_to_shift(datetime_: str) -> str:
     return "%s %s" % ("weekday" if day_of_week < 4 else "weekend", shift)
 
 
-class AddShiftAndWeekDayToSessionDataset(BasePySparkTask):
+class CreateShiftIndices(BasePySparkTask):
     def requires(self):
         return CheckDataset()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "shifts.csv"))
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
+        spark = SparkSession(sc)
+
+        availability_df = spark.read.parquet(self.input()[0].path)
+
+        shift_df = availability_df.select("shift").distinct().toPandas()
+
+        shift_df.to_csv(self.output().path, index_label="shift_idx")
+
+
+class AddShiftIdxAndFixWeekDayForAvailabilityDataset(BasePySparkTask):
+    def requires(self):
+        return CheckDataset(), CreateShiftIndices()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "availability"))
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
+        spark = SparkSession(sc)
+
+        df = spark.read.parquet(self.input()[0][0].path)
+
+        df = df.withColumn("day_of_week", df["day_of_week"] - 1)
+
+        shift_df = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
+        df = df.join(shift_df, "shift")
+
+        df.write.parquet(self.output().path)
+
+
+class AddShiftAndWeekDayToSessionDataset(BasePySparkTask):
+    def requires(self):
+        return CheckDataset(), CreateShiftIndices()
 
     def output(self):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "session"))
@@ -73,12 +113,51 @@ class AddShiftAndWeekDayToSessionDataset(BasePySparkTask):
         date_to_day_of_week_udf = udf(date_to_day_of_week, IntegerType())
         datetime_to_shift_udf = udf(datetime_to_shift, StringType())
 
-        df = spark.read.parquet(self.input()[6].path)
+        df = spark.read.parquet(self.input()[0][6].path)
 
         df = df.withColumn("day_of_week", date_to_day_of_week_udf(df.dt_partition))
         df = df.withColumn("shift", datetime_to_shift_udf(df.click_timestamp))
 
+        shift_df = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
+        df = df.join(shift_df, "shift")
+
         df.write.parquet(self.output().path)
+
+
+class PrepareRestaurantContentDataset(BasePySparkTask):
+    def requires(self):
+        return CheckDataset(), AddShiftIdxAndFixWeekDayForAvailabilityDataset()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurants_with_contents.csv"))
+
+    def main(self, sc: SparkContext, *args):
+        spark = SparkSession(sc)
+
+        restaurant_df = spark.read.parquet(self.input()[0][4].path)
+        availability_df = spark.read.parquet(self.input()[1].path)
+        menu_df = spark.read.parquet(self.input()[0][3].path)
+        item_df = spark.read.parquet(self.input()[0][2].path)
+
+        availability_df = availability_df.groupBy("merchant_id") \
+            .agg(collect_set("day_of_week").alias("days_of_week"), collect_set("shift").alias("shifts"),
+                 collect_set("shift_idx").alias("shift_idx_list"))
+
+        menu_df = menu_df.groupBy("merchant_id").agg(collect_set("category_name").alias("category_names"))
+        menu_df = menu_df.withColumn("category_names", concat_ws("|", "category_names"))
+
+        item_df = item_df.withColumn("item_text", concat_ws("\n", item_df.item_name, item_df.item_description))
+        item_df = item_df.groupBy("merchant_id").agg(collect_list("item_text").alias("item_texts"))
+        item_df = item_df.withColumn("item_texts", concat_ws("\n\n", "item_texts"))
+
+        menu_df = menu_df.join(item_df, on="merchant_id", how="full_outer")
+        menu_df = menu_df.withColumn("menu_full_text", concat_ws("\n\n", "item_texts"))
+
+        restaurant_df = restaurant_df.join(availability_df, on="merchant_id", how="left")
+        restaurant_df = restaurant_df.join(menu_df.select("merchant_id", "category_names", "menu_full_text"),
+                                           on="merchant_id", how="left")
+
+        restaurant_df.toPandas().to_csv(self.output().path, index=False)
 
 
 class SplitSessionDataset(BasePySparkTask):
@@ -107,76 +186,22 @@ class SplitSessionDataset(BasePySparkTask):
         test_df.write.parquet(self.output()[1].path)
 
 
-class CreateInteractionDataset(BasePySparkTask):
+class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
-        return SplitSessionDataset(test_size=self.test_size)
-
-    def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "interactions_data_train_%.2f" % self.test_size))
-
-    def main(self, sc: SparkContext, *args):
-        spark = SparkSession(sc)
-
-        train_df = spark.read.parquet(self.input()[0].path)
-        train_df = train_df.withColumn("visit", lit(1)).groupBy("account_id", "merchant_id").agg(
-            sum("visit").alias("visits"),
-            sum("buy").alias("buys"))
-        train_df.write.parquet(self.output().path)
-
-
-class PrepareRestaurantContentDataset(BasePySparkTask):
-    def requires(self):
-        return CheckDataset()
-
-    def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurants_with_contents.csv"))
-
-    def main(self, sc: SparkContext, *args):
-        spark = SparkSession(sc)
-
-        restaurant_df = spark.read.parquet(self.input()[4].path)
-        availability_df = spark.read.parquet(self.input()[0].path)
-        menu_df = spark.read.parquet(self.input()[3].path)
-        item_df = spark.read.parquet(self.input()[2].path)
-
-        availability_df = availability_df.groupBy("merchant_id") \
-            .agg(collect_set("day_of_week").alias("days_of_week"), collect_set("shift").alias("shifts"))
-
-        menu_df = menu_df.groupBy("merchant_id").agg(collect_set("category_name").alias("category_names"))
-        menu_df = menu_df.withColumn("category_names", concat_ws("|", "category_names"))
-
-        item_df = item_df.withColumn("item_text", concat_ws("\n", item_df.item_name, item_df.item_description))
-        item_df = item_df.groupBy("merchant_id").agg(collect_list("item_text").alias("item_texts"))
-        item_df = item_df.withColumn("item_texts", concat_ws("\n\n", "item_texts"))
-
-        menu_df = menu_df.join(item_df, on="merchant_id", how="full_outer")
-        menu_df = menu_df.withColumn("menu_full_text", concat_ws("\n\n", "item_texts"))
-
-        restaurant_df = restaurant_df.join(availability_df, on="merchant_id", how="left")
-        restaurant_df = restaurant_df.join(menu_df.select("merchant_id", "category_names", "menu_full_text"),
-                                           on="merchant_id", how="left")
-
-        restaurant_df.toPandas().to_csv(self.output().path, index=False)
-
-
-class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
-    test_size: float = luigi.FloatParameter(default=0.2)
-
-    def requires(self):
-        return PrepareRestaurantContentDataset(), CreateInteractionDataset(test_size=self.test_size)
+        return PrepareRestaurantContentDataset(), SplitSessionDataset(test_size=self.test_size)
 
     def output(self):
         return luigi.LocalTarget(
-            os.path.join(DATASET_DIR, "accounts_for_interactions_data_train_%.2f.csv" % self.test_size)), \
+            os.path.join(DATASET_DIR, "accounts_for_session_train_%.2f.csv" % self.test_size)), \
                luigi.LocalTarget(
-                   os.path.join(DATASET_DIR, "merchants_for_interactions_data_train_%.2f.csv" % self.test_size))
+                   os.path.join(DATASET_DIR, "merchants_for_session_train_%.2f.csv" % self.test_size))
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
 
-        train_df = spark.read.parquet(self.input()[1].path)
+        train_df = spark.read.parquet(self.input()[1][0].path)
         restaurant_df = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
 
         account_df = train_df.select("account_id").distinct()
@@ -188,32 +213,87 @@ class GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(BasePySparkTas
         merchant_df.toPandas().to_csv(self.output()[1].path, index_label="merchant_idx")
 
 
-class IndexAccountsAndMerchantsOfInteractionsDataset(BasePySparkTask):
+class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
-        return CreateInteractionDataset(test_size=self.test_size), \
-               GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(test_size=self.test_size)
+        return SplitSessionDataset(test_size=self.test_size), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_interactions_data_train_%.2f.csv" % self.test_size))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_session_train_%.2f" % self.test_size))
 
     def main(self, sc: SparkContext, *args):
         os.makedirs(DATASET_DIR, exist_ok=True)
 
         spark = SparkSession(sc)
 
-        train_df = spark.read.parquet(self.input()[0].path)
+        train_df = spark.read.parquet(self.input()[0][0].path)
         account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
             .select("merchant_idx", "merchant_id")
 
-        train_df = train_df.join(account_df, train_df.account_id == account_df.account_id)
-        train_df = train_df.join(merchant_df, train_df.merchant_id == merchant_df.merchant_id)
+        train_df = train_df.join(account_df, "account_id")
+        train_df = train_df.join(merchant_df, "merchant_id")
 
-        train_df = train_df.select("account_idx", "merchant_idx", "visits", "buys")
+        train_df.write.parquet(self.output().path)
 
-        train_df.toPandas().to_csv(self.output().path, index=False)
+
+class CreateInteractionDataset(BasePySparkTask):
+    test_size: float = luigi.FloatParameter(default=0.2)
+
+    def requires(self):
+        return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "interactions_train_%.2f" % self.test_size))
+
+    def main(self, sc: SparkContext, *args):
+        spark = SparkSession(sc)
+
+        train_df = spark.read.parquet(self.input().path)
+        train_df = train_df.withColumn("visit", lit(1)) \
+            .groupBy("account_id", "account_idx", "merchant_id", "merchant_idx").agg(sum("visit").alias("visits"),
+                                                                                     sum("buy").alias("buys"))
+        train_df.write.parquet(self.output().path)
+
+
+class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
+    session_test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.0)
+
+    def requires(self):
+        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size), \
+               IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size)
+
+    @property
+    def dataset_dir(self) -> str:
+        return DATASET_DIR
+
+    @property
+    def stratification_property(self) -> str:
+        return "buy"
+
+    @property
+    def num_users(self):
+        if not hasattr(self, "_num_users"):
+            accounts_df = pd.read_csv(self.input()[0][0].path)
+            self._num_users = len(accounts_df)
+        return self._num_users
+
+    @property
+    def num_businesses(self):
+        if not hasattr(self, "_num_businesses"):
+            merchants_df = pd.read_csv(self.input()[0][1].path)
+            self._num_businesses = len(merchants_df)
+        return self._num_businesses
+
+    def read_data_frame(self) -> pd.DataFrame:
+        df = pd.read_parquet(self.input()[1].path)
+        df["n_users"] = self.num_users
+        df["n_items"] = self.num_businesses
+
+        return df
 
 
 class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
@@ -221,8 +301,8 @@ class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
     test_size: float = luigi.FloatParameter(default=0.0)
 
     def requires(self):
-        return GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(test_size=self.session_test_size), \
-               IndexAccountsAndMerchantsOfInteractionsDataset(test_size=self.session_test_size)
+        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size), \
+               CreateInteractionDataset(test_size=self.session_test_size)
 
     @property
     def dataset_dir(self) -> str:
@@ -247,7 +327,7 @@ class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
         return self._num_businesses
 
     def read_data_frame(self) -> pd.DataFrame:
-        df = pd.read_csv(self.input()[1].path)
+        df = pd.read_parquet(self.input()[1].path)
         df["buys"] = (df["buys"] > 0).astype(float)
         df["n_users"] = self.num_users
         df["n_items"] = self.num_businesses
@@ -261,8 +341,8 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
     split_per_user: bool = luigi.BoolParameter(default=False)
 
     def requires(self):
-        return GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(test_size=self.session_test_size), \
-               IndexAccountsAndMerchantsOfInteractionsDataset(test_size=self.session_test_size)
+        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size), \
+               IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size)
 
     @property
     def dataset_dir(self) -> str:
@@ -316,7 +396,7 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
 
     def requires(self):
         return SplitSessionDataset(test_size=self.test_size), \
-               GenerateIndicesForAccountsAndMerchantsOfInteractionsDataset(test_size=self.test_size)
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
 
     def output(self):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_orders_test_data_%.2f.parquet" % self.test_size))
@@ -334,7 +414,7 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                                                  merchant_df.days_of_week.contains(orders_df.day_of_week)]) \
             .drop(merchant_df.merchant_id) \
             .select(session_df.columns + ["merchant_idx"])
-        orders_df = orders_df.groupBy(session_df.columns).agg(collect_set("merchant_idx").alias("merchant_idx_list"))\
+        orders_df = orders_df.groupBy(session_df.columns).agg(collect_set("merchant_idx").alias("merchant_idx_list")) \
             .drop("merchant_idx")
 
         orders_df = orders_df \

@@ -89,3 +89,28 @@ class DeepMatrixFactorization(UserAndItemEmbedding):
         if self.binary:
             return torch.sigmoid(x)
         return x
+
+
+class MatrixFactorizationWithShift(UserAndItemEmbedding):
+
+    def __init__(self, n_users: int, n_items: int, n_factors: int, weight_init: Callable = lecun_normal_init,
+                 user_shift_combination: str = "sum"):
+        super().__init__(n_users, n_items, n_factors, weight_init)
+        self.shift_embeddings = nn.Embedding(10, n_factors)
+        weight_init(self.shift_embeddings.weight)
+
+        self._user_shift_combination = user_shift_combination
+
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, shift_idx_list: torch.Tensor) -> torch.Tensor:
+        user_embeddings = self.user_embeddings(user_ids)
+        shift_embeddings = self.shift_embeddings(shift_idx_list)
+
+        if self._user_shift_combination == "sum":
+            user_shift_embeddings = user_embeddings + shift_embeddings
+        elif self._user_shift_combination == "multiply":
+            user_shift_embeddings = user_embeddings * shift_embeddings
+        else:
+            raise ValueError("Unknown user_shift_combination")
+
+        output = (user_shift_embeddings * self.item_embeddings(item_ids)).sum(1)
+        return torch.sigmoid(output)

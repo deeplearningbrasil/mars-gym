@@ -3,7 +3,6 @@ from typing import Dict
 from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, CriteoDataset, \
     BinaryInteractionsWithOnlineRandomNegativeGenerationDataset, UserTripletWithOnlineRandomNegativeGenerationDataset
 from recommendation.task.data_preparation import yelp, ifood, criteo
-from recommendation.task.data_preparation.ifood import PrepareIfoodAccountMatrixWithBinaryBuysDataFrames
 from recommendation.task.meta_config import *
 
 PROJECTS: Dict[str, ProjectConfig] = {
@@ -46,6 +45,15 @@ PROJECTS: Dict[str, ProjectConfig] = {
         input_columns=[Column("stars_per_user", IOType.ARRAY)],
         output_column=Column("stars_per_user", IOType.ARRAY),
         recommender_type=RecommenderType.ITEM_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_buy_session_with_shift_cf": ProjectConfig(
+        base_dir=ifood.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodSessionsDataFrames,
+        dataset_class=InteractionsDataset,
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX),
+                       Column("shift_idx", IOType.INDEX)],
+        output_column=Column("buy", IOType.NUMBER),
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_binary_buys_cf": ProjectConfig(
         base_dir=ifood.BASE_DIR,

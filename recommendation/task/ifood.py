@@ -19,7 +19,8 @@ import timeit
 
 from recommendation.rank_metrics import precision_at_k, average_precision, ndcg_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
-    ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfInteractionsDataset
+    ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfSessionTrainDataset, \
+    CreateInteractionDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks
 from recommendation.plot import plot_histogram
@@ -306,7 +307,7 @@ class GenerateMostPopularRelevanceLists(luigi.Task):
     test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
-        return IndexAccountsAndMerchantsOfInteractionsDataset(test_size=self.test_size), \
+        return CreateInteractionDataset(test_size=self.test_size), \
                PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
 
     def output(self):
