@@ -1,6 +1,6 @@
 from typing import Dict
 
-from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, CriteoDataset, \
+from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, InteractionsAndContentDataset, CriteoDataset, \
     BinaryInteractionsWithOnlineRandomNegativeGenerationDataset, UserTripletWithOnlineRandomNegativeGenerationDataset
 from recommendation.task.data_preparation import yelp, ifood, criteo
 from recommendation.task.meta_config import *
@@ -86,5 +86,13 @@ PROJECTS: Dict[str, ProjectConfig] = {
         input_columns=[Column("buys_per_merchant", IOType.ARRAY)],
         output_column=Column("buys_per_merchant", IOType.ARRAY),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_item_autoencoder": ProjectConfig(
+        base_dir=yelp.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodAccountMatrixWithBinaryBuysAndMerchantIdxDataFrames,
+        dataset_class=InteractionsAndContentDataset,
+        input_columns=[Column("buys_per_merchant", IOType.ARRAY), Column("merchant_idx", IOType.ARRAY)],
+        output_column=Column("buys_per_merchant", IOType.ARRAY),
+        recommender_type=RecommenderType.ITEM_BASED_COLLABORATIVE_FILTERING,
     ),
 }

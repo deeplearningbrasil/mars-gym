@@ -391,6 +391,18 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
             return self._transform_data_frame(df)
         return df
 
+class PrepareIfoodAccountMatrixWithBinaryBuysAndMerchantIdxDataFrames(BasePrepareDataFrames):
+
+    def _transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df[df["buys"] > 0]
+        df = df[["account_idx", "merchant_idx", "buys"]]
+        df = df.groupby('account_idx')[['merchant_idx', 'buys']].apply(lambda x: x.values.tolist()).reset_index()
+        df.columns = ["account_idx", "buys_per_merchant", "merchant_idx"]
+
+        df["n_users"] = self.num_users
+        df["n_items"] = self.num_businesses
+
+        return df
 
 class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.2)
