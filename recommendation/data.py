@@ -183,7 +183,7 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
         super().__init__(data_frame, project_config, transformation)
         self._non_zero_indices = set(
-            data_frame[[self._input_columns[0], self._input_columns[0]]].itertuples(index=False, name=None))
+            data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
 
         self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
         self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
@@ -198,7 +198,7 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
             if (user_index, item_index) not in self._non_zero_indices:
                 return user_index, item_index
 
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray]:
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
         if isinstance(indices, int):
             indices = [indices]
 
@@ -207,7 +207,7 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         positive_indices = [index for index in indices if index < n]
         num_of_negatives = len(indices) - len(positive_indices)
 
-        positive_batch: Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray] = super().__getitem__(positive_indices)
+        positive_batch: Tuple[Tuple[np.ndarray, ...], np.ndarray] = super().__getitem__(positive_indices)
         if num_of_negatives > 0:
             negative_batch: Tuple[Tuple[List[int], List[int]], np.ndarray] = (tuple(zip(*[
                 self._generate_negative_indices()
