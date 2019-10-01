@@ -180,7 +180,6 @@ class InteractionsAndContentDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
                  transformation: Union[CorruptionTransformation, Callable] = None) -> None:
         assert len(project_config.input_columns) >= 1
-        assert all(input_column.type == IOType.INDEX for input_column in project_config.input_columns)
 
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
         self._output_column = project_config.output_column.name
@@ -199,25 +198,24 @@ class InteractionsAndContentDataset(Dataset):
             *((index, int(t[0]), t[1]) for index, row in enumerate(data_frame[target_col])
               for t in row))
         self._interaction_matrix = csr_matrix((data, (i, j)), shape=(max(i) + 1, dim))
-
         self._content = data_frame[[c for c in self._input_columns if c != self._output_column]]
 
         if isinstance(transformation, CorruptionTransformation):
-            transformation.setup(self._data)
+            transformation.setup(self._interaction_matrix)
         self._transformation = transformation
 
     def __len__(self) -> int:
-        return self._data.shape[0]
+        return self._interaction_matrix.shape[0]
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
         if isinstance(indices, int):
             indices = [indices]
         rows: csr_matrix = self._interaction_matrix[indices]
-        content_rows = self._content[indices]
+        content_rows = self._content.iloc[indices]
 
         if self._transformation:
             input_rows = self._transformation(rows) 
-            return tuple(coo_matrix_to_sparse_tensor(input_rows.tocoo()), content_rows.values), \
+            return tuple([coo_matrix_to_sparse_tensor(input_rows.tocoo()), content_rows.values]), \
             coo_matrix_to_sparse_tensor(rows.tocoo())
 
         return tuple(coo_matrix_to_sparse_tensor(rows.tocoo()), content_rows.values), \

@@ -139,11 +139,14 @@ class VariationalAutoEncoder(nn.Module):
         else:
             return mu
 
-class HybridVAE(VariationalAutoEncoder):
+class HybridVAE(nn.Module):
     def __init__(self, input_dim: int, encoder_layers: List[int], decoder_layers: List[int], embedding_factors: int, binary: bool, dropout_prob: float,
                  activation_function: Callable = F.selu, weight_init: Callable = lecun_normal_init,
                  dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
 
+        super().__init__()
+
+        self.encoder_output = encoder_layers[-1] // 2
         self.decoder_input = (encoder_layers[-1] // 2) + embedding_factors
 
         self.encoder = nn.ModuleList(
@@ -172,14 +175,43 @@ class HybridVAE(VariationalAutoEncoder):
 
         self.apply(self.init_weights)
 
+    def init_weights(self, module: nn.Module):
+        if type(module) == nn.Linear:
+            self.weight_init(module.weight)
+            module.bias.data.fill_(0.1)
+
     def decode(self, x: torch.Tensor, id: torch.Tensor) -> torch.Tensor:
         emb = self.embedding(id)
-        x = torch.cat((x, emb), dim=1)
+        x = torch.cat((x, emb.squeeze(1)), dim=1)
         for layer in self.decoder[:-1]:
             x = self.activation_function(layer(x))
         x = self.decoder[-1](x)
 
         return x
+
+    def reparameterize(self, mu, logvar):
+        if self.training:
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            return eps.mul(std).add_(mu)
+        else:
+            return mu
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.normalize(x)
+
+        if hasattr(self, "dropout"):
+            x = self.dropout(x)
+
+
+        for layer in self.encoder[:-1]:
+            x = self.activation_function(layer(x))
+
+        encoder_output = self.encoder[-1](x)
+
+        mu = encoder_output[:, :self.encoder_output]
+        logvar = encoder_output[:, self.encoder_output:]
+        return mu, logvar
     
     def forward(self, x: torch.Tensor, id: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if x.layout == torch.sparse_coo:

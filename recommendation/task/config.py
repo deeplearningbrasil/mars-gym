@@ -89,9 +89,9 @@ PROJECTS: Dict[str, ProjectConfig] = {
     ),
     "ifood_item_autoencoder": ProjectConfig(
         base_dir=yelp.BASE_DIR,
-        prepare_data_frames_task=ifood.PrepareIfoodAccountMatrixWithBinaryBuysAndMerchantIdxDataFrames,
+        prepare_data_frames_task=ifood.PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames,
         dataset_class=InteractionsAndContentDataset,
-        input_columns=[Column("buys_per_merchant", IOType.ARRAY), Column("merchant_idx", IOType.ARRAY)],
+        input_columns=[Column("buys_per_merchant", IOType.ARRAY), Column("merchant_idx", IOType.INDEX)],
         output_column=Column("buys_per_merchant", IOType.ARRAY),
         recommender_type=RecommenderType.ITEM_BASED_COLLABORATIVE_FILTERING,
     ),
