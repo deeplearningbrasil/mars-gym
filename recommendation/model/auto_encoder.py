@@ -139,6 +139,55 @@ class VariationalAutoEncoder(nn.Module):
         else:
             return mu
 
+class HybridVAE(VariationalAutoEncoder):
+    def __init__(self, input_dim: int, encoder_layers: List[int], decoder_layers: List[int], embedding_factors: int, binary: bool, dropout_prob: float,
+                 activation_function: Callable = F.selu, weight_init: Callable = lecun_normal_init,
+                 dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
+
+        self.decoder_input = (encoder_layers[-1] // 2) + embedding_factors
+
+        self.encoder = nn.ModuleList(
+            [nn.Linear(
+                input_dim if i == 0 else encoder_layers[i - 1],
+                layer_size
+            ) for i, layer_size in enumerate(encoder_layers)])
+
+        self.decoder = nn.ModuleList(
+            [nn.Linear(
+                self.decoder_input if i == 0 else decoder_layers[i - 1],
+                layer_size
+            ) for i, layer_size in enumerate(decoder_layers)])
+        self.decoder.append(nn.Linear(decoder_layers[-1], input_dim))
+
+        self.embedding = nn.Embedding(input_dim, embedding_factors)
+
+        if binary:
+            self.decoder.append(nn.Sigmoid())
+
+        if dropout_prob:
+            self.dropout: nn.Module = dropout_module(dropout_prob)
+        
+        self.activation_function = activation_function
+        self.weight_init = weight_init
+
+        self.apply(self.init_weights)
+
+    def decode(self, x: torch.Tensor, id: torch.Tensor) -> torch.Tensor:
+        emb = self.embedding(id)
+        x = torch.cat((x, emb), dim=1)
+        for layer in self.decoder[:-1]:
+            x = self.activation_function(layer(x))
+        x = self.decoder[-1](x)
+
+        return x
+    
+    def forward(self, x: torch.Tensor, id: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if x.layout == torch.sparse_coo:
+            x = x.to_dense()
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        return self.decode(z, id), mu, logvar
+
 class AttentiveVariationalAutoEncoder(nn.Module):
     def __init__(self, input_dim: int, encoder_layers: List[int], attention_layers: List[int], decoder_layers: List[int], binary: bool, dropout_prob: float,
                  activation_function: Callable = F.selu, weight_init: Callable = lecun_normal_init,
