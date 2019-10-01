@@ -421,7 +421,8 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         orders_df = orders_df \
             .join(account_df, "account_id", how="inner") \
             .join(merchant_df, "merchant_id", how="inner") \
-            .select("session_id", "account_idx", "merchant_idx", "merchant_idx_list")
+            .select("session_id", "account_idx", "merchant_idx", "merchant_idx_list", "shift", "shift_idx",
+                    "day_of_week")
 
         orders_df.write.parquet(self.output().path)
 
@@ -441,10 +442,7 @@ class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
 
         df = spark.read.parquet(self.input().path)
 
-        tuples_df = df.select("account_idx", "merchant_idx")
-
-        tuples_df = tuples_df.union(df.select("account_idx", "merchant_idx_list")
-                                    .withColumn("merchant_idx", explode(df.merchant_idx_list))
-                                    .select("account_idx", "merchant_idx")).dropDuplicates()
+        tuples_df = df.union(df.withColumn("merchant_idx", explode(df.merchant_idx_list))).drop("merchant_idx_list")\
+            .dropDuplicates()
 
         tuples_df.write.parquet(self.output().path)

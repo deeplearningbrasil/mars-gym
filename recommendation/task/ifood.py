@@ -76,9 +76,10 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         for indices in tqdm(chunks(range(len(tuples_df)), self.batch_size),
                             total=math.ceil(len(tuples_df) / self.batch_size)):
             rows: pd.DataFrame = tuples_df.iloc[indices]
-            batch_scores: torch.Tensor = module(
-                torch.tensor(rows["account_idx"].values, dtype=torch.int64).to(self.model_training.torch_device),
-                torch.tensor(rows["merchant_idx"].values, dtype=torch.int64).to(self.model_training.torch_device))
+            inputs = [torch.tensor(rows[input_column.name].values, dtype=torch.int64)
+                          .to(self.model_training.torch_device)
+                      for input_column in self.model_training.project_config.input_columns]
+            batch_scores: torch.Tensor = module(*inputs)
             scores.extend(batch_scores.detach().cpu().numpy())
 
         print("Creating the dictionary of scores...")
