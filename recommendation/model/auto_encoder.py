@@ -140,7 +140,7 @@ class VariationalAutoEncoder(nn.Module):
             return mu
 
 class HybridVAE(nn.Module):
-    def __init__(self, input_dim: int, encoder_layers: List[int], decoder_layers: List[int], embedding_factors: int, binary: bool, dropout_prob: float,
+    def __init__(self, input_dim: int, encoder_layers: List[int], decoder_layers: List[int], embedding_size, embedding_factors: int, binary: bool, dropout_prob: float,
                  activation_function: Callable = F.selu, weight_init: Callable = lecun_normal_init,
                  dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
 
@@ -162,7 +162,7 @@ class HybridVAE(nn.Module):
             ) for i, layer_size in enumerate(decoder_layers)])
         self.decoder.append(nn.Linear(decoder_layers[-1], input_dim))
 
-        self.embedding = nn.Embedding(input_dim, embedding_factors)
+        self.embedding = nn.Embedding(embedding_size, embedding_factors)
 
         if binary:
             self.decoder.append(nn.Sigmoid())

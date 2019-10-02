@@ -91,8 +91,8 @@ PROJECTS: Dict[str, ProjectConfig] = {
         base_dir=yelp.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames,
         dataset_class=InteractionsAndContentDataset,
-        input_columns=[Column("buys_per_merchant", IOType.ARRAY), Column("merchant_idx", IOType.INDEX)],
+        input_columns=[Column("buys_per_merchant", IOType.ARRAY), Column("account_idx", IOType.INDEX)],
         output_column=Column("buys_per_merchant", IOType.ARRAY),
-        recommender_type=RecommenderType.ITEM_BASED_COLLABORATIVE_FILTERING,
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
 }

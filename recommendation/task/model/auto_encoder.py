@@ -92,10 +92,13 @@ class HybridVAETraining(BaseTorchModelTraining):
     n_factors: float = luigi.IntParameter(default=128)
     
     def create_module(self) -> nn.Module:
-        dim = self.n_items \
-            if self.project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
-            else self.n_users
-        return HybridVAE(dim, self.encoder_layers, self.decoder_layers, self.n_factors, binary=self.binary, dropout_prob=self.dropout_prob,
+        if self.project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING:
+            dim = self.n_items
+            embedding_size = self.n_users
+        else:
+            dim = self.n_users
+            embedding_size = self.n_items
+        return HybridVAE(dim, self.encoder_layers, self.decoder_layers, embedding_size, self.n_factors, binary=self.binary, dropout_prob=self.dropout_prob,
                                       activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
                                       weight_init=TORCH_WEIGHT_INIT[self.weight_init],
                                       dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module])

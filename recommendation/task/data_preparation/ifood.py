@@ -396,8 +396,8 @@ class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodA
     def _transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df[df["buys"] > 0]
         df = df[["account_idx", "merchant_idx", "buys"]]
-        df = df.groupby('merchant_idx')[['account_idx', 'buys']].apply(lambda x: x.values.tolist()).reset_index()
-        df.columns = ["merchant_idx", "buys_per_merchant"]
+        df = df.groupby('account_idx')[['merchant_idx', 'buys']].apply(lambda x: x.values.tolist()).reset_index()
+        df.columns = ["account_idx", "buys_per_merchant"]
 
         df["n_users"] = self.num_users
         df["n_items"] = self.num_businesses
