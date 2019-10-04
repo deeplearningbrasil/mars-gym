@@ -74,7 +74,7 @@ class BaseModelTraining(luigi.Task):
 
     data_transformation: str = luigi.ChoiceParameter(choices=TORCH_DATA_TRANSFORMATIONS.keys(), default="none")
     data_transformation_params: dict = luigi.DictParameter(default={})
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.0)
     dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "k_fold"], default="holdout")
     val_size: float = luigi.FloatParameter(default=0.2)
     n_splits: int = luigi.IntParameter(default=5)
