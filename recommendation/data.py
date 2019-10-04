@@ -176,6 +176,51 @@ class InteractionsMatrixDataset(Dataset):
         return (coo_matrix_to_sparse_tensor(rows.tocoo()),) * 2
 
 
+class InteractionsAndContentDataset(Dataset):
+    def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
+                 transformation: Union[CorruptionTransformation, Callable] = None) -> None:
+        assert len(project_config.input_columns) >= 1
+
+        self._input_columns = [input_column.name for input_column in project_config.input_columns]
+        self._output_column = project_config.output_column.name
+        
+        self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
+        self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
+  
+        dim = self._n_items if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
+            else self._n_users
+
+        target_col = project_config.output_column.name
+        if type(data_frame.iloc[0][target_col]) is str:
+            data_frame[target_col] = data_frame[target_col].apply(lambda value: ast.literal_eval(value))
+
+        i, j, data = zip(
+            *((index, int(t[0]), t[1]) for index, row in enumerate(data_frame[target_col])
+              for t in row))
+        self._interaction_matrix = csr_matrix((data, (i, j)), shape=(max(i) + 1, dim))
+        self._content = data_frame[[c for c in self._input_columns if c != self._output_column]]
+
+        if isinstance(transformation, CorruptionTransformation):
+            transformation.setup(self._interaction_matrix)
+        self._transformation = transformation
+
+    def __len__(self) -> int:
+        return self._interaction_matrix.shape[0]
+
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
+        if isinstance(indices, int):
+            indices = [indices]
+        rows: csr_matrix = self._interaction_matrix[indices]
+        content_rows = self._content.iloc[indices]
+
+        if self._transformation:
+            input_rows = self._transformation(rows) 
+            return tuple([coo_matrix_to_sparse_tensor(input_rows.tocoo()), content_rows.values]), \
+            coo_matrix_to_sparse_tensor(rows.tocoo())
+
+        return tuple(coo_matrix_to_sparse_tensor(rows.tocoo()), content_rows.values), \
+            coo_matrix_to_sparse_tensor(rows.tocoo())
+
 class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,

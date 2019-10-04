@@ -120,6 +120,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel):
     variational = luigi.BoolParameter(default=False)
     attentive = luigi.BoolParameter(default=False)
+    context = luigi.BoolParameter(default=False)
     
     batch_size: int = luigi.IntParameter(default=500)
 
@@ -160,15 +161,20 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
             rows: pd.DataFrame = df.iloc[indices]
 
             i, j, data = zip(
-                *((index, int(t[0]), t[1]) for index, row in enumerate(rows["buys_per_merchant"])
-                  for t in row))
+            *((index, int(t[0]), t[1]) for index, row in enumerate(rows["buys_per_merchant"])
+                for t in row))
             batch_tensor = torch.sparse_coo_tensor(
                 indices=torch.tensor([i, j]),
                 values=torch.tensor(data),
                 size=[len(rows), self.model_training.n_items]).to(self.model_training.torch_device)
 
-           
-            batch_output_tensor = module(batch_tensor)
+            batch_output_tensor = None
+            if self.context:
+                batch_context = torch.tensor(rows['account_idx'].values).to(self.model_training.torch_device)
+                batch_output_tensor = module(batch_tensor, batch_context)
+            else:
+                batch_output_tensor = module(batch_tensor)
+
 
             if self.attentive:
                 batch_output_tensor, _, _, _, _ = batch_output_tensor
@@ -185,7 +191,6 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
 
         print("Creating the dictionary of scores...")
         return dict(scores_per_tuple)
-
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
@@ -295,6 +300,12 @@ class EvaluateIfoodAttCVAEModel(EvaluateIfoodModel):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id,
                                                       attentive=True)
+
+class EvaluateIfoodHybridCVAEModel(EvaluateIfoodModel):
+    def requires(self):
+        return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
+                                                      model_task_id=self.model_task_id, context=True,
+                                                      variational=True)
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
