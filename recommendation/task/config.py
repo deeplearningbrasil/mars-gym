@@ -1,8 +1,8 @@
 from typing import Dict
 
-from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, InteractionsAndContentDataset, \
-    CriteoDataset, \
-    BinaryInteractionsWithOnlineRandomNegativeGenerationDataset, UserTripletWithOnlineRandomNegativeGenerationDataset
+from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, InteractionsAndContentDataset, CriteoDataset, \
+    BinaryInteractionsWithOnlineRandomNegativeGenerationDataset, UserTripletContentWithOnlineRandomNegativeGenerationDataset, \
+    UserTripletWithOnlineRandomNegativeGenerationDataset
 from recommendation.task.data_preparation import yelp, ifood, criteo
 from recommendation.task.meta_config import *
 
@@ -86,6 +86,14 @@ PROJECTS: Dict[str, ProjectConfig] = {
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=UserTripletWithOnlineRandomNegativeGenerationDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        output_column=Column("buys", IOType.NUMBER),
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_binary_buys_content_triplet_with_random_negative": ProjectConfig(
+        base_dir=ifood.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
+        dataset_class=UserTripletContentWithOnlineRandomNegativeGenerationDataset,
+        input_columns=[Column("account_idx", IOType.INDEX), Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY), Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
         output_column=Column("buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),

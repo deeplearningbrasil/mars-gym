@@ -283,3 +283,40 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
         negative_item_indices = np.array(
             [self._generate_negative_item_index(user_index) for user_index in user_indices], dtype=np.int64)
         return (user_indices, positive_item_indices, negative_item_indices), []
+
+class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
+
+    def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
+                 transformation: Union[Callable] = None) -> None:
+        data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
+        super().__init__(data_frame, project_config, transformation)
+        self._non_zero_indices = set(
+            data_frame[[x for x in self._input_columns]].itertuples(index=False, name=None))
+
+        self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
+        self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
+
+    def __len__(self) -> int:
+        return self._data_frame.shape[0]
+
+    def _generate_negative_item_index(self, user_index: int) -> int:
+        while True:
+            item_index = np.random.randint(0, self._n_items)
+            if (user_index, item_index) not in self._non_zero_indices:
+                return item_index
+
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...], Tuple[np.ndarray, ...]],
+                                                                    list]:
+        if isinstance(indices, int):
+            indices = [indices]
+
+        rows: pd.Series = self._data_frame.iloc[indices]
+        user_indices = rows[self._input_columns[0]].values
+        positive_item_indices = rows[self._input_columns[1]].values
+        negative_item_indices = np.array(
+            [self._generate_negative_item_index(user_index) for user_index in user_indices], dtype=np.int64)
+        
+        positive_items, _ = super().__getitem__(positive_item_indices)
+        negative_items, _ = super().__getitem__(negative_item_indices)
+        
+        return (user_indices, positive_items, negative_items), []

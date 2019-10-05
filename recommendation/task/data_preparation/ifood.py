@@ -1,6 +1,9 @@
 import math
 import os
 from datetime import datetime
+import pandas as pd
+import numpy as np
+from ast import literal_eval
 
 import luigi
 import pandas as pd
@@ -9,6 +12,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws
 from pyspark.sql.functions import explode
 from pyspark.sql.types import IntegerType, StringType
+
+from torchnlp.encoders import LabelEncoder
+from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncoder, TextEncoder
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
 
@@ -158,6 +164,50 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
                                            on="merchant_id", how="left")
 
         restaurant_df.toPandas().to_csv(self.output().path, index=False)
+
+class ProcessRestaurantContentDataset(BasePySparkTask):
+    def requires(self):
+        return PrepareRestaurantContentDataset()
+    
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurants_with_processed_contents.csv")), \
+            luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurant_text_vocabulary.csv"))
+
+    def main(self, sc: SparkContext, *args):
+        spark = SparkSession(sc)
+
+        context = pd.read_csv(self.input().path)
+
+        for column in ['days_of_week', 'shifts']:
+            context[column] = context[column].fillna('[]').apply(literal_eval)
+            elements = np.unique(context[column].sum())
+            for el in elements:
+                context[el] = context[column].apply(lambda x: ((el in x) * 1.0))
+
+        context['avg_score'] = context['avg_score'].fillna(-1)
+        context['category_names'] = context['category_names'].fillna('##').str.replace('|', ' ')
+
+        encoder = LabelEncoder(context['dish_description'].values)
+        context['dish_description'] = encoder.batch_encode(context['dish_description'])
+
+        vocab = context['trading_name'].values.tolist() + context['description'].values.tolist() + \
+            context['category_names'].values.tolist() + context['menu_full_text'].values.tolist()
+        context = context.fillna('##').replace(r'^\s*$', '##', regex=True)
+        tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda s: str(s).split())
+
+        for text_column in ['trading_name', 'description', 'category_names']:
+            print(tokenizer.batch_encode(context[text_column])[0].cpu().detach().numpy()[0])
+            context[text_column] = tokenizer.batch_encode(context[text_column])[0].cpu().detach().numpy().tolist()
+
+        context['restaurant_complete_info'] = context[['dish_description', 'price_range', 'avg_score', \
+                                                      'latitude', 'longitude', 0, 1, 2, 3, 4, 5, 6, \
+                                                      'weekday breakfast', 'weekday dawn', 'weekday dinner', \
+                                                      'weekday lunch', 'weekday snack', 'weekend breakfast', \
+                                                      'weekend dawn', 'weekend dinner', 'weekend lunch', \
+                                                      'weekend snack']].values.tolist()
+        
+        context.to_csv(self.output()[0].path, index=False)
+        pd.DataFrame(tokenizer.vocab, columns='vocabulary').to_csv(self.output()[1].path)
 
 
 class SplitSessionDataset(BasePySparkTask):
