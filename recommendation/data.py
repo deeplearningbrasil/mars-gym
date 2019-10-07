@@ -295,6 +295,8 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
         self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
+        self._vocab_size: int = data_frame.iloc[0]["vocab_size"]
+        self._non_text_input_dim: int = data_frame.iloc[0]["restaurant_info_size"]
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]

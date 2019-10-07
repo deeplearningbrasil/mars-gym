@@ -166,6 +166,11 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
         restaurant_df.toPandas().to_csv(self.output().path, index=False)
 
 class ProcessRestaurantContentDataset(BasePySparkTask):
+    menu_text_length: int = luigi.IntParameter(default=5000)
+    description_text_length: int = luigi.IntParameter(default=200)
+    category_text_length: int = luigi.IntParameter(default=250)
+
+
     def requires(self):
         return PrepareRestaurantContentDataset()
     
@@ -177,6 +182,10 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         spark = SparkSession(sc)
 
         context = pd.read_csv(self.input().path)
+
+        context['menu_full_text'] = context['menu_full_text'].str[:self.menu_text_length]
+        context['description'] = context['description'].str[:self.description_text_length]
+        context['category_text_length'] = context['category_text_length'].str[:self.category_text_length]
 
         for column in ['days_of_week', 'shifts']:
             context[column] = context[column].fillna('[]').apply(literal_eval)
@@ -199,12 +208,17 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
             print(tokenizer.batch_encode(context[text_column])[0].cpu().detach().numpy()[0])
             context[text_column] = tokenizer.batch_encode(context[text_column])[0].cpu().detach().numpy().tolist()
 
-        context['restaurant_complete_info'] = context[['dish_description', 'price_range', 'avg_score', \
+        restaurant_features = ['dish_description', 'price_range', 'avg_score', \
                                                       'latitude', 'longitude', 0, 1, 2, 3, 4, 5, 6, \
                                                       'weekday breakfast', 'weekday dawn', 'weekday dinner', \
                                                       'weekday lunch', 'weekday snack', 'weekend breakfast', \
                                                       'weekend dawn', 'weekend dinner', 'weekend lunch', \
-                                                      'weekend snack']].values.tolist()
+                                                      'weekend snack']
+        
+        context['restaurant_complete_info'] = context[restaurant_features].values.tolist()
+
+        context['vocab_size'] = len(tokenizer.vocab)
+        context['non_textual_input_dim'] = len(restaurant_features)
         
         context.to_csv(self.output()[0].path, index=False)
         pd.DataFrame(tokenizer.vocab, columns='vocabulary').to_csv(self.output()[1].path)

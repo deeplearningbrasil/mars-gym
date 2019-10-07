@@ -165,6 +165,18 @@ class BaseModelTraining(luigi.Task):
             self._n_items = int(train_df.iloc[0][self.project_config.n_items_column])
         return self._n_items
 
+    @property
+    def vocab_size(self):
+        if not hasattr(self, "_vocab_size"):
+            train_df =  pd.read_csv(self.input()[0].path, nrows=1)
+            self._vocab_size = int(train_df.iloc[0]["vocab_size"])
+    
+    @property
+    def non_textual_input_dim(self):
+        if not hasattr(self, "_non_textual_input_dim"):
+           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
+           self._non_textual_input_dim = int(train_df.iloc[0]["non_textual_input_dim"]) 
+
     @abc.abstractmethod
     def train(self):
         pass
