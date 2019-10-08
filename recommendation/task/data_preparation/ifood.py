@@ -183,9 +183,10 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
 
         context = pd.read_csv(self.input().path)
 
-        context['menu_full_text'] = context['menu_full_text'].str[:self.menu_text_length]
-        context['description'] = context['description'].str[:self.description_text_length]
-        context['category_text_length'] = context['category_text_length'].str[:self.category_text_length]
+        del context['item_imagesurl']
+        context['menu_full_text'] = context['menu_full_text'].str[:self.menu_text_length].replace(',', ' ')
+        context['description'] = context['description'].str[:self.description_text_length].replace(',', ' ')
+        context['category_names'] = context['category_names'].str[:self.category_text_length].replace(',', ' ')
 
         for column in ['days_of_week', 'shifts']:
             context[column] = context[column].fillna('[]').apply(literal_eval)
@@ -204,9 +205,9 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         context = context.fillna('##').replace(r'^\s*$', '##', regex=True)
         tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda s: str(s).split())
 
-        for text_column in ['trading_name', 'description', 'category_names']:
-            print(tokenizer.batch_encode(context[text_column])[0].cpu().detach().numpy()[0])
+        for text_column in ['trading_name', 'description', 'category_names', "menu_full_text"]:
             context[text_column] = tokenizer.batch_encode(context[text_column])[0].cpu().detach().numpy().tolist()
+            context[text_column + '_max_words'] = len(context[text_column][0])
 
         restaurant_features = ['dish_description', 'price_range', 'avg_score', \
                                                       'latitude', 'longitude', 0, 1, 2, 3, 4, 5, 6, \
@@ -221,7 +222,7 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         context['non_textual_input_dim'] = len(restaurant_features)
         
         context.to_csv(self.output()[0].path, index=False)
-        pd.DataFrame(tokenizer.vocab, columns='vocabulary').to_csv(self.output()[1].path)
+        pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
 
 
 class SplitSessionDataset(BasePySparkTask):
@@ -254,7 +255,7 @@ class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTas
     test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
-        return PrepareRestaurantContentDataset(), SplitSessionDataset(test_size=self.test_size)
+        return ProcessRestaurantContentDataset(), SplitSessionDataset(test_size=self.test_size)
 
     def output(self):
         return luigi.LocalTarget(
@@ -266,7 +267,7 @@ class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTas
         spark = SparkSession(sc)
 
         train_df = spark.read.parquet(self.input()[1][0].path)
-        restaurant_df = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
+        restaurant_df = spark.read.csv(self.input()[0][0].path, header=True)
 
         account_df = train_df.select("account_id").distinct()
         merchant_df = train_df.select("merchant_id").distinct()
@@ -393,11 +394,13 @@ class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
 
     def read_data_frame(self) -> pd.DataFrame:
         df = pd.read_parquet(self.input()[1].path)
+        merchant_df = pd.read_csv(self.input()[0][1].path)
         df["buys"] = (df["buys"] > 0).astype(float)
         df["n_users"] = self.num_users
         df["n_items"] = self.num_businesses
+        final_df = pd.merge(df, merchant_df, on=['merchant_id', 'merchant_idx'])
 
-        return df
+        return final_df
 
 
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):

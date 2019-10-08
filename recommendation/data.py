@@ -8,6 +8,8 @@ import pandas as pd
 import numpy as np
 from scipy.sparse.csr import csr_matrix
 
+from ast import literal_eval
+
 from recommendation.task.meta_config import ProjectConfig, IOType, RecommenderType
 from recommendation.torch import coo_matrix_to_sparse_tensor
 
@@ -121,7 +123,7 @@ class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
                  transformation: Union[Callable] = None) -> None:
         assert len(project_config.input_columns) >= 2
-        assert all(input_column.type == IOType.INDEX for input_column in project_config.input_columns)
+        assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY for input_column in project_config.input_columns)
 
         self._data_frame = data_frame
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
@@ -288,24 +290,39 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
                  transformation: Union[Callable] = None) -> None:
+
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
         super().__init__(data_frame, project_config, transformation)
         self._non_zero_indices = set(
-            data_frame[[x for x in self._input_columns]].itertuples(index=False, name=None))
+            data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
 
-        self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
-        self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
+        self._users = data_frame[self._input_columns[0]].unique()
+        self._items = data_frame[self._input_columns[1]].unique()
+
+        self._n_users: int = self._users.shape[0]
+        self._n_items: int = self._items.shape[0]
         self._vocab_size: int = data_frame.iloc[0]["vocab_size"]
-        self._non_text_input_dim: int = data_frame.iloc[0]["restaurant_info_size"]
+        self._non_text_input_dim: int = data_frame.iloc[0]["non_textual_input_dim"]
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
     def _generate_negative_item_index(self, user_index: int) -> int:
         while True:
-            item_index = np.random.randint(0, self._n_items)
+            item_index = np.random.choice(self._items)
             if (user_index, item_index) not in self._non_zero_indices:
-                return item_index
+                item_row = self._data_frame[self._data_frame[self._input_columns[1]] == item_index] \
+                    [self._input_columns[2:]].drop_duplicates().index.values[0]
+                return item_row
+    
+    def _get_item(self, rows):
+        columns = rows[self._input_columns[2:]].drop_duplicates().T.values
+        res = []
+        for c in columns:
+            k = list(map(lambda a: literal_eval(a), c))
+            res.append(torch.tensor(k, dtype=torch.int64))
+        return res
+
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...], Tuple[np.ndarray, ...]],
                                                                     list]:
@@ -314,11 +331,12 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         rows: pd.Series = self._data_frame.iloc[indices]
         user_indices = rows[self._input_columns[0]].values
-        positive_item_indices = rows[self._input_columns[1]].values
-        negative_item_indices = np.array(
-            [self._generate_negative_item_index(user_index) for user_index in user_indices], dtype=np.int64)
+        positive_items = self._get_item(rows)
+
+        negative_indices = [self._generate_negative_item_index(user_index) for user_index in user_indices]
+        negative_rows: pd.Series = self._data_frame.iloc[negative_indices]
+        negative_items = self._get_item(negative_rows)
         
-        positive_items, _ = super().__getitem__(positive_item_indices)
-        negative_items, _ = super().__getitem__(negative_item_indices)
+        
         
         return (user_indices, positive_items, negative_items), []

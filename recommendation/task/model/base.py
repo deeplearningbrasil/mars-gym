@@ -170,12 +170,36 @@ class BaseModelTraining(luigi.Task):
         if not hasattr(self, "_vocab_size"):
             train_df =  pd.read_csv(self.input()[0].path, nrows=1)
             self._vocab_size = int(train_df.iloc[0]["vocab_size"])
+        return self._vocab_size
     
     @property
     def non_textual_input_dim(self):
         if not hasattr(self, "_non_textual_input_dim"):
            train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-           self._non_textual_input_dim = int(train_df.iloc[0]["non_textual_input_dim"]) 
+           self._non_textual_input_dim = int(train_df.iloc[0]["non_textual_input_dim"])
+        return self._non_textual_input_dim 
+    
+    @property
+    def menu_full_text_max_words(self):
+        if not hasattr(self, "_menu_full_text_max_words"):
+           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
+           self._menu_full_text_max_words = int(train_df.iloc[0]["menu_full_text_max_words"])
+        return self._menu_full_text_max_words
+    
+    @property
+    def description_text_max_words(self):
+        if not hasattr(self, "_description_text_max_words"):
+           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
+           self._description_text_max_words = int(train_df.iloc[0]["description_text_max_words"])
+        return self._description_text_max_words
+
+    @property
+    def category_text_max_words(self):
+        if not hasattr(self, "_category_names_text_max_words"):
+           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
+           self._category_names_text_max_words = int(train_df.iloc[0]["category_names_text_max_words"])
+        return self._category_names_text_max_words
+
 
     @abc.abstractmethod
     def train(self):

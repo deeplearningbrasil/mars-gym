@@ -1,4 +1,4 @@
-from typing import Tuple, Callable, Union, Type
+from typing import Tuple, Callable, Union, Type, List
 
 import torch
 import torch.nn as nn
@@ -56,7 +56,6 @@ class TripletNetContent(nn.Module):
         
         self.apply(self.init_weights)
         weight_init(self.word_embeddings.weight)
-        weight_init(self.item_embeddings.weight)
 
     def init_weights(self, module: nn.Module):
         if type(module) == nn.Linear:
@@ -66,13 +65,17 @@ class TripletNetContent(nn.Module):
     def compute_item_embeddings(self, item_content):
         name, description, category, info = item_content
 
-        emb_name, emb_description, emb_category = self.embedding(name), self.embedding(description), self.embedding(category)
+        emb_name, emb_description, emb_category = self.word_embeddings(name), self.word_embeddings(description), self.word_embeddings(category)
 
-        att_category = self.attention_category(self.lstm(emb_category))
-        att_description = self.attention_description(self.lstm(emb_description))
-        lstm_name = self.lstm(emb_name)
+        h_category, _ = self.lstm(emb_category)
+        h_description, _ = self.lstm(emb_description)
 
-        text_layer = torch.cat((att_category, att_description, lstm_name), dim = 1)
+        att_category = self.attention_category(h_category)
+        att_description = self.attention_description(h_description)
+
+        h_name, _ = self.lstm(emb_name)
+
+        text_layer = torch.cat((att_category, att_description, h_name), dim = 1)
         text_out = self.activation_function(self.linear(text_layer))
 
         for layer in self.content_network:

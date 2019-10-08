@@ -93,7 +93,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=UserTripletContentWithOnlineRandomNegativeGenerationDataset,
-        input_columns=[Column("account_idx", IOType.INDEX), Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY), Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX),Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY), Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
         output_column=Column("buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
