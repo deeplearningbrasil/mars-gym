@@ -183,10 +183,10 @@ class InteractionsAndContentDataset(Dataset):
 
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
         self._output_column = project_config.output_column.name
-        
+
         self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
         self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
-  
+
         dim = self._n_items if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
             else self._n_users
 
@@ -214,12 +214,13 @@ class InteractionsAndContentDataset(Dataset):
         content_rows = self._content.iloc[indices]
 
         if self._transformation:
-            input_rows = self._transformation(rows) 
+            input_rows = self._transformation(rows)
             return tuple([coo_matrix_to_sparse_tensor(input_rows.tocoo()), content_rows.values]), \
             coo_matrix_to_sparse_tensor(rows.tocoo())
 
         return tuple(coo_matrix_to_sparse_tensor(rows.tocoo()), content_rows.values), \
             coo_matrix_to_sparse_tensor(rows.tocoo())
+
 
 class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
@@ -228,20 +229,17 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
         super().__init__(data_frame, project_config, transformation)
         self._non_zero_indices = set(
-            data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
-
-        self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
-        self._n_items: int = data_frame.iloc[0][project_config.n_items_column]
+            data_frame[[input_column for input_column in self._input_columns]].itertuples(index=False, name=None))
+        self._max_values = [data_frame[input_column].max() for input_column in self._input_columns]
 
     def __len__(self) -> int:
         return super().__len__() * 2
 
-    def _generate_negative_indices(self) -> Tuple[int, int]:
+    def _generate_negative_indices(self) -> Tuple[int, ...]:
         while True:
-            user_index = np.random.randint(0, self._n_users)
-            item_index = np.random.randint(0, self._n_items)
-            if (user_index, item_index) not in self._non_zero_indices:
-                return user_index, item_index
+            indices = tuple(np.random.randint(0, max_value+1) for max_value in self._max_values)
+            if indices not in self._non_zero_indices:
+                return indices
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
         if isinstance(indices, int):
@@ -254,16 +252,14 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         positive_batch: Tuple[Tuple[np.ndarray, ...], np.ndarray] = super().__getitem__(positive_indices)
         if num_of_negatives > 0:
-            negative_batch: Tuple[Tuple[List[int], List[int]], np.ndarray] = (tuple(zip(*[
+            negative_batch: Tuple[Tuple[List[int], ...], np.ndarray] = (tuple(zip(*[
                 self._generate_negative_indices()
                 for _ in
                 range(num_of_negatives)])), np.zeros(num_of_negatives))
-
-            return (np.append(positive_batch[0][0], negative_batch[0][0]),
-                    np.append(positive_batch[0][1], negative_batch[0][1])), \
-                   np.append(positive_batch[1], negative_batch[1])
+            return tuple(np.append(positive_batch[0][i], negative_batch[0][i])
+                         for i, _ in enumerate(self._input_columns)), np.append(positive_batch[1], negative_batch[1])
         else:
-            return (positive_batch[0][0], positive_batch[0][1]), positive_batch[1]
+            return tuple(positive_batch[0][i] for i, _ in enumerate(self._input_columns)), positive_batch[1]
 
 
 class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWithOnlineRandomNegativeGenerationDataset):
