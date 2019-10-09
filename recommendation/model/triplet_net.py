@@ -24,7 +24,7 @@ class TripletNet(UserAndItemEmbedding):
 
 
 class TripletNetContent(nn.Module):
-    def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, max_text_len_description: int, max_text_len_category: int, recurrence_hidden_size: int = 40, word_embeddings_output: int = 128,
+    def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, max_text_len_description: int, max_text_len_category: int, max_text_len_name: int, recurrence_hidden_size: int = 40, word_embeddings_output: int = 128,
                     dropout_prob: int = 0.1, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128], 
                     activation_function: Callable = F.selu, n_factors: int = 128, weight_init: Callable = lecun_normal_init):
         super(TripletNetContent, self).__init__()
@@ -35,8 +35,9 @@ class TripletNetContent(nn.Module):
         
         self.attention_description = Attention(recurrence_hidden_size * 2, max_text_len_description)
         self.attention_category = Attention(recurrence_hidden_size * 2, max_text_len_category)
+        self.attention_name = Attention(recurrence_hidden_size * 2, max_text_len_name)
         
-        self.linear = nn.Linear(320, word_embeddings_output)
+        self.linear = nn.Linear(3 * 2 * recurrence_hidden_size, word_embeddings_output)
         self.activation_function = activation_function
 
         if dropout_prob:
@@ -69,17 +70,18 @@ class TripletNetContent(nn.Module):
 
         h_category, _ = self.lstm(emb_category)
         h_description, _ = self.lstm(emb_description)
+        h_name, _ = self.lstm(emb_name)
 
         att_category = self.attention_category(h_category)
         att_description = self.attention_description(h_description)
+        att_name = self.attention_name(h_name)
 
-        h_name, _ = self.lstm(emb_name)
 
-        text_layer = torch.cat((att_category, att_description, h_name), dim = 1)
+        text_layer = torch.cat((att_category, att_description, att_name), dim = 1)
         text_out = self.activation_function(self.linear(text_layer))
 
         for layer in self.content_network:
-            info = self.activation_function(layer(info))
+            info = self.activation_function(layer(info.float()))
         
         x = torch.cat((text_out, info), dim=1)
 

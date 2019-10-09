@@ -291,13 +291,13 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
                  transformation: Union[Callable] = None) -> None:
 
-        data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
+        data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index()
         super().__init__(data_frame, project_config, transformation)
         self._non_zero_indices = set(
             data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
 
-        self._users = data_frame[self._input_columns[0]].unique()
-        self._items = data_frame[self._input_columns[1]].unique()
+        self._users = self._data_frame[self._input_columns[0]].unique()
+        self._items = self._data_frame[self._input_columns[1]].unique()
 
         self._n_users: int = self._users.shape[0]
         self._n_items: int = self._items.shape[0]
@@ -316,7 +316,7 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
                 return item_row
     
     def _get_item(self, rows):
-        columns = rows[self._input_columns[2:]].drop_duplicates().T.values
+        columns = rows[self._input_columns[2:]].T.values
         res = []
         for c in columns:
             k = list(map(lambda a: literal_eval(a), c))

@@ -187,18 +187,26 @@ class BaseModelTraining(luigi.Task):
         return self._menu_full_text_max_words
     
     @property
-    def description_text_max_words(self):
-        if not hasattr(self, "_description_text_max_words"):
+    def description_max_words(self):
+        if not hasattr(self, "_description_max_words"):
            train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-           self._description_text_max_words = int(train_df.iloc[0]["description_text_max_words"])
-        return self._description_text_max_words
+           self._description_max_words = int(train_df.iloc[0]["description_max_words"])
+        return self._description_max_words
 
     @property
-    def category_text_max_words(self):
-        if not hasattr(self, "_category_names_text_max_words"):
+    def category_names_max_words(self):
+        if not hasattr(self, "_category_names_max_words"):
            train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-           self._category_names_text_max_words = int(train_df.iloc[0]["category_names_text_max_words"])
-        return self._category_names_text_max_words
+           self._category_names_max_words = int(train_df.iloc[0]["category_names_max_words"])
+        return self._category_names_max_words
+    
+    @property
+    def name_max_words(self):
+        if not hasattr(self, "_name_max_words"):
+           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
+           self._name_max_words = int(train_df.iloc[0]["trading_name_max_words"])
+        return self._name_max_words
+
 
 
     @abc.abstractmethod
