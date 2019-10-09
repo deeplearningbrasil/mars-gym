@@ -296,6 +296,8 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         self._non_zero_indices = set(
             data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
 
+        self._items_df = self._data_frame[self._input_columns[1:]].drop_duplicates().reset_index()
+        
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
 
@@ -311,9 +313,7 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         while True:
             item_index = np.random.choice(self._items)
             if (user_index, item_index) not in self._non_zero_indices:
-                item_row = self._data_frame[self._data_frame[self._input_columns[1]] == item_index] \
-                    [self._input_columns[2:]].drop_duplicates().index.values[0]
-                return item_row
+                return item_index
     
     def _get_item(self, rows):
         columns = rows[self._input_columns[2:]].T.values
@@ -333,10 +333,9 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         user_indices = rows[self._input_columns[0]].values
         positive_items = self._get_item(rows)
 
-        negative_indices = [self._generate_negative_item_index(user_index) for user_index in user_indices]
-        negative_rows: pd.Series = self._data_frame.iloc[negative_indices]
+        negative_item_indices = [self._generate_negative_item_index(user_index) for user_index in user_indices]
+        negative_item_indices = pd.DataFrame(negative_item_indices, columns=['merchant_idx'])
+        negative_rows = pd.merge(negative_item_indices, self._items_df, on=self._input_columns[1])
         negative_items = self._get_item(negative_rows)
-        
-        
-        
+
         return (user_indices, positive_items, negative_items), []
