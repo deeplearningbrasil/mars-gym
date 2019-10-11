@@ -62,6 +62,11 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
                          self.model_task_id, "orders_with_relevance_lists.csv"))
 
+    def _generate_batch_tensors(self, rows):
+        return [torch.tensor(rows[input_column.name].values, dtype=torch.int64)
+                          .to(self.model_training.torch_device)
+                      for input_column in self.model_training.project_config.input_columns]
+
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
         print("Reading tuples files...")
         tuples_df = pd.read_parquet(self.input()[1].path)
@@ -76,9 +81,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         for indices in tqdm(chunks(range(len(tuples_df)), self.batch_size),
                             total=math.ceil(len(tuples_df) / self.batch_size)):
             rows: pd.DataFrame = tuples_df.iloc[indices]
-            inputs = [torch.tensor(rows[input_column.name].values, dtype=torch.int64)
-                          .to(self.model_training.torch_device)
-                      for input_column in self.model_training.project_config.input_columns]
+            inputs = self._generate_batch_tensors(rows) 
             batch_scores: torch.Tensor = module(*inputs)
             scores.extend(batch_scores.detach().cpu().numpy())
 
@@ -359,3 +362,32 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 
     def requires(self):
         return GenerateMostPopularRelevanceLists()
+
+
+class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodModel):
+    batch_size: int = luigi.IntParameter(default=10000)
+    def _generate_batch_tensors(self, rows):
+
+        input_columns_name = [input_column.name for input_column in self.model_training.project_config.input_columns]
+
+        assert input_columns_name == ['account_idx', 'merchant_idx', 'trading_name', 'description', 'category_names', 'restaurant_complete_info']
+        
+        account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
+                .to(self.model_training.torch_device)
+
+        inputs = []
+        
+        for input_column in self.model_training.project_config.input_columns[2:]:
+            dtype = torch.int64
+            if input_column.name == "restaurant_complete_info":
+                dtype = torch.float64
+            r = list(map(lambda x: ast.literal_eval(x), rows[input_column.name].values))
+            inputs.append(torch.tensor(r, dtype=dtype)
+                        .to(self.model_training.torch_device))
+            
+        return [account_idxs, inputs]
+
+class EvaluateIfoodTripletNetContentModel(EvaluateIfoodModel):
+    def requires(self):
+        return GenerateRelevanceListsTripletContentModel(model_module=self.model_module, model_cls=self.model_cls,
+                                                      model_task_id=self.model_task_id)

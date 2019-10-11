@@ -510,7 +510,7 @@ class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
+        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(), PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
 
     def output(self):
         return luigi.LocalTarget(
@@ -519,9 +519,14 @@ class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
 
-        df = spark.read.parquet(self.input().path)
+        df = spark.read.parquet(self.input()[1].path)
 
         tuples_df = df.union(df.withColumn("merchant_idx", explode(df.merchant_idx_list))).drop("merchant_idx_list")\
             .dropDuplicates()
+        
+        merchant_df = spark.read.csv(self.input()[0][1].path, header=True, inferSchema=True)
+
+        tuples_df = tuples_df.join(merchant_df, on="merchant_idx", how="left").select('account_idx', 'merchant_idx', \
+            'trading_name', 'description', 'restaurant_complete_info', 'category_names')
 
         tuples_df.write.parquet(self.output().path)

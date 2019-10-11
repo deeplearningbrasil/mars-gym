@@ -98,7 +98,7 @@ class TripletNetContent(nn.Module):
         user_emb = self.user_embeddings(user_ids)
         
         if negative_item_content is None:
-            return torch.cosine_similarity(user_emb), positive_item_emb
+            return torch.cosine_similarity(user_emb, positive_item_emb)
         
         negative_item_emb = self.compute_item_embeddings(negative_item_content)
 
