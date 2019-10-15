@@ -9,6 +9,7 @@ from recommendation.task.model.base import BaseTorchModelTraining, TORCH_ACTIVAT
 from recommendation.model.triplet_net import TripletNet, TripletNetContent
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 from recommendation.task.model.embedding import UserAndItemEmbeddingTraining
+from recommendation.task.ifood import GenerateContentEmbeddings
 
 
 class TripletNetTraining(UserAndItemEmbeddingTraining):
@@ -71,5 +72,7 @@ class TripletNetContentTraining(BaseTorchModelTraining):
             if self.save_user_embedding_tsv:
                 user_embeddings: np.ndarray = module.user_embeddings.weight.data.cpu().numpy()
                 np.savetxt(os.path.join(self.output().path, "user_embeddings.tsv"), user_embeddings, delimiter="\t")
-
-            #TODO Restaurant embeddings
+            if self.save_item_embedding_tsv:
+                GenerateContentEmbeddings(model_module=self.model_module, model_cls=self.model_cls,
+                                                      model_task_id=self.model_task_id).run()
+                

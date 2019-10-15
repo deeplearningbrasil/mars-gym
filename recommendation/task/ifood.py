@@ -21,7 +21,7 @@ from recommendation.data import literal_eval_array_columns
 from recommendation.rank_metrics import precision_at_k, average_precision, ndcg_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfSessionTrainDataset, \
-    CreateInteractionDataset
+    CreateInteractionDataset, ProcessRestaurantContentDataset, PrepareRestaurantContentDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks, parallel_literal_eval
 from recommendation.plot import plot_histogram
@@ -368,21 +368,27 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
 
-    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
-        input_columns_name = [input_column.name for input_column in self.model_training.project_config.input_columns]
-
-        assert input_columns_name == ['account_idx', 'merchant_idx', 'trading_name', 'description', 'category_names', 'restaurant_complete_info']
-
-        account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
-                .to(self.model_training.torch_device)
-
+    def _generate_content_tensors(self, rows):
         inputs = []
 
         for input_column in self.model_training.project_config.input_columns[2:]:
             dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
             values = parallel_literal_eval(rows[input_column.name].values, pool, use_tqdm=False)
             inputs.append(torch.tensor(values, dtype=dtype) .to(self.model_training.torch_device))
+            
+        return inputs
 
+    def _generate_batch_tensors(self, rows):
+
+        input_columns_name = [input_column.name for input_column in self.model_training.project_config.input_columns]
+
+        assert input_columns_name == ['account_idx', 'merchant_idx', 'trading_name', 'description', 'category_names', 'restaurant_complete_info']
+        
+        account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
+                .to(self.model_training.torch_device)
+
+        inputs = self._generate_content_tensors(rows)
+            
         return [account_idxs, inputs]
 
 
@@ -390,3 +396,45 @@ class EvaluateIfoodTripletNetContentModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateRelevanceListsTripletContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id)
+
+
+class GenerateContentEmbeddings(BaseEvaluationTask):
+    batch_size: int = luigi.IntParameter(default=100000)
+
+    def requires(self):
+        return ProcessRestaurantContentDataset(), PrepareRestaurantContentDataset()
+
+    def output(self):
+        return luigi.LocalTarget(
+            os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.model_task_id, "restaurant_embeddings.tsv")),\
+                luigi.LocalTarget(
+            os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.model_task_id, "restaurant_metadata.tsv"))
+
+    def _generate_content_tensors(self, rows):
+        return GenerateRelevanceListsTripletContentModel._generate_content_tensors(self, rows)
+
+    def run(self):
+        os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
+
+        processed_content_df = pd.read_csv(self.input()[0][0].path)
+
+        print("Loading trained model...")
+        module = self.model_training.get_trained_module()
+
+        print("Generating embeddings for each merchant...")
+        embeddings: List[float] = []
+        for indices in tqdm(chunks(range(len(processed_content_df)), self.batch_size),
+                            total=math.ceil(len(processed_content_df) / self.batch_size)):
+            rows: pd.DataFrame = processed_content_df.iloc[indices]
+            inputs = self._generate_content_tensors(rows)
+            batch_embeddings: torch.Tensor = module.compute_item_embeddings(inputs)
+            embeddings.extend(batch_embeddings.detach().cpu().numpy())
+           
+        restaurant_df = pd.read_csv(self.input()[1].path).replace(['\n', '\t'], ' ', regex=True)
+        del restaurant_df['item_imagesurl']
+
+        print("Saving the output file...")
+        np.savetxt(os.path.join(self.output()[0].path), embeddings, delimiter="\t")
+        restaurant_df.to_csv(os.path.join(self.output()[1].path), sep='\t', index=False)
