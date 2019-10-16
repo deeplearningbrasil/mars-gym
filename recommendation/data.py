@@ -10,7 +10,7 @@ from scipy.sparse.csr import csr_matrix
 
 from ast import literal_eval
 
-from recommendation.task.meta_config import ProjectConfig, IOType, RecommenderType
+from recommendation.task.meta_config import ProjectConfig, IOType, RecommenderType, Column
 from recommendation.torch import coo_matrix_to_sparse_tensor
 
 
@@ -119,11 +119,19 @@ class CriteoDataset(Dataset):
             return (rows_dense, rows_categories)
 
 
+def _literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
+    for column in columns:
+        if column.type == IOType.ARRAY:
+            data_frame[column.name] = data_frame[column.name].apply(ast.literal_eval)
+
+
 class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
                  transformation: Union[Callable] = None) -> None:
         assert len(project_config.input_columns) >= 2
         assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY for input_column in project_config.input_columns)
+
+        _literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
 
         self._data_frame = data_frame
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
@@ -151,9 +159,9 @@ class InteractionsMatrixDataset(Dataset):
         dim = self._n_items if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
             else self._n_users
 
+        _literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
+
         target_col = project_config.output_column.name
-        if type(data_frame.iloc[0][target_col]) is str:
-            data_frame[target_col] = data_frame[target_col].apply(lambda value: ast.literal_eval(value))
 
         i, j, data = zip(
             *((index, int(t[0]), t[1]) for index, row in enumerate(data_frame[target_col])
@@ -192,10 +200,9 @@ class InteractionsAndContentDataset(Dataset):
         dim = self._n_items if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
             else self._n_users
 
-        target_col = project_config.output_column.name
-        if type(data_frame.iloc[0][target_col]) is str:
-            data_frame[target_col] = data_frame[target_col].apply(lambda value: ast.literal_eval(value))
+        _literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
 
+        target_col = project_config.output_column.name
         i, j, data = zip(
             *((index, int(t[0]), t[1]) for index, row in enumerate(data_frame[target_col])
               for t in row))
@@ -286,6 +293,7 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
             [self._generate_negative_item_index(user_index) for user_index in user_indices], dtype=np.int64)
         return (user_indices, positive_item_indices, negative_item_indices), []
 
+
 class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
@@ -296,7 +304,7 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         self._non_zero_indices = set(
             data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
 
-        self._items_df = self._data_frame[self._input_columns[1:]].drop_duplicates().reset_index()
+        self._items_df = self._data_frame[self._input_columns[1:]].drop_duplicates(subset=self._input_columns[1]).reset_index()
         
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
@@ -319,10 +327,9 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         columns = rows[self._input_columns[2:]].T.values
         res = []
         for c in columns:
-            k = list(map(lambda a: literal_eval(a), c))
-            res.append(torch.tensor(k, dtype=torch.int64))
+            # k = list(map(lambda a: literal_eval(a), c))
+            res.append(torch.tensor(c, dtype=torch.int64))
         return res
-
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...], Tuple[np.ndarray, ...]],
                                                                     list]:

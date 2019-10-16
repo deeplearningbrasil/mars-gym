@@ -165,11 +165,11 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
 
         restaurant_df.toPandas().to_csv(self.output().path, index=False)
 
+
 class ProcessRestaurantContentDataset(BasePySparkTask):
     menu_text_length: int = luigi.IntParameter(default=5000)
     description_text_length: int = luigi.IntParameter(default=200)
     category_text_length: int = luigi.IntParameter(default=250)
-
 
     def requires(self):
         return PrepareRestaurantContentDataset()
@@ -457,6 +457,7 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
         if not self.split_per_user:
             return self._transform_data_frame(df)
         return df
+
 
 class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodAccountMatrixWithBinaryBuysDataFrames):
 
