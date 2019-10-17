@@ -324,11 +324,10 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
                 return item_index
     
     def _get_item(self, rows):
-        columns = rows[self._input_columns[2:]].T.values
+        columns = rows[self._input_columns[2:]].T.values.tolist()
         res = []
         for c in columns:
-            # k = list(map(lambda a: literal_eval(a), c))
-            res.append(torch.tensor(c, dtype=torch.int64))
+            res.append(torch.tensor(np.array(c), dtype=torch.int64))
         return res
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...], Tuple[np.ndarray, ...]],
