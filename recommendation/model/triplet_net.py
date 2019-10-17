@@ -76,7 +76,6 @@ class TripletNetContent(nn.Module):
         att_description = self.attention_description(h_description)
         att_name = self.attention_name(h_name)
 
-
         text_layer = torch.cat((att_category, att_description, att_name), dim = 1)
         text_out = self.activation_function(self.linear(text_layer))
 
@@ -104,4 +103,3 @@ class TripletNetContent(nn.Module):
 
         return self.user_embeddings(user_ids), positive_item_emb, \
                negative_item_emb
-        

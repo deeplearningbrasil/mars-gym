@@ -304,7 +304,8 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         self._non_zero_indices = set(
             data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
 
-        self._items_df = self._data_frame[self._input_columns[1:]].drop_duplicates(subset=self._input_columns[1]).reset_index()
+        self._items_df = self._data_frame[self._input_columns[1:]].drop_duplicates(subset=self._input_columns[1])\
+            .set_index(self._input_columns[1])
         
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
@@ -323,12 +324,12 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
             if (user_index, item_index) not in self._non_zero_indices:
                 return item_index
     
-    def _get_item(self, rows):
-        columns = rows[self._input_columns[2:]].T.values.tolist()
+    def _get_items(self, item_indices: List[int]) -> Tuple[torch.Tensor, ...]:
+        columns = self._items_df.loc[item_indices].T.values.tolist()
         res = []
         for c in columns:
             res.append(torch.tensor(np.array(c), dtype=torch.int64))
-        return res
+        return tuple(res)
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...], Tuple[np.ndarray, ...]],
                                                                     list]:
@@ -337,11 +338,10 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         rows: pd.Series = self._data_frame.iloc[indices]
         user_indices = rows[self._input_columns[0]].values
-        positive_items = self._get_item(rows)
-
+        positive_item_indices = rows[self._input_columns[1]].values
         negative_item_indices = [self._generate_negative_item_index(user_index) for user_index in user_indices]
-        negative_item_indices = pd.DataFrame(negative_item_indices, columns=['merchant_idx'])
-        negative_rows = pd.merge(negative_item_indices, self._items_df, on=self._input_columns[1])
-        negative_items = self._get_item(negative_rows)
+
+        positive_items = self._get_items(positive_item_indices)
+        negative_items = self._get_items(negative_item_indices)
 
         return (user_indices, positive_items, negative_items), []
