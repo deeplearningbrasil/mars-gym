@@ -67,6 +67,16 @@ def chunks(l: Union[list, range], n: int) -> Union[list, range]:
         yield l[i:i + n]
 
 
-def parallel_literal_eval(series: Union[pd.Series, np.ndarray]) -> list:
-    with Pool(os.cpu_count()) as p:
-        return list(tqdm(p.map(ast.literal_eval, series), total=len(series)))
+def parallel_literal_eval(series: Union[pd.Series, np.ndarray], pool: Pool = None, use_tqdm: bool = True) -> list:
+    if pool:
+        return _parallel_literal_eval(series, pool, use_tqdm)
+    else:
+        with Pool(os.cpu_count()) as p:
+            return _parallel_literal_eval(series, p, use_tqdm)
+
+
+def _parallel_literal_eval(series: Union[pd.Series, np.ndarray], pool: Pool, use_tqdm: bool = True) -> list:
+    if use_tqdm:
+        return list(tqdm(pool.map(ast.literal_eval, series), total=len(series)))
+    else:
+        return pool.map(ast.literal_eval, series)

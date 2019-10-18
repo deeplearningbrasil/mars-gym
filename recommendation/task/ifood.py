@@ -63,7 +63,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
                          self.model_task_id, "orders_with_relevance_lists.csv"))
 
-    def _generate_batch_tensors(self, rows):
+    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
         return [torch.tensor(rows[input_column.name].values, dtype=torch.int64)
                           .to(self.model_training.torch_device)
                       for input_column in self.model_training.project_config.input_columns]
@@ -75,19 +75,17 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         assert self.model_training.project_config.input_columns[0].name == "account_idx"
         assert self.model_training.project_config.input_columns[1].name == "merchant_idx"
 
-        literal_eval_array_columns(tuples_df, self.model_training.project_config.input_columns +
-                                   [self.model_training.project_config.output_column])
-
         print("Loading trained model...")
         module = self.model_training.get_trained_module()
         scores: List[float] = []
         print("Running the model for every account and merchant tuple...")
-        for indices in tqdm(chunks(range(len(tuples_df)), self.batch_size),
-                            total=math.ceil(len(tuples_df) / self.batch_size)):
-            rows: pd.DataFrame = tuples_df.iloc[indices]
-            inputs = self._generate_batch_tensors(rows) 
-            batch_scores: torch.Tensor = module(*inputs)
-            scores.extend(batch_scores.detach().cpu().numpy())
+        with Pool(os.cpu_count()) as pool:
+            for indices in tqdm(chunks(range(len(tuples_df)), self.batch_size),
+                                total=math.ceil(len(tuples_df) / self.batch_size)):
+                rows: pd.DataFrame = tuples_df.iloc[indices]
+                inputs = self._generate_batch_tensors(rows, pool)
+                batch_scores: torch.Tensor = module(*inputs)
+                scores.extend(batch_scores.detach().cpu().numpy())
 
         print("Creating the dictionary of scores...")
         return {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
@@ -128,7 +126,7 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
     variational = luigi.BoolParameter(default=False)
     attentive = luigi.BoolParameter(default=False)
     context = luigi.BoolParameter(default=False)
-    
+
     batch_size: int = luigi.IntParameter(default=500)
 
     def _eval_buys_per_merchant_column(self, df: pd.DataFrame):
@@ -294,7 +292,7 @@ class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id)
-                        
+
 class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
@@ -369,22 +367,22 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 
 class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
-    def _generate_batch_tensors(self, rows):
 
+    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
         input_columns_name = [input_column.name for input_column in self.model_training.project_config.input_columns]
 
         assert input_columns_name == ['account_idx', 'merchant_idx', 'trading_name', 'description', 'category_names', 'restaurant_complete_info']
-        
+
         account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
                 .to(self.model_training.torch_device)
 
         inputs = []
-        
+
         for input_column in self.model_training.project_config.input_columns[2:]:
             dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
-            inputs.append(torch.tensor(rows[input_column.name].values.tolist(), dtype=dtype)
-                        .to(self.model_training.torch_device))
-            
+            values = parallel_literal_eval(rows[input_column.name].values, pool, use_tqdm=False)
+            inputs.append(torch.tensor(values, dtype=dtype) .to(self.model_training.torch_device))
+
         return [account_idxs, inputs]
 
 
