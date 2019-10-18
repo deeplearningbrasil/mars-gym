@@ -3,7 +3,6 @@ import os
 from datetime import datetime
 import pandas as pd
 import numpy as np
-from ast import literal_eval
 
 import luigi
 import pandas as pd
@@ -17,6 +16,7 @@ from torchnlp.encoders import LabelEncoder
 from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncoder, TextEncoder
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
+from recommendation.utils import parallel_literal_eval
 
 BASE_DIR: str = os.path.join("output", "ifood")
 DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
@@ -189,7 +189,7 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         context['category_names'] = context['category_names'].str[:self.category_text_length].replace(',', ' ')
 
         for column in ['days_of_week', 'shifts']:
-            context[column] = context[column].fillna('[]').apply(literal_eval)
+            context[column] = parallel_literal_eval(context[column].fillna('[]'))
             elements = np.unique(context[column].sum())
             for el in elements:
                 context[el] = context[column].apply(lambda x: ((el in x) * 1.0))

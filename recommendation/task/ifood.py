@@ -22,7 +22,7 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfSessionTrainDataset, \
     CreateInteractionDataset
 from recommendation.task.evaluation import BaseEvaluationTask
-from recommendation.utils import chunks
+from recommendation.utils import chunks, parallel_literal_eval
 from recommendation.plot import plot_histogram
 
 
@@ -129,7 +129,7 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
 
     def _eval_buys_per_merchant_column(self, df: pd.DataFrame):
         if len(df) > 0 and type(df.iloc[0]["buys_per_merchant"]) is str:
-            df["buys_per_merchant"] = df["buys_per_merchant"].apply(lambda value: ast.literal_eval(value))
+            df["buys_per_merchant"] = parallel_literal_eval(df["buys_per_merchant"])
         return df
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
@@ -213,9 +213,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
         df: pd.DataFrame = pd.read_csv(self.input().path)
 
+        df["relevance_list"] = parallel_literal_eval(df["relevance_list"])
         with Pool(self.num_processes) as p:
-            df["relevance_list"] = list(tqdm(p.map(ast.literal_eval, df["relevance_list"]), total=len(df)))
-
             # df["precision_at_5"] = list(
             #     tqdm(p.map(functools.partial(precision_at_k, k=5), df["relevance_list"]), total=len(df)))
             # df["precision_at_10"] = list(
@@ -381,7 +380,7 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
             dtype = torch.int64
             if input_column.name == "restaurant_complete_info":
                 dtype = torch.float64
-            r = list(map(lambda x: ast.literal_eval(x), rows[input_column.name].values))
+            r = parallel_literal_eval(rows[input_column.name].values)
             inputs.append(torch.tensor(r, dtype=dtype)
                         .to(self.model_training.torch_device))
             

@@ -1,5 +1,4 @@
 import abc
-import ast
 from typing import Tuple, List, Iterator, Union, Sized, Callable
 
 import torch
@@ -8,10 +7,9 @@ import pandas as pd
 import numpy as np
 from scipy.sparse.csr import csr_matrix
 
-from ast import literal_eval
-
 from recommendation.task.meta_config import ProjectConfig, IOType, RecommenderType, Column
 from recommendation.torch import coo_matrix_to_sparse_tensor
+from recommendation.utils import parallel_literal_eval
 
 
 class CorruptionTransformation(object, metaclass=abc.ABCMeta):
@@ -122,7 +120,7 @@ class CriteoDataset(Dataset):
 def _literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
         if column.type == IOType.ARRAY:
-            data_frame[column.name] = data_frame[column.name].apply(ast.literal_eval)
+            data_frame[column.name] = parallel_literal_eval(data_frame[column.name])
 
 
 class InteractionsDataset(Dataset):

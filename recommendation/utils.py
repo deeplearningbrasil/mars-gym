@@ -1,9 +1,15 @@
+import ast
+import os
 from math import sqrt
+from multiprocessing.pool import Pool
 from typing import List, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.init import _calculate_fan_in_and_fan_out
+from tqdm import tqdm
+
 from recommendation.files import get_params, get_task_dir
 
 def load_torch_model_training_from_task_dir(model_cls,
@@ -58,3 +64,8 @@ def chunks(l: Union[list, range], n: int) -> Union[list, range]:
     """Yield successive n-sized chunks from l."""
     for i in range(0, len(l), n):
         yield l[i:i + n]
+
+
+def parallel_literal_eval(series: Union[pd.Series, np.ndarray]) -> list:
+    with Pool(os.cpu_count()) as p:
+        return list(tqdm(p.map(ast.literal_eval, series), total=len(series)))
