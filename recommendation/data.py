@@ -117,7 +117,7 @@ class CriteoDataset(Dataset):
             return (rows_dense, rows_categories)
 
 
-def _literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
+def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
         if column.type == IOType.ARRAY:
             data_frame[column.name] = parallel_literal_eval(data_frame[column.name])
@@ -129,7 +129,7 @@ class InteractionsDataset(Dataset):
         assert len(project_config.input_columns) >= 2
         assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY for input_column in project_config.input_columns)
 
-        _literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
+        literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
 
         self._data_frame = data_frame
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
@@ -157,7 +157,7 @@ class InteractionsMatrixDataset(Dataset):
         dim = self._n_items if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
             else self._n_users
 
-        _literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
+        literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
 
         target_col = project_config.output_column.name
 
@@ -198,7 +198,7 @@ class InteractionsAndContentDataset(Dataset):
         dim = self._n_items if project_config.recommender_type == RecommenderType.USER_BASED_COLLABORATIVE_FILTERING \
             else self._n_users
 
-        _literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
+        literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
 
         target_col = project_config.output_column.name
         i, j, data = zip(

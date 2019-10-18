@@ -17,6 +17,7 @@ from scipy.sparse import csr_matrix
 from tqdm import tqdm
 import timeit
 
+from recommendation.data import literal_eval_array_columns
 from recommendation.rank_metrics import precision_at_k, average_precision, ndcg_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfSessionTrainDataset, \
@@ -73,6 +74,9 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
         assert self.model_training.project_config.input_columns[0].name == "account_idx"
         assert self.model_training.project_config.input_columns[1].name == "merchant_idx"
+
+        literal_eval_array_columns(tuples_df, self.model_training.project_config.input_columns +
+                                   [self.model_training.project_config.output_column])
 
         print("Loading trained model...")
         module = self.model_training.get_trained_module()
@@ -377,14 +381,12 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
         inputs = []
         
         for input_column in self.model_training.project_config.input_columns[2:]:
-            dtype = torch.int64
-            if input_column.name == "restaurant_complete_info":
-                dtype = torch.float64
-            r = parallel_literal_eval(rows[input_column.name].values)
-            inputs.append(torch.tensor(r, dtype=dtype)
+            dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
+            inputs.append(torch.tensor(rows[input_column.name].values.tolist(), dtype=dtype)
                         .to(self.model_training.torch_device))
             
         return [account_idxs, inputs]
+
 
 class EvaluateIfoodTripletNetContentModel(EvaluateIfoodModel):
     def requires(self):

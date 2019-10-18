@@ -5,6 +5,7 @@ from multiprocessing.pool import Pool
 from typing import List, Union
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.nn.init import _calculate_fan_in_and_fan_out
