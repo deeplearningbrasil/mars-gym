@@ -10,7 +10,7 @@ import numpy as np
 ## PYTHONPATH="." luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --local-scheduler
 from recommendation.task.ifood import EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel
 from recommendation.task.model.auto_encoder import UnconstrainedAutoEncoderTraining, AttentiveVariationalAutoEncoderTraining
-
+from recommendation.task.model.triplet_net import TripletNetContentTraining
 
 class EnqueueEvaluateCDAE(luigi.WrapperTask):
     task_ids: List[str] = luigi.ListParameter()
@@ -98,4 +98,36 @@ class EnqueueAttentiveCVAE(luigi.WrapperTask):
                 decoder_layers=[200],
                 attention_layers=[600],
             )
+            yield training_model
+
+
+class EnqueueTripletNetContent(luigi.WrapperTask):
+    seed: int = luigi.IntParameter(default=42)
+    batch_size_options: list = luigi.ListParameter(default=[128, 256, 512])
+    word_embeddings_size_options: list = luigi.ListParameter(default=[128, 256, 512])
+    reccurrence_hidden_size_options: list = luigi.ListParameter(default=[32, 64, 128, 256])
+    word_embeddings_output_options: list = luigi.ListParameter(default=[128, 256])
+    content_layers_options: list = luigi.ListParameter(default=[[512, 256], [512, 256, 128], [256, 128], [128], [512]])
+    n_factors_options: list = luigi.ListParameter(default=[128, 256, 512])
+    dropout_prob_range: tuple = luigi.TupleParameter(default=(0.0, 0.5))
+    triplet_loss_options: list = luigi.ListParameter(default=['bpr_triplet', 'triplet_margin'])
+
+    def requires(self):
+        random_state = np.random.RandomState(self.seed)
+
+        for i in range(45):
+            training_model = TripletNetContentTraining(
+                project="ifood_binary_buys_content_triplet_with_random_negative",
+                batch_size=int(random_state.choice(self.batch_size_options)),
+                loss_function=str(random_state.choice(self.triplet_loss_options)),
+                word_embeddings_size=int(random_state.choice(self.word_embeddings_size_options)),
+                recurrence_hidden_size=int(random_state.choice(self.reccurrence_hidden_size_options)),
+                word_embeddings_output=int(random_state.choice(self.word_embeddings_output_options)),
+                dropout_module="dropout",
+                dropout_prob=random_state.uniform(self.dropout_prob_range[0], self.dropout_prob_range[1]),
+                content_layers=list(random_state.choice(self.content_layers_options)),
+                n_factors=int(random_state.choice(self.n_factors_options)),
+
+            )
+
             yield training_model
