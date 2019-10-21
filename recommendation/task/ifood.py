@@ -366,9 +366,9 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 
 
 class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodModel):
-    batch_size: int = luigi.IntParameter(default=10000)
+    batch_size: int = luigi.IntParameter(default=5000)
 
-    def _generate_content_tensors(self, rows):
+    def _generate_content_tensors(self, rows, pool):
         inputs = []
 
         for input_column in self.model_training.project_config.input_columns[2:]:
@@ -378,7 +378,7 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
             
         return inputs
 
-    def _generate_batch_tensors(self, rows):
+    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
 
         input_columns_name = [input_column.name for input_column in self.model_training.project_config.input_columns]
 
@@ -387,7 +387,7 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
         account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
                 .to(self.model_training.torch_device)
 
-        inputs = self._generate_content_tensors(rows)
+        inputs = self._generate_content_tensors(rows, pool)
             
         return [account_idxs, inputs]
 
@@ -412,8 +412,8 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
                          self.model_task_id, "restaurant_metadata.tsv"))
 
-    def _generate_content_tensors(self, rows):
-        return GenerateRelevanceListsTripletContentModel._generate_content_tensors(self, rows)
+    def _generate_content_tensors(self, rows, pool):
+        return GenerateRelevanceListsTripletContentModel._generate_content_tensors(self, rows, pool)
 
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)

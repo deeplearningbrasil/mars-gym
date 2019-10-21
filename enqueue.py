@@ -8,7 +8,7 @@ import numpy as np
 ## PYTHONPATH="." ./cuda_luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --workers 4
 # - Para uma única GPU:
 ## PYTHONPATH="." luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --local-scheduler
-from recommendation.task.ifood import EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel
+from recommendation.task.ifood import EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel, EvaluateIfoodTripletNetContentModel
 from recommendation.task.model.auto_encoder import UnconstrainedAutoEncoderTraining, AttentiveVariationalAutoEncoderTraining
 from recommendation.task.model.triplet_net import TripletNetContentTraining
 
@@ -131,3 +131,15 @@ class EnqueueTripletNetContent(luigi.WrapperTask):
             )
 
             yield training_model
+
+class EnqueueEvaluateTripletNetContent(luigi.WrapperTask):
+    task_ids: List[str] = luigi.ListParameter(default=["TripletNetContentTraining_selu____128_330d4dc2ee", "TripletNetContentTraining_selu____128_6acf4b889a","TripletNetContentTraining_selu____128_7ee6d5561d","TripletNetContentTraining_selu____128_a07dbcea92","TripletNetContentTraining_selu____128_d2e077e326","TripletNetContentTraining_selu____128_d6749f20b1","TripletNetContentTraining_selu____128_e861b3762b","TripletNetContentTraining_selu____128_ea54ab4666","TripletNetContentTraining_selu____128_f38e5dd674","TripletNetContentTraining_selu____256_002f7e634d","TripletNetContentTraining_selu____256_06b7899b73","TripletNetContentTraining_selu____256_704c43fda9","TripletNetContentTraining_selu____256_7b277793dd","TripletNetContentTraining_selu____256_8b05666af5","TripletNetContentTraining_selu____256_9dcd56a314","TripletNetContentTraining_selu____256_d2b1860f5b","TripletNetContentTraining_selu____256_def2d1e3b5","TripletNetContentTraining_selu____512_04bd16d422","TripletNetContentTraining_selu____512_6b9248b72d","TripletNetContentTraining_selu____512_9f0a20d76c","TripletNetContentTraining_selu____512_b4a10ccc08","TripletNetContentTraining_selu____512_e971a1ca44"])
+
+    def requires(self):
+        for task_id in self.task_ids:
+            print(task_id)
+            yield EvaluateIfoodTripletNetContentModel(
+                model_module="recommendation.task.model.triplet_net",
+                model_cls="TripletNetContentTraining",
+                model_task_id=task_id,
+            )
