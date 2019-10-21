@@ -428,7 +428,7 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
         for indices in tqdm(chunks(range(len(processed_content_df)), self.batch_size),
                             total=math.ceil(len(processed_content_df) / self.batch_size)):
             rows: pd.DataFrame = processed_content_df.iloc[indices]
-            inputs = self._generate_content_tensors(rows)
+            inputs = self._generate_content_tensors(rows, pool)
             batch_embeddings: torch.Tensor = module.compute_item_embeddings(inputs)
             embeddings.extend(batch_embeddings.detach().cpu().numpy())
            
