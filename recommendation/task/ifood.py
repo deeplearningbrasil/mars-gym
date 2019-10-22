@@ -21,7 +21,8 @@ from recommendation.data import literal_eval_array_columns
 from recommendation.rank_metrics import precision_at_k, average_precision, ndcg_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfSessionTrainDataset, \
-    CreateInteractionDataset, ProcessRestaurantContentDataset, PrepareRestaurantContentDataset
+    ProcessRestaurantContentDataset, PrepareRestaurantContentDataset, \
+    CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks, parallel_literal_eval
 from recommendation.plot import plot_histogram
@@ -366,14 +367,30 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 
 
 class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodModel):
-    batch_size: int = luigi.IntParameter(default=5000)
+    batch_size: int = luigi.IntParameter(default=10000)
+
+    def requires(self):
+        test_size = self.model_training.requires().session_test_size
+        return super().requires() + (GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=test_size),)
+
+    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
+        print("Reading merchant data frame...")
+        self.merchant_df = pd.read_csv(self.input()[-1][1].path)
+
+        literal_eval_array_columns(self.merchant_df,
+                                   self.model_training.project_config.input_columns
+                                   + [self.model_training.project_config.output_column])
+
+        self.merchant_df = self.merchant_df.set_index("merchant_idx")
+
+        return super()._evaluate_account_merchant_tuples()
 
     def _generate_content_tensors(self, rows, pool):
         inputs = []
 
         for input_column in self.model_training.project_config.input_columns[2:]:
             dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
-            values = parallel_literal_eval(rows[input_column.name].values, pool, use_tqdm=False)
+            values = merchant_rows[input_column.name].values.tolist()
             inputs.append(torch.tensor(values, dtype=dtype) .to(self.model_training.torch_device))
             
         return inputs

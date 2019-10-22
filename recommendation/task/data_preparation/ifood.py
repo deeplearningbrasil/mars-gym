@@ -394,13 +394,14 @@ class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
 
     def read_data_frame(self) -> pd.DataFrame:
         df = pd.read_parquet(self.input()[1].path)
-        merchant_df = pd.read_csv(self.input()[0][1].path)
         df["buys"] = (df["buys"] > 0).astype(float)
         df["n_users"] = self.num_users
         df["n_items"] = self.num_businesses
-        final_df = pd.merge(df, merchant_df, on=['merchant_id', 'merchant_idx'])
+        return df
 
-        return final_df
+    @property
+    def metadata_data_frame_path(self) -> str:
+        return self.input()[0][1].path
 
 
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
@@ -525,9 +526,4 @@ class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
         tuples_df = df.union(df.withColumn("merchant_idx", explode(df.merchant_idx_list))).drop("merchant_idx_list")\
             .dropDuplicates()
         
-        merchant_df = spark.read.csv(self.input()[0][1].path, header=True, inferSchema=True)
-
-        tuples_df = tuples_df.join(merchant_df, on="merchant_idx", how="left").select('account_idx', 'merchant_idx', \
-            'trading_name', 'description', 'restaurant_complete_info', 'category_names')
-
         tuples_df.write.parquet(self.output().path)

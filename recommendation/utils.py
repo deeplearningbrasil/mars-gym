@@ -75,8 +75,13 @@ def parallel_literal_eval(series: Union[pd.Series, np.ndarray], pool: Pool = Non
             return _parallel_literal_eval(series, p, use_tqdm)
 
 
+def literal_eval_if_str(element):
+    if isinstance(element, str):
+        return ast.literal_eval(element)
+    return element
+
 def _parallel_literal_eval(series: Union[pd.Series, np.ndarray], pool: Pool, use_tqdm: bool = True) -> list:
     if use_tqdm:
-        return list(tqdm(pool.map(ast.literal_eval, series), total=len(series)))
+        return list(tqdm(pool.map(literal_eval_if_str, series), total=len(series)))
     else:
-        return pool.map(ast.literal_eval, series)
+        return pool.map(literal_eval_if_str, series)

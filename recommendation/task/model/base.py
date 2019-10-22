@@ -5,7 +5,7 @@ import multiprocessing
 import os
 import shutil
 from contextlib import redirect_stdout
-from typing import Type, Dict, List
+from typing import Type, Dict, List, Optional
 
 import luigi
 import mlflow
@@ -113,10 +113,6 @@ class BaseModelTraining(luigi.Task):
     def project_config(self):
         return PROJECTS[self.project]
 
-    @property
-    def target_column(self) -> str:
-        return self.target_col or self.project_config.default_target_col
-
     def _save_params(self):
         with open(get_params_path(self.output().path), "w") as params_file:
             json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
@@ -129,83 +125,75 @@ class BaseModelTraining(luigi.Task):
         return transformation
 
     @property
+    def train_data_frame_path(self) -> str:
+        return self.input()[0].path
+
+    @property
+    def val_data_frame_path(self) -> str:
+        return self.input()[1].path
+
+    @property
+    def test_data_frame_path(self) -> str:
+        return self.input()[2].path
+
+    @property
+    def metadata_data_frame_path(self) -> Optional[str]:
+        if len(self.input()) > 3:
+            return self.input()[3].path
+        else:
+            return None
+
+    @property
+    def metadata_data_frame(self) -> Optional[pd.DataFrame]:
+        if not hasattr(self, "_metadata_data_frame"):
+            self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path)\
+                if self.metadata_data_frame_path else None
+        return self._metadata_data_frame
+
+    @property
     def train_dataset(self) -> Dataset:
         if not hasattr(self, "_train_dataset"):
-            train_df = pd.read_csv(self.input()[0].path)
-            self._train_dataset = self.project_config.dataset_class(train_df, self.project_config,
+            train_df = pd.read_csv(self.train_data_frame_path)
+            self._train_dataset = self.project_config.dataset_class(train_df, self.metadata_data_frame,
+                                                                    self.project_config,
                                                                     transformation=self.get_data_transformation())
         return self._train_dataset
 
     @property
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
-            val_df = pd.read_csv(self.input()[1].path)
-            self._val_dataset = self.project_config.dataset_class(val_df, self.project_config,
+            val_df = pd.read_csv(self.val_data_frame_path)
+            self._val_dataset = self.project_config.dataset_class(val_df, self.metadata_data_frame, self.project_config,
                                                                   transformation=self.get_data_transformation())
         return self._val_dataset
 
     @property
     def test_dataset(self) -> Dataset:
         if not hasattr(self, "_test_dataset"):
-            test_df = pd.read_csv(self.input()[2].path)
-            self._test_dataset = self.project_config.dataset_class(test_df, self.project_config)
+            test_df = pd.read_csv(self.test_data_frame_path)
+            self._test_dataset = self.project_config.dataset_class(test_df, self.metadata_data_frame,
+                                                                   self.project_config)
         return self._test_dataset
 
     @property
     def n_users(self):
         if not hasattr(self, "_n_users"):
-            train_df = pd.read_csv(self.input()[0].path, nrows=1)
+            train_df = pd.read_csv(self.train_data_frame_path, nrows=1)
             self._n_users = int(train_df.iloc[0][self.project_config.n_users_column])
         return self._n_users
 
     @property
     def n_items(self):
         if not hasattr(self, "_n_items"):
-            train_df = pd.read_csv(self.input()[0].path, nrows=1)
+            train_df = pd.read_csv(self.train_data_frame_path, nrows=1)
             self._n_items = int(train_df.iloc[0][self.project_config.n_items_column])
         return self._n_items
 
-    @property
-    def vocab_size(self):
-        if not hasattr(self, "_vocab_size"):
-            train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-            self._vocab_size = int(train_df.iloc[0]["vocab_size"])
-        return self._vocab_size
-    
-    @property
-    def non_textual_input_dim(self):
-        if not hasattr(self, "_non_textual_input_dim"):
-           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-           self._non_textual_input_dim = int(train_df.iloc[0]["non_textual_input_dim"])
-        return self._non_textual_input_dim 
-    
-    @property
-    def menu_full_text_max_words(self):
-        if not hasattr(self, "_menu_full_text_max_words"):
-           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-           self._menu_full_text_max_words = int(train_df.iloc[0]["menu_full_text_max_words"])
-        return self._menu_full_text_max_words
-    
-    @property
-    def description_max_words(self):
-        if not hasattr(self, "_description_max_words"):
-           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-           self._description_max_words = int(train_df.iloc[0]["description_max_words"])
-        return self._description_max_words
 
-    @property
-    def category_names_max_words(self):
-        if not hasattr(self, "_category_names_max_words"):
-           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-           self._category_names_max_words = int(train_df.iloc[0]["category_names_max_words"])
-        return self._category_names_max_words
     
-    @property
-    def name_max_words(self):
-        if not hasattr(self, "_name_max_words"):
-           train_df =  pd.read_csv(self.input()[0].path, nrows=1)
-           self._name_max_words = int(train_df.iloc[0]["trading_name_max_words"])
-        return self._name_max_words
+
+
+
 
 
 

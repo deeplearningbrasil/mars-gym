@@ -1,21 +1,20 @@
+import abc
 import itertools
 import math
 import os
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 import luigi
-import abc
-
+import numpy as np
+import pandas as pd
 import psutil
 import requests
-from luigi.contrib.spark import PySparkTask
-from pyspark import SparkConf
-from tqdm import tqdm
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split, StratifiedKFold
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.under_sampling import RandomUnderSampler
+from luigi.contrib.spark import PySparkTask
+from pyspark import SparkConf
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from tqdm import tqdm
 
 
 class BaseDownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
@@ -76,28 +75,36 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     def stratification_property(self) -> str:
         pass
 
-    def output(self) -> Tuple[luigi.LocalTarget, luigi.LocalTarget, luigi.LocalTarget]:
+    @property
+    def metadata_data_frame_path(self) -> Optional[str]:
+        return None
+
+    def output(self) -> Tuple[luigi.LocalTarget, ...]:
         task_hash = self.task_id
         if self.dataset_split_method == "holdout":
-            return (luigi.LocalTarget(os.path.join(self.dataset_dir,
-                                                   "train_%.2f_%d_%s_%s.csv" % (
-                                                       self.val_size, self.seed, self.sampling_strategy, task_hash))),
-                    luigi.LocalTarget(
-                        os.path.join(self.dataset_dir, "val_%.2f_%d_%s.csv" % (self.val_size, self.seed, task_hash))),
-                    luigi.LocalTarget(
-                        os.path.join(self.dataset_dir, "test_%.2f_%d_%s.csv" % (self.test_size, self.seed, task_hash))),
-                    )
+            output = (luigi.LocalTarget(os.path.join(self.dataset_dir,
+                                                     "train_%.2f_%d_%s_%s.csv" % (
+                                                         self.val_size, self.seed, self.sampling_strategy, task_hash))),
+                      luigi.LocalTarget(
+                          os.path.join(self.dataset_dir, "val_%.2f_%d_%s.csv" % (self.val_size, self.seed, task_hash))),
+                      luigi.LocalTarget(
+                          os.path.join(self.dataset_dir,
+                                       "test_%.2f_%d_%s.csv" % (self.test_size, self.seed, task_hash))),
+                      )
         else:
-            return (luigi.LocalTarget(os.path.join(self.dataset_dir,
-                                                   "train_[%dof%d]_%d_%s_%s.csv" % (
-                                                       self.split_index + 1, self.n_splits, self.seed,
-                                                       self.sampling_strategy, task_hash))),
-                    luigi.LocalTarget(
-                        os.path.join(self.dataset_dir, "val_[%of%d]_%d_%s.csv" % (
-                            self.split_index + 1, self.n_splits, self.seed, task_hash))),
-                    luigi.LocalTarget(
-                        os.path.join(self.dataset_dir, "test_%.2f_%d_%s.csv" % (self.test_size, self.seed, task_hash))),
-                    )
+            output = (luigi.LocalTarget(os.path.join(self.dataset_dir,
+                                                     "train_[%dof%d]_%d_%s_%s.csv" % (
+                                                         self.split_index + 1, self.n_splits, self.seed,
+                                                         self.sampling_strategy, task_hash))),
+                      luigi.LocalTarget(
+                          os.path.join(self.dataset_dir, "val_[%of%d]_%d_%s.csv" % (
+                              self.split_index + 1, self.n_splits, self.seed, task_hash))),
+                      luigi.LocalTarget(
+                          os.path.join(self.dataset_dir,
+                                       "test_%.2f_%d_%s.csv" % (self.test_size, self.seed, task_hash))),
+                      )
+        if self.metadata_data_frame_path:
+            return output + (luigi.LocalTarget(self.metadata_data_frame_path),)
 
     def run(self):
         os.makedirs(self.dataset_dir, exist_ok=True)

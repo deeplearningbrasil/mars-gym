@@ -38,7 +38,42 @@ class TripletNetContentTraining(BaseTorchModelTraining):
     recurrence_hidden_size: int = luigi.IntParameter(default=40)
     content_layers: List[int] = luigi.ListParameter(default=[200, 128])
 
-                   
+    @property
+    def non_textual_input_dim(self):
+        if not hasattr(self, "_non_textual_input_dim"):
+            self._non_textual_input_dim = int(self.metadata_data_frame.iloc[0]["non_textual_input_dim"])
+        return self._non_textual_input_dim
+
+    @property
+    def vocab_size(self):
+        if not hasattr(self, "_vocab_size"):
+            self._vocab_size = int(self.metadata_data_frame.iloc[0]["vocab_size"])
+        return self._vocab_size
+
+    @property
+    def menu_full_text_max_words(self):
+        if not hasattr(self, "_menu_full_text_max_words"):
+            self._menu_full_text_max_words = int(self.metadata_data_frame.iloc[0]["menu_full_text_max_words"])
+        return self._menu_full_text_max_words
+
+    @property
+    def description_max_words(self):
+        if not hasattr(self, "_description_max_words"):
+            self._description_max_words = int(self.metadata_data_frame.iloc[0]["description_max_words"])
+        return self._description_max_words
+
+    @property
+    def category_names_max_words(self):
+        if not hasattr(self, "_category_names_max_words"):
+            self._category_names_max_words = int(self.metadata_data_frame.iloc[0]["category_names_max_words"])
+        return self._category_names_max_words
+
+    @property
+    def name_max_words(self):
+        if not hasattr(self, "_name_max_words"):
+            self._name_max_words = int(self.metadata_data_frame.iloc[0]["trading_name_max_words"])
+        return self._name_max_words
+
     def create_module(self) -> nn.Module:
         input_dim: int = self.non_textual_input_dim
         vocab_size: int = self.vocab_size

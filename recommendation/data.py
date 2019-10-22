@@ -1,5 +1,5 @@
 import abc
-from typing import Tuple, List, Iterator, Union, Sized, Callable
+from typing import Tuple, List, Iterator, Union, Sized, Callable, Optional
 
 import torch
 from torch.utils.data import Dataset
@@ -119,19 +119,21 @@ class CriteoDataset(Dataset):
 
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
-        if column.type == IOType.ARRAY:
+        if column.type == IOType.ARRAY and column.name in data_frame:
             data_frame[column.name] = parallel_literal_eval(data_frame[column.name])
 
 
 class InteractionsDataset(Dataset):
-    def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
-                 transformation: Union[Callable] = None) -> None:
+    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
+                 project_config: ProjectConfig, transformation: Union[Callable] = None) -> None:
         assert len(project_config.input_columns) >= 2
         assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY for input_column in project_config.input_columns)
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
+        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column])
 
         self._data_frame = data_frame
+        self._metadata_data_frame = metadata_data_frame
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
         self._output_column = project_config.output_column.name
 
@@ -147,7 +149,8 @@ class InteractionsDataset(Dataset):
 
 
 class InteractionsMatrixDataset(Dataset):
-    def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
+    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
+                 project_config: ProjectConfig,
                  transformation: Union[CorruptionTransformation, Callable] = None) -> None:
         assert len(project_config.input_columns) == 1
         assert project_config.input_columns[0].name == project_config.output_column.name
@@ -185,8 +188,8 @@ class InteractionsMatrixDataset(Dataset):
 
 
 class InteractionsAndContentDataset(Dataset):
-    def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
-                 transformation: Union[CorruptionTransformation, Callable] = None) -> None:
+    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
+                 project_config: ProjectConfig, transformation: Union[CorruptionTransformation, Callable] = None) -> None:
         assert len(project_config.input_columns) >= 1
 
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
@@ -199,13 +202,14 @@ class InteractionsAndContentDataset(Dataset):
             else self._n_users
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
+        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column])
 
         target_col = project_config.output_column.name
         i, j, data = zip(
             *((index, int(t[0]), t[1]) for index, row in enumerate(data_frame[target_col])
               for t in row))
         self._interaction_matrix = csr_matrix((data, (i, j)), shape=(max(i) + 1, dim))
-        self._content = data_frame[[c for c in self._input_columns if c != self._output_column]]
+        self._content = metadata_data_frame.set_index(self._input_columns[1])
 
         if isinstance(transformation, CorruptionTransformation):
             transformation.setup(self._interaction_matrix)
@@ -218,7 +222,7 @@ class InteractionsAndContentDataset(Dataset):
         if isinstance(indices, int):
             indices = [indices]
         rows: csr_matrix = self._interaction_matrix[indices]
-        content_rows = self._content.iloc[indices]
+        content_rows = self._content.loc[rows[self._input_columns[1]]]
 
         if self._transformation:
             input_rows = self._transformation(rows)
@@ -231,10 +235,10 @@ class InteractionsAndContentDataset(Dataset):
 
 class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
-    def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
-                 transformation: Union[Callable] = None) -> None:
+    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
+                 project_config: ProjectConfig, transformation: Union[Callable] = None) -> None:
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
-        super().__init__(data_frame, project_config, transformation)
+        super().__init__(data_frame, metadata_data_frame, project_config, transformation)
         self._non_zero_indices = set(
             data_frame[[input_column for input_column in self._input_columns]].itertuples(index=False, name=None))
         self._max_values = [data_frame[input_column].max() for input_column in self._input_columns]
@@ -294,24 +298,23 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
 
 class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
-    def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
-                 transformation: Union[Callable] = None) -> None:
+    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
+                 project_config: ProjectConfig, transformation: Union[Callable] = None) -> None:
 
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index()
-        super().__init__(data_frame, project_config, transformation)
+        super().__init__(data_frame, metadata_data_frame, project_config, transformation)
         self._non_zero_indices = set(
             data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
 
-        self._items_df = self._data_frame[self._input_columns[1:]].drop_duplicates(subset=self._input_columns[1])\
-            .set_index(self._input_columns[1])
+        self._items_df = self._metadata_data_frame[self._input_columns[1:]].set_index(self._input_columns[1])
         
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
 
         self._n_users: int = self._users.shape[0]
         self._n_items: int = self._items.shape[0]
-        self._vocab_size: int = data_frame.iloc[0]["vocab_size"]
-        self._non_text_input_dim: int = data_frame.iloc[0]["non_textual_input_dim"]
+        self._vocab_size: int = metadata_data_frame.iloc[0]["vocab_size"]
+        self._non_text_input_dim: int = metadata_data_frame.iloc[0]["non_textual_input_dim"]
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]
