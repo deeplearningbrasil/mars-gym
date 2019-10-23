@@ -390,7 +390,7 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
 
         for input_column in self.model_training.project_config.input_columns[2:]:
             dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
-            values = merchant_rows[input_column.name].values.tolist()
+            values = rows[input_column.name].values.tolist()
             inputs.append(torch.tensor(values, dtype=dtype) .to(self.model_training.torch_device))
             
         return inputs
@@ -403,8 +403,10 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
         
         account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
                 .to(self.model_training.torch_device)
+            
+        merchant_rows = self.merchant_df.loc[rows["merchant_idx"]]
 
-        inputs = self._generate_content_tensors(rows, pool)
+        inputs = self._generate_content_tensors(merchant_rows, pool)
             
         return [account_idxs, inputs]
 
