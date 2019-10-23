@@ -29,6 +29,7 @@ class ProjectConfig(object):
                  input_columns: List[Column],
                  output_column: Column,
                  recommender_type: RecommenderType,
+                 dataset_extra_params: dict = {},
                  n_users_column: str = "n_users",
                  n_items_column: str = "n_items",
                  default_balance_fields: List[str] = [],
@@ -36,6 +37,7 @@ class ProjectConfig(object):
         self.base_dir = base_dir
         self.prepare_data_frames_task = prepare_data_frames_task
         self.dataset_class = dataset_class
+        self.dataset_extra_params = dataset_extra_params
         self.input_columns = input_columns
         self.output_column = output_column
         self.recommender_type = recommender_type

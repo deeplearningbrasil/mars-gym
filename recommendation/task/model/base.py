@@ -156,7 +156,8 @@ class BaseModelTraining(luigi.Task):
             train_df = pd.read_csv(self.train_data_frame_path)
             self._train_dataset = self.project_config.dataset_class(train_df, self.metadata_data_frame,
                                                                     self.project_config,
-                                                                    transformation=self.get_data_transformation())
+                                                                    transformation=self.get_data_transformation(),
+                                                                    **self.project_config.dataset_extra_params)
         return self._train_dataset
 
     @property
@@ -164,7 +165,8 @@ class BaseModelTraining(luigi.Task):
         if not hasattr(self, "_val_dataset"):
             val_df = pd.read_csv(self.val_data_frame_path)
             self._val_dataset = self.project_config.dataset_class(val_df, self.metadata_data_frame, self.project_config,
-                                                                  transformation=self.get_data_transformation())
+                                                                  transformation=self.get_data_transformation(),
+                                                                  **self.project_config.dataset_extra_params)
         return self._val_dataset
 
     @property
@@ -172,7 +174,8 @@ class BaseModelTraining(luigi.Task):
         if not hasattr(self, "_test_dataset"):
             test_df = pd.read_csv(self.test_data_frame_path)
             self._test_dataset = self.project_config.dataset_class(test_df, self.metadata_data_frame,
-                                                                   self.project_config)
+                                                                   self.project_config,
+                                                                   **self.project_config.dataset_extra_params)
         return self._test_dataset
 
     @property

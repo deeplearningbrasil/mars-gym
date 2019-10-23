@@ -1,11 +1,11 @@
 import abc
-from typing import Tuple, List, Iterator, Union, Sized, Callable, Optional
+from typing import Tuple, List, Union, Callable, Optional, Set, Dict
 
-import torch
-from torch.utils.data import Dataset
-import pandas as pd
 import numpy as np
+import pandas as pd
+import torch
 from scipy.sparse.csr import csr_matrix
+from torch.utils.data import Dataset
 
 from recommendation.task.meta_config import ProjectConfig, IOType, RecommenderType, Column
 from recommendation.torch import coo_matrix_to_sparse_tensor
@@ -107,9 +107,8 @@ class CriteoDataset(Dataset):
             indices = [indices]
         rows: pd.Series = self._data_frame.iloc[indices]
 
-
-        rows_dense      = rows[self._dense_columns].values#)#.astype(float)
-        rows_categories = rows[self._categorical_columns].values#)#.astype(float)
+        rows_dense = rows[self._dense_columns].values  # )#.astype(float)
+        rows_categories = rows[self._categorical_columns].values  # )#.astype(float)
 
         if self._train:
             return (rows_dense, rows_categories), torch.FloatTensor(rows[self._output_column].values)
@@ -127,7 +126,8 @@ class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
                  project_config: ProjectConfig, transformation: Union[Callable] = None) -> None:
         assert len(project_config.input_columns) >= 2
-        assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY for input_column in project_config.input_columns)
+        assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY for input_column in
+                   project_config.input_columns)
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
         literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column])
@@ -144,7 +144,7 @@ class InteractionsDataset(Dataset):
         if isinstance(indices, int):
             indices = [indices]
         rows: pd.Series = self._data_frame.iloc[indices]
-        return tuple(rows[input_column].values for input_column in self._input_columns),\
+        return tuple(rows[input_column].values for input_column in self._input_columns), \
                rows[self._output_column].values
 
 
@@ -189,7 +189,8 @@ class InteractionsMatrixDataset(Dataset):
 
 class InteractionsAndContentDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
-                 project_config: ProjectConfig, transformation: Union[CorruptionTransformation, Callable] = None) -> None:
+                 project_config: ProjectConfig,
+                 transformation: Union[CorruptionTransformation, Callable] = None) -> None:
         assert len(project_config.input_columns) >= 1
 
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
@@ -227,30 +228,84 @@ class InteractionsAndContentDataset(Dataset):
         if self._transformation:
             input_rows = self._transformation(rows)
             return tuple([coo_matrix_to_sparse_tensor(input_rows.tocoo()), content_rows.values]), \
-            coo_matrix_to_sparse_tensor(rows.tocoo())
+                   coo_matrix_to_sparse_tensor(rows.tocoo())
 
         return tuple(coo_matrix_to_sparse_tensor(rows.tocoo()), content_rows.values), \
-            coo_matrix_to_sparse_tensor(rows.tocoo())
+               coo_matrix_to_sparse_tensor(rows.tocoo())
+
+
+class NegativeIndicesGenerator(object):
+    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
+                 input_columns: List[Column], possible_negative_indices_columns: Dict[str, List[str]] = None) -> None:
+        self._data_frame = data_frame
+        self._metadata_data_frame = metadata_data_frame
+        self._input_columns = input_columns
+
+        if possible_negative_indices_columns:
+            assert all(column in self._input_columns
+                       for column in possible_negative_indices_columns.keys())
+            self._possible_negative_indices: Dict[str, Dict[str, Set[int]]] = {}
+            for input_column, pivot_columns in possible_negative_indices_columns.items():
+                possible_negative_indices_for_input_column: Dict[str, Set[int]] = {}
+
+                for pivot_column in pivot_columns:
+                    possible_negative_indices_for_input_column[pivot_column] = set(
+                        metadata_data_frame.loc[metadata_data_frame[pivot_column] == 1][input_column].values)
+
+                self._possible_negative_indices[input_column] = possible_negative_indices_for_input_column
+
+        self._non_zero_indices = set(
+            data_frame[[input_column for input_column in self._input_columns]].itertuples(index=False, name=None))
+        self._max_values = [data_frame[input_column].max() for input_column in self._input_columns]
+
+    def _generate_random_indice(self, index: int, input_column: Column, max_value: int, previous_indices: List[int]):
+        if hasattr(self, "_possible_negative_indices"):
+            if input_column in self._possible_negative_indices:
+                positive_examples_df = self._data_frame
+                for previous_indice, column in zip(previous_indices, self._input_columns):
+                    positive_examples_df = positive_examples_df.loc[positive_examples_df[column] == previous_indice]
+                random_positive_row = positive_examples_df.iloc[np.random.choice(range(len(positive_examples_df)))]
+                pivot_index = random_positive_row[input_column]
+
+                possible_indices: List[int] = []
+                for pivot_column, pivot_possible_indices in self._possible_negative_indices[input_column].items():
+                    if self._metadata_data_frame.loc[self._metadata_data_frame[input_column] == pivot_index].iloc[0][pivot_column]:
+                        possible_indices.extend(pivot_possible_indices)
+                return np.random.choice(possible_indices)
+            else:
+                return self._data_frame.iloc[np.random.choice(len(self._data_frame))][input_column]
+        else:
+            return np.random.randint(0, max_value + 1)
+
+    def generate_negative_indices(self, fixed_indices: Tuple[int] = None) -> Tuple[int, ...]:
+        while True:
+            indices = fixed_indices or []
+            num_fixed_indices = len(indices)
+
+            for i, (input_column, max_value) in \
+                    enumerate(zip(self._input_columns[num_fixed_indices:], self._max_values[num_fixed_indices:])):
+                indices.append(self._generate_random_indice(i - num_fixed_indices, input_column, max_value,
+                                                                      indices))
+
+            indices = tuple(indices)
+            if indices not in self._non_zero_indices:
+                return indices
 
 
 class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
-                 project_config: ProjectConfig, transformation: Union[Callable] = None) -> None:
+                 project_config: ProjectConfig, transformation: Union[Callable] = None,
+                 possible_negative_indices_columns: Dict[str, List[str]] = None) -> None:
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
-        self._non_zero_indices = set(
-            data_frame[[input_column for input_column in self._input_columns]].itertuples(index=False, name=None))
-        self._max_values = [data_frame[input_column].max() for input_column in self._input_columns]
+
+        self._negative_indices_generator = NegativeIndicesGenerator(data_frame, metadata_data_frame,
+                                                                    self._input_columns,
+                                                                    possible_negative_indices_columns)
 
     def __len__(self) -> int:
         return super().__len__() * 2
-
-    def _generate_negative_indices(self) -> Tuple[int, ...]:
-        while True:
-            indices = tuple(np.random.randint(0, max_value+1) for max_value in self._max_values)
-            if indices not in self._non_zero_indices:
-                return indices
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
         if isinstance(indices, int):
@@ -264,7 +319,7 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         positive_batch: Tuple[Tuple[np.ndarray, ...], np.ndarray] = super().__getitem__(positive_indices)
         if num_of_negatives > 0:
             negative_batch: Tuple[Tuple[List[int], ...], np.ndarray] = (tuple(zip(*[
-                self._generate_negative_indices()
+                self._negative_indices_generator.generate_negative_indices()
                 for _ in
                 range(num_of_negatives)])), np.zeros(num_of_negatives))
             return tuple(np.append(positive_batch[0][i], negative_batch[0][i])
@@ -277,12 +332,6 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def _generate_negative_item_index(self, user_index: int) -> int:
-        while True:
-            item_index = np.random.randint(0, self._n_items)
-            if (user_index, item_index) not in self._non_zero_indices:
-                return item_index
-
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray, np.ndarray],
                                                                    list]:
         if isinstance(indices, int):
@@ -292,22 +341,27 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
         user_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
         negative_item_indices = np.array(
-            [self._generate_negative_item_index(user_index) for user_index in user_indices], dtype=np.int64)
+            [self._negative_indices_generator.generate_negative_indices((user_index,))
+             for user_index in user_indices], dtype=np.int64)
         return (user_indices, positive_item_indices, negative_item_indices), []
 
 
 class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
-                 project_config: ProjectConfig, transformation: Union[Callable] = None) -> None:
+                 project_config: ProjectConfig, transformation: Union[Callable] = None,
+                 possible_negative_indices_columns: Dict[str, List[str]] = None) -> None:
 
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index()
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
-        self._non_zero_indices = set(
-            data_frame[[self._input_columns[0], self._input_columns[1]]].itertuples(index=False, name=None))
 
-        self._items_df = self._metadata_data_frame[self._input_columns[1:]].set_index(self._input_columns[1])
-        
+        self._negative_indices_generator = NegativeIndicesGenerator(data_frame, metadata_data_frame,
+                                                                    self._input_columns,
+                                                                    possible_negative_indices_columns)
+
+        self._items_df = self._metadata_data_frame[self._input_columns[1:]].set_index(self._input_columns[1],
+                                                                                      drop=False)
+
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
 
@@ -319,12 +373,6 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def _generate_negative_item_index(self, user_index: int) -> int:
-        while True:
-            item_index = np.random.choice(self._items)
-            if (user_index, item_index) not in self._non_zero_indices:
-                return item_index
-    
     def _get_items(self, item_indices: List[int]) -> Tuple[torch.Tensor, ...]:
         res = []
         for column_name in self._input_columns[2:]:
@@ -333,15 +381,17 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
             res.append(torch.tensor(np.array(c), dtype=dtype))
         return tuple(res)
 
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...], Tuple[np.ndarray, ...]],
-                                                                    list]:
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[
+        Tuple[np.ndarray, Tuple[np.ndarray, ...], Tuple[np.ndarray, ...]],
+        list]:
         if isinstance(indices, int):
             indices = [indices]
 
         rows: pd.Series = self._data_frame.iloc[indices]
         user_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
-        negative_item_indices = [self._generate_negative_item_index(user_index) for user_index in user_indices]
+        negative_item_indices = [self._negative_indices_generator.generate_negative_indices((user_index,))
+                                 for user_index in user_indices]
 
         positive_items = self._get_items(positive_item_indices)
         negative_items = self._get_items(negative_item_indices)

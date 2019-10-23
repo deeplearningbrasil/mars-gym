@@ -70,6 +70,28 @@ PROJECTS: Dict[str, ProjectConfig] = {
         base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=BinaryInteractionsWithOnlineRandomNegativeGenerationDataset,
+        dataset_extra_params={
+            "possible_negative_indices_columns": {
+                "merchant_idx": ["weekday breakfast", "weekday dawn", "weekday dinner", "weekday lunch",
+                                 "weekday snack", "weekend breakfast", "weekend dawn", "weekend dinner",
+                                 "weekend lunch", "weekend snack"]
+            }
+        },
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        output_column=Column("buys", IOType.NUMBER),
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_binary_buys_cf_with_shift_based_random_negative": ProjectConfig(
+        base_dir=ifood.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
+        dataset_class=BinaryInteractionsWithOnlineRandomNegativeGenerationDataset,
+        dataset_extra_params={
+            "possible_negative_indices_columns": {
+                "merchant_idx": ["weekday breakfast", "weekday dawn", "weekday dinner", "weekday lunch",
+                                 "weekday snack", "weekend breakfast", "weekend dawn", "weekend dinner",
+                                 "weekend lunch", "weekend snack"]
+            }
+        },
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
         output_column=Column("buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
