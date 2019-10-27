@@ -109,6 +109,13 @@ PROJECTS: Dict[str, ProjectConfig] = {
         base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=UserTripletWithOnlineRandomNegativeGenerationDataset,
+        dataset_extra_params={
+            "possible_negative_indices_columns": {
+                "merchant_idx": ["weekday breakfast", "weekday dawn", "weekday dinner", "weekday lunch",
+                                 "weekday snack", "weekend breakfast", "weekend dawn", "weekend dinner",
+                                 "weekend lunch", "weekend snack"]
+            }
+        },
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
         output_column=Column("buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
@@ -117,8 +124,8 @@ PROJECTS: Dict[str, ProjectConfig] = {
         base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=UserTripletContentWithOnlineRandomNegativeGenerationDataset,
-        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX),
-                       Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
                        Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
         output_column=Column("buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,

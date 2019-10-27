@@ -130,11 +130,12 @@ class InteractionsDataset(Dataset):
                    project_config.input_columns)
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
-        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column])
+        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column] + project_config.metadata_columns)
 
         self._data_frame = data_frame
         self._metadata_data_frame = metadata_data_frame
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
+        self._metadata_columns = [metadata_column.name for metadata_column in project_config.metadata_columns]
         self._output_column = project_config.output_column.name
 
     def __len__(self) -> int:
@@ -194,6 +195,7 @@ class InteractionsAndContentDataset(Dataset):
         assert len(project_config.input_columns) >= 1
 
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
+        self._metadata_columns = [metadata_column.name for metadata_column in project_config.metadata_columns]
         self._output_column = project_config.output_column.name
 
         self._n_users: int = data_frame.iloc[0][project_config.n_users_column]
@@ -203,7 +205,7 @@ class InteractionsAndContentDataset(Dataset):
             else self._n_users
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
-        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column])
+        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column] + project_config.metadata_columns)
 
         target_col = project_config.output_column.name
         i, j, data = zip(
@@ -277,15 +279,15 @@ class NegativeIndicesGenerator(object):
         else:
             return np.random.randint(0, max_value + 1)
 
-    def generate_negative_indices(self, fixed_indices: Tuple[int] = None) -> Tuple[int, ...]:
+    def generate_negative_indices(self, fixed_indices: List[int] = None) -> Tuple[int, ...]:
         while True:
-            indices = fixed_indices or []
-            num_fixed_indices = len(indices)
+            indices = []
+            num_fixed_indices = len(fixed_indices) if fixed_indices is not None else 0
 
             for i, (input_column, max_value) in \
                     enumerate(zip(self._input_columns[num_fixed_indices:], self._max_values[num_fixed_indices:])):
                 indices.append(self._generate_random_indice(i - num_fixed_indices, input_column, max_value,
-                                                                      indices))
+                                                                      fixed_indices))
 
             indices = tuple(indices)
             if indices not in self._non_zero_indices:
@@ -341,8 +343,8 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
         user_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
         negative_item_indices = np.array(
-            [self._negative_indices_generator.generate_negative_indices((user_index,))
-             for user_index in user_indices], dtype=np.int64)
+            [self._negative_indices_generator.generate_negative_indices([user_index])
+             for user_index in user_indices], dtype=np.int64).flatten()
         return (user_indices, positive_item_indices, negative_item_indices), []
 
 
@@ -359,7 +361,7 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
                                                                     self._input_columns,
                                                                     possible_negative_indices_columns)
 
-        self._items_df = self._metadata_data_frame[self._input_columns[1:]].set_index(self._input_columns[1],
+        self._items_df = self._metadata_data_frame[self._input_columns[1:] + self._metadata_columns].set_index(self._input_columns[1],
                                                                                       drop=False)
 
         self._users = self._data_frame[self._input_columns[0]].unique()
@@ -375,7 +377,7 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
     def _get_items(self, item_indices: List[int]) -> Tuple[torch.Tensor, ...]:
         res = []
-        for column_name in self._input_columns[2:]:
+        for column_name in self._metadata_columns:
             c = self._items_df.loc[item_indices][column_name].values.tolist()
             dtype = torch.float32 if column_name == "restaurant_complete_info" else torch.int64
             res.append(torch.tensor(np.array(c), dtype=dtype))
@@ -390,8 +392,9 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         rows: pd.Series = self._data_frame.iloc[indices]
         user_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
-        negative_item_indices = [self._negative_indices_generator.generate_negative_indices((user_index,))
-                                 for user_index in user_indices]
+        negative_item_indices = np.array(
+            [self._negative_indices_generator.generate_negative_indices([user_index])
+             for user_index in user_indices], dtype=np.int64).flatten()
 
         positive_items = self._get_items(positive_item_indices)
         negative_items = self._get_items(negative_item_indices)

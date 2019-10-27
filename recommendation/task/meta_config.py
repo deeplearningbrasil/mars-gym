@@ -33,6 +33,7 @@ class ProjectConfig(object):
                  n_users_column: str = "n_users",
                  n_items_column: str = "n_items",
                  default_balance_fields: List[str] = [],
+                 metadata_columns: List[Column] = [],
                  ) -> None:
         self.base_dir = base_dir
         self.prepare_data_frames_task = prepare_data_frames_task
@@ -44,3 +45,4 @@ class ProjectConfig(object):
         self.n_users_column = n_users_column
         self.n_items_column = n_items_column
         self.default_balance_fields = default_balance_fields
+        self.metadata_columns = metadata_columns
