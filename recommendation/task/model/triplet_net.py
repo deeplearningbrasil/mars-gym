@@ -114,27 +114,23 @@ class TripletNetContentTraining(BaseTorchModelTraining):
                 
 
 class TripletNetSimpleContentTraining(TripletNetContentTraining):
+    num_filters: int = luigi.IntParameter(default=64)
+    filter_sizes: List[int] = luigi.ListParameter(default=[1, 3, 5])
+
     def create_module(self) -> nn.Module:
         input_dim: int = self.non_textual_input_dim
         vocab_size: int = self.vocab_size
-        menu_full_text_max_words: int = self.menu_full_text_max_words
-        description_text_max_words: int = self.description_max_words
-        category_text_max_words: int = self.category_names_max_words
-        name_max_words: int = self.name_max_words
 
         return TripletNetSimpleContent(
             input_dim=input_dim,
             vocab_size=vocab_size,
             word_embeddings_size=self.word_embeddings_size,
-            word_embeddings_output=self.word_embeddings_output,
             n_users=self.n_users,
-            max_text_len_description=description_text_max_words,
-            max_text_len_category=category_text_max_words,
-            max_text_len_name=name_max_words,
+            num_filters=self.num_filters,
+            filter_sizes=self.filter_sizes,
             dropout_prob=self.dropout_prob,
             dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],
             activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
-            recurrence_hidden_size=self.recurrence_hidden_size,
             content_layers=self.content_layers,
             n_factors=self.n_factors,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],

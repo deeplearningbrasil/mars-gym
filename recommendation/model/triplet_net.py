@@ -24,7 +24,7 @@ class TripletNet(UserAndItemEmbedding):
 
 
 class TripletNetSimpleContent(nn.Module):
-    def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, max_text_len_description: int, max_text_len_category: int, max_text_len_name: int, recurrence_hidden_size: int = 40, word_embeddings_output: int = 128,
+    def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
                  dropout_prob: int = 0.1, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128],
                  activation_function: Callable = F.selu, n_factors: int = 128, weight_init: Callable = lecun_normal_init):
         super(TripletNetSimpleContent, self).__init__()
@@ -32,15 +32,13 @@ class TripletNetSimpleContent(nn.Module):
         self.word_embeddings = nn.Embedding(vocab_size, word_embeddings_size)
         self.user_embeddings = nn.Embedding(n_users, n_factors)
 
-        filter_sizes = [1, 3, 5]
-        num_filters  = 64
         self.convs1  = nn.ModuleList(
             [nn.Conv2d(1, num_filters, (K, word_embeddings_size)) for K in filter_sizes])
         
         self.activation_function = activation_function
 
         # Dense Layer
-        num_dense  = np.sum([K * num_filters for K in filter_sizes])
+        num_dense = np.sum([K * num_filters for K in filter_sizes]) + input_dim
         #self.bn1   = nn.BatchNorm1d(num_dense)
         #self.dense = nn.Linear(num_dense, n_factors)
         self.dense = nn.Sequential(
@@ -72,7 +70,6 @@ class TripletNetSimpleContent(nn.Module):
         return x
 
     def dense_block(self, x):
-
         x = torch.sigmoid(self.dense(x))
         
         return x
@@ -88,7 +85,7 @@ class TripletNetSimpleContent(nn.Module):
         cnn_description = self.conv_block(emb_description)
         cnn_name        = self.conv_block(emb_name)
 
-        x = torch.cat((cnn_category, cnn_description, cnn_name), dim=1)
+        x = torch.cat((cnn_category, cnn_description, cnn_name, info), dim=1)
 
         #print("===================")
         #raise("===================", x.shape)
