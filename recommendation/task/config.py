@@ -125,6 +125,13 @@ PROJECTS: Dict[str, ProjectConfig] = {
         prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
         dataset_class=UserTripletContentWithOnlineRandomNegativeGenerationDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        dataset_extra_params={
+            "possible_negative_indices_columns": {
+                "merchant_idx": ["weekday breakfast", "weekday dawn", "weekday dinner", "weekday lunch",
+                                 "weekday snack", "weekend breakfast", "weekend dawn", "weekend dinner",
+                                 "weekend lunch", "weekend snack"]
+            }
+        },
         metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
                        Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
         output_column=Column("buys", IOType.NUMBER),

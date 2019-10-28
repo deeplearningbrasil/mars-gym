@@ -379,7 +379,8 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
 
         literal_eval_array_columns(self.merchant_df,
                                    self.model_training.project_config.input_columns
-                                   + [self.model_training.project_config.output_column])
+                                   + [self.model_training.project_config.output_column]
+                                   + self.model_training.project_config.metadata_columns)
 
         self.merchant_df = self.merchant_df.set_index("merchant_idx")
 
@@ -388,7 +389,7 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
     def _generate_content_tensors(self, rows, pool):
         inputs = []
 
-        for input_column in self.model_training.project_config.input_columns[2:]:
+        for input_column in self.model_training.project_config.metadata_columns:
             dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
             values = rows[input_column.name].values.tolist()
             inputs.append(torch.tensor(values, dtype=dtype) .to(self.model_training.torch_device))
@@ -397,9 +398,9 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
 
     def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
 
-        input_columns_name = [input_column.name for input_column in self.model_training.project_config.input_columns]
+        metadata_columns_name = [input_column.name for input_column in self.model_training.project_config.metadata_columns]
 
-        assert input_columns_name == ['account_idx', 'merchant_idx', 'trading_name', 'description', 'category_names', 'restaurant_complete_info']
+        assert metadata_columns_name == ['trading_name', 'description', 'category_names', 'restaurant_complete_info']
         
         account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
                 .to(self.model_training.torch_device)
