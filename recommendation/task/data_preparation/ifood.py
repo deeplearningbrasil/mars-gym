@@ -3,6 +3,8 @@ import os
 from datetime import datetime
 import pandas as pd
 import numpy as np
+import re
+from unidecode import unidecode
 
 import luigi
 import pandas as pd
@@ -178,15 +180,47 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurants_with_processed_contents.csv")), \
             luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurant_text_vocabulary.csv"))
 
+    def tokenizer(self, text):
+        #print(text)
+
+        text = str(text)
+
+        # # Remove acentuação
+        text = unidecode(text)
+
+        # # lowercase
+        text=text.lower()
+        
+        # #remove tags
+        text = re.sub("<!--?.*?-->","",text)
+        
+        # # remove special characters and digits
+        text=re.sub("(\\d|\\W)+"," ",text)
+        text = re.sub('[^A-Za-z0-9]+', ' ', text)
+
+        # # punk
+        text = re.sub(r'[?|!|\'|#]', r'', text)
+        text = re.sub(r'[.|,|:|)|(|\|/]', r' ', text)
+
+        tokens = [t.strip() for t in text.split() if len(t) > 1]
+        
+        if len(tokens) == 0:
+            tokens.append("<pad>")
+        #print(tokens)
+        #print("")
+        #if len(tokens) < 2:
+        #    print(tokens)
+        return tokens
+
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
 
         context = pd.read_csv(self.input().path)
 
         del context['item_imagesurl']
-        context['menu_full_text'] = context['menu_full_text'].str[:self.menu_text_length].replace(',', ' ')
-        context['description'] = context['description'].str[:self.description_text_length].replace(',', ' ')
-        context['category_names'] = context['category_names'].str[:self.category_text_length].replace(',', ' ')
+        context['menu_full_text']   = context['menu_full_text'].str[:self.menu_text_length].replace(',', ' ')
+        context['description']      = context['description'].str[:self.description_text_length].replace(',', ' ')
+        context['category_names']   = context['category_names'].str[:self.category_text_length].replace(',', ' ')
 
         for column in ['days_of_week', 'shifts']:
             context[column] = parallel_literal_eval(context[column].fillna('[]'))
@@ -194,16 +228,18 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
             for el in elements:
                 context[el] = context[column].apply(lambda x: ((el in x) * 1.0))
 
-        context['avg_score'] = context['avg_score'].fillna(-1)
-        context['category_names'] = context['category_names'].fillna('##').str.replace('|', ' ')
+        context['avg_score']      = context['avg_score'].fillna(-1)
+        context['category_names'] = context['category_names'].fillna('NAN').str.replace('|', ' ')
 
         encoder = LabelEncoder(context['dish_description'].values)
         context['dish_description'] = encoder.batch_encode(context['dish_description'])
 
-        vocab = context['trading_name'].values.tolist() + context['description'].values.tolist() + \
+        vocab = context['description'].values.tolist() + context['trading_name'].values.tolist() + \
             context['category_names'].values.tolist() + context['menu_full_text'].values.tolist()
-        context = context.fillna('##').replace(r'^\s*$', '##', regex=True)
-        tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda s: str(s).split())
+        
+        context   = context.fillna('NAN').replace(r'^\s*$', 'NAN', regex=True)
+        tokenizer = StaticTokenizerEncoder(
+            vocab, tokenize=self.tokenizer, min_occurrences=2)  # int(len(vocab)*0.01)
 
         for text_column in ['trading_name', 'description', 'category_names', "menu_full_text"]:
             context[text_column] = tokenizer.batch_encode(context[text_column])[0].cpu().detach().numpy().tolist()
@@ -223,7 +259,6 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         
         context.to_csv(self.output()[0].path, index=False)
         pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
-
 
 class SplitSessionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.2)

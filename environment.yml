@@ -31,3 +31,4 @@ dependencies:
   - lib/torchbearer-1.0.0.dev0-py3-none-any.whl
   - mlflow==1.0.0
   - pytorch-nlp==0.4.1
+  - unidecode==1.1.1
