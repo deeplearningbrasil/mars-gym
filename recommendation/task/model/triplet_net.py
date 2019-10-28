@@ -6,7 +6,7 @@ from typing import Callable, List, Type, Union
 
 from recommendation.task.model.base import BaseTorchModelTraining, TORCH_ACTIVATION_FUNCTIONS, TORCH_WEIGHT_INIT, \
     TORCH_DROPOUT_MODULES
-from recommendation.model.triplet_net import TripletNet, TripletNetContent
+from recommendation.model.triplet_net import TripletNet, TripletNetContent, TripletNetSimpleContent
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 from recommendation.task.model.embedding import UserAndItemEmbeddingTraining
 from recommendation.task.ifood import GenerateContentEmbeddings
@@ -22,6 +22,7 @@ class TripletNetTraining(UserAndItemEmbeddingTraining):
             n_factors=self.n_factors,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
         )
+
 
 
 class TripletNetContentTraining(BaseTorchModelTraining):
@@ -111,3 +112,30 @@ class TripletNetContentTraining(BaseTorchModelTraining):
                 GenerateContentEmbeddings(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id).run()
                 
+
+class TripletNetSimpleContentTraining(TripletNetContentTraining):
+    def create_module(self) -> nn.Module:
+        input_dim: int = self.non_textual_input_dim
+        vocab_size: int = self.vocab_size
+        menu_full_text_max_words: int = self.menu_full_text_max_words
+        description_text_max_words: int = self.description_max_words
+        category_text_max_words: int = self.category_names_max_words
+        name_max_words: int = self.name_max_words
+
+        return TripletNetSimpleContent(
+            input_dim=input_dim,
+            vocab_size=vocab_size,
+            word_embeddings_size=self.word_embeddings_size,
+            word_embeddings_output=self.word_embeddings_output,
+            n_users=self.n_users,
+            max_text_len_description=description_text_max_words,
+            max_text_len_category=category_text_max_words,
+            max_text_len_name=name_max_words,
+            dropout_prob=self.dropout_prob,
+            dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],
+            activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
+            recurrence_hidden_size=self.recurrence_hidden_size,
+            content_layers=self.content_layers,
+            n_factors=self.n_factors,
+            weight_init=TORCH_WEIGHT_INIT[self.weight_init],
+        )
