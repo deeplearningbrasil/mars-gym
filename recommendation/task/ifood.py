@@ -386,7 +386,7 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
 
         return super()._evaluate_account_merchant_tuples()
 
-    def _generate_content_tensors(self, rows, pool):
+    def _generate_content_tensors(self, rows):
         inputs = []
 
         for input_column in self.model_training.project_config.metadata_columns:
@@ -407,7 +407,7 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
             
         merchant_rows = self.merchant_df.loc[rows["merchant_idx"]]
 
-        inputs = self._generate_content_tensors(merchant_rows, pool)
+        inputs = self._generate_content_tensors(merchant_rows)
             
         return [account_idxs, inputs]
 
@@ -432,13 +432,18 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
                          self.model_task_id, "restaurant_metadata.tsv"))
 
-    def _generate_content_tensors(self, rows, pool):
-        return GenerateRelevanceListsTripletContentModel._generate_content_tensors(self, rows, pool)
+    def _generate_content_tensors(self, rows):
+        return GenerateRelevanceListsTripletContentModel._generate_content_tensors(self, rows)
 
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
 
         processed_content_df = pd.read_csv(self.input()[0][0].path)
+
+        literal_eval_array_columns(processed_content_df,
+                                   self.model_training.project_config.input_columns
+                                   + [self.model_training.project_config.output_column]
+                                   + self.model_training.project_config.metadata_columns)
 
         print("Loading trained model...")
         module = self.model_training.get_trained_module()
@@ -448,7 +453,7 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
         for indices in tqdm(chunks(range(len(processed_content_df)), self.batch_size),
                             total=math.ceil(len(processed_content_df) / self.batch_size)):
             rows: pd.DataFrame = processed_content_df.iloc[indices]
-            inputs = self._generate_content_tensors(rows, pool)
+            inputs = self._generate_content_tensors(rows)
             batch_embeddings: torch.Tensor = module.compute_item_embeddings(inputs)
             embeddings.extend(batch_embeddings.detach().cpu().numpy())
            
