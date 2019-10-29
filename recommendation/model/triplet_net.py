@@ -25,10 +25,11 @@ class TripletNet(UserAndItemEmbedding):
 
 class TripletNetSimpleContent(nn.Module):
     def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
-                 dropout_prob: int = 0.1, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128],
+                 dropout_prob: int = 0.1, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128],
                  activation_function: Callable = F.selu, n_factors: int = 128, weight_init: Callable = lecun_normal_init):
         super(TripletNetSimpleContent, self).__init__()
 
+        self.binary = binary
         self.word_embeddings = nn.Embedding(vocab_size, word_embeddings_size)
         self.user_embeddings = nn.Embedding(n_users, n_factors)
 
@@ -70,7 +71,10 @@ class TripletNetSimpleContent(nn.Module):
         return x
 
     def dense_block(self, x):
-        x = torch.sigmoid(self.dense(x))
+        x = self.dense(x)
+
+        if self.binary:
+            x = torch.sigmoid(x)
         
         return x
 
@@ -86,15 +90,6 @@ class TripletNetSimpleContent(nn.Module):
         cnn_name        = self.conv_block(emb_name)
 
         x = torch.cat((cnn_category, cnn_description, cnn_name, info), dim=1)
-
-        #print("===================")
-        #raise("===================", x.shape)
-        #text_out   = self.activation_function(self.linear(text_layer))
-
-        # for layer in self.content_network:
-        #     info = self.activation_function(layer(info.float()))
-
-        # x = torch.cat((text_out, info), dim=1)
 
         if hasattr(self, "dropout"):
             x = self.dropout(x)

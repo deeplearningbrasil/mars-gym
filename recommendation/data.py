@@ -247,8 +247,11 @@ class NegativeIndicesGenerator(object):
             assert all(column in self._input_columns
                        for column in possible_negative_indices_columns.keys())
             self._possible_negative_indices: Dict[str, Dict[str, Set[int]]] = {}
+
+
             for input_column, pivot_columns in possible_negative_indices_columns.items():
                 possible_negative_indices_for_input_column: Dict[str, Set[int]] = {}
+
 
                 for pivot_column in pivot_columns:
                     possible_negative_indices_for_input_column[pivot_column] = set(
@@ -283,6 +286,7 @@ class NegativeIndicesGenerator(object):
         while True:
             indices = []
             num_fixed_indices = len(fixed_indices) if fixed_indices is not None else 0
+            #raise Exception("===> {} {}".format(fixed_indices, num_fixed_indices))
 
             for i, (input_column, max_value) in \
                     enumerate(zip(self._input_columns[num_fixed_indices:], self._max_values[num_fixed_indices:])):
@@ -356,6 +360,8 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index()
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
+        
+
 
         self._negative_indices_generator = NegativeIndicesGenerator(data_frame, metadata_data_frame,
                                                                     self._input_columns,
@@ -376,9 +382,10 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         return self._data_frame.shape[0]
 
     def _get_items(self, item_indices: List[int]) -> Tuple[torch.Tensor, ...]:
-        res = []
+        res      = []
+        df_items = self._items_df.loc[item_indices]
         for column_name in self._metadata_columns:
-            c = self._items_df.loc[item_indices][column_name].values.tolist()
+            c   = df_items[column_name].values.tolist()
             dtype = torch.float32 if column_name == "restaurant_complete_info" else torch.int64
             res.append(torch.tensor(np.array(c), dtype=dtype))
         return tuple(res)
@@ -389,12 +396,15 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         if isinstance(indices, int):
             indices = [indices]
 
-        rows: pd.Series = self._data_frame.iloc[indices]
-        user_indices = rows[self._input_columns[0]].values
+        rows: pd.Series       = self._data_frame.iloc[indices]
+        user_indices          = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
         negative_item_indices = np.array(
             [self._negative_indices_generator.generate_negative_indices([user_index])
              for user_index in user_indices], dtype=np.int64).flatten()
+
+        #raise Exception("indices: {} | {}".format(
+        #    positive_item_indices, negative_item_indices))
 
         positive_items = self._get_items(positive_item_indices)
         negative_items = self._get_items(negative_item_indices)

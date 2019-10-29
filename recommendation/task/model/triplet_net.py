@@ -116,6 +116,7 @@ class TripletNetContentTraining(BaseTorchModelTraining):
 class TripletNetSimpleContentTraining(TripletNetContentTraining):
     num_filters: int = luigi.IntParameter(default=64)
     filter_sizes: List[int] = luigi.ListParameter(default=[1, 3, 5])
+    binary: bool = luigi.BoolParameter(default=False)
 
     def create_module(self) -> nn.Module:
         input_dim: int = self.non_textual_input_dim
@@ -129,6 +130,7 @@ class TripletNetSimpleContentTraining(TripletNetContentTraining):
             num_filters=self.num_filters,
             filter_sizes=self.filter_sizes,
             dropout_prob=self.dropout_prob,
+            binary=self.binary,
             dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],
             activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
             content_layers=self.content_layers,
