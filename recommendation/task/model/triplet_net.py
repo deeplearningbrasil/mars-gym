@@ -109,9 +109,12 @@ class TripletNetContentTraining(BaseTorchModelTraining):
                 user_embeddings: np.ndarray = module.user_embeddings.weight.data.cpu().numpy()
                 np.savetxt(os.path.join(self.output().path, "user_embeddings.tsv"), user_embeddings, delimiter="\t")
             if self.save_item_embedding_tsv:
-                GenerateContentEmbeddings(model_module=self.model_module, model_cls=self.model_cls,
-                                                      model_task_id=self.model_task_id).run()
-                
+                self._generate_content_embeddings()
+
+    def _generate_content_embeddings(self):
+        GenerateContentEmbeddings(model_module="recommendation.task.ifood", 
+                                    model_cls="TripletNetContentTraining",
+                                        model_task_id=self.task_id).run()
 
 class TripletNetSimpleContentTraining(TripletNetContentTraining):
     num_filters: int = luigi.IntParameter(default=64)
@@ -137,3 +140,8 @@ class TripletNetSimpleContentTraining(TripletNetContentTraining):
             n_factors=self.n_factors,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
         )
+
+    def _generate_content_embeddings(self):
+        GenerateContentEmbeddings(model_module="recommendation.task.model.triplet_net", 
+                                    model_cls="TripletNetSimpleContentTraining",
+                                        model_task_id=self.task_id).run()
