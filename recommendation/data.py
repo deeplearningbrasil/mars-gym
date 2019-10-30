@@ -130,7 +130,8 @@ class InteractionsDataset(Dataset):
                    project_config.input_columns)
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
-        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column] + project_config.metadata_columns)
+        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [
+            project_config.output_column] + project_config.metadata_columns)
 
         self._data_frame = data_frame
         self._metadata_data_frame = metadata_data_frame
@@ -205,7 +206,8 @@ class InteractionsAndContentDataset(Dataset):
             else self._n_users
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
-        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [project_config.output_column] + project_config.metadata_columns)
+        literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [
+            project_config.output_column] + project_config.metadata_columns)
 
         target_col = project_config.output_column.name
         i, j, data = zip(
@@ -238,20 +240,20 @@ class InteractionsAndContentDataset(Dataset):
 
 class NegativeIndicesGenerator(object):
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
-                 input_columns: List[Column], possible_negative_indices_columns: Dict[str, List[str]] = None) -> None:
+                 input_columns: List[str], possible_negative_indices_columns: Dict[str, List[str]] = None) -> None:
         self._data_frame = data_frame
         self._metadata_data_frame = metadata_data_frame
         self._input_columns = input_columns
 
         if possible_negative_indices_columns:
+            self._data_frame = self._data_frame.set_index(input_columns, drop=False)
+
             assert all(column in self._input_columns
                        for column in possible_negative_indices_columns.keys())
             self._possible_negative_indices: Dict[str, Dict[str, Set[int]]] = {}
 
-
             for input_column, pivot_columns in possible_negative_indices_columns.items():
                 possible_negative_indices_for_input_column: Dict[str, Set[int]] = {}
-
 
                 for pivot_column in pivot_columns:
                     possible_negative_indices_for_input_column[pivot_column] = set(
@@ -263,35 +265,51 @@ class NegativeIndicesGenerator(object):
             data_frame[[input_column for input_column in self._input_columns]].itertuples(index=False, name=None))
         self._max_values = [data_frame[input_column].max() for input_column in self._input_columns]
 
-    def _generate_random_indice(self, index: int, input_column: Column, max_value: int, previous_indices: List[int]):
+    def _get_pivot_index(self, input_column: str, previous_indices: List[int]):
+        positive_examples_df = self._data_frame.loc[previous_indices]
+        random_positive_row = positive_examples_df.iloc[np.random.randint(0, len(positive_examples_df))]
+        pivot_index = random_positive_row[input_column]
+        return pivot_index
+
+    def _generate_random_index_by_pivot(self, input_column: str, pivot_index: int):
+        possible_indices: List[int] = []
+        for pivot_column, pivot_possible_indices in self._possible_negative_indices[input_column].items():
+            if pivot_index in pivot_possible_indices:
+                possible_indices.extend([index for index in pivot_possible_indices if index != pivot_index])
+        return np.random.choice(possible_indices)
+
+    def _generate_random_index(self, input_column: str, max_value: int, previous_indices: List[int]):
         if hasattr(self, "_possible_negative_indices"):
             if input_column in self._possible_negative_indices:
-                positive_examples_df = self._data_frame
-                for previous_indice, column in zip(previous_indices, self._input_columns):
-                    positive_examples_df = positive_examples_df.loc[positive_examples_df[column] == previous_indice]
-                random_positive_row = positive_examples_df.iloc[np.random.choice(range(len(positive_examples_df)))]
-                pivot_index = random_positive_row[input_column]
+                pivot_index = self._get_pivot_index(input_column, previous_indices)
 
-                possible_indices: List[int] = []
-                for pivot_column, pivot_possible_indices in self._possible_negative_indices[input_column].items():
-                    if self._metadata_data_frame.loc[self._metadata_data_frame[input_column] == pivot_index].iloc[0][pivot_column]:
-                        possible_indices.extend(pivot_possible_indices)
-                return np.random.choice(possible_indices)
+                return self._generate_random_index_by_pivot(input_column, pivot_index)
             else:
-                return self._data_frame.iloc[np.random.choice(len(self._data_frame))][input_column]
+                return self._data_frame.iloc[np.random.randint(0, len(self._data_frame))][input_column]
         else:
             return np.random.randint(0, max_value + 1)
 
     def generate_negative_indices(self, fixed_indices: List[int] = None) -> Tuple[int, ...]:
         while True:
-            indices = []
+            indices = fixed_indices
             num_fixed_indices = len(fixed_indices) if fixed_indices is not None else 0
-            #raise Exception("===> {} {}".format(fixed_indices, num_fixed_indices))
 
-            for i, (input_column, max_value) in \
-                    enumerate(zip(self._input_columns[num_fixed_indices:], self._max_values[num_fixed_indices:])):
-                indices.append(self._generate_random_indice(i - num_fixed_indices, input_column, max_value,
-                                                                      fixed_indices))
+            for input_column, max_value in \
+                    zip(self._input_columns[num_fixed_indices:], self._max_values[num_fixed_indices:]):
+                indices.append(self._generate_random_index(input_column, max_value, indices))
+
+            indices = tuple(indices)
+            if indices not in self._non_zero_indices:
+                return indices
+
+    def generate_negative_indices_given_positive(self, positive_indices: List[int]) -> Tuple[int, ...]:
+        while True:
+            indices = positive_indices[:-1]
+
+            if hasattr(self, "_possible_negative_indices"):
+                indices.append(self._generate_random_index_by_pivot(self._input_columns[-1], positive_indices[-1]))
+            else:
+                indices.append(np.random.randint(0, self._max_values[-1] + 1))
 
             indices = tuple(indices)
             if indices not in self._non_zero_indices:
@@ -347,8 +365,8 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
         user_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
         negative_item_indices = np.array(
-            [self._negative_indices_generator.generate_negative_indices([user_index])
-             for user_index in user_indices], dtype=np.int64).flatten()
+            [self._negative_indices_generator.generate_negative_indices_given_positive([user_index, item_index])[-1]
+             for user_index, item_index in zip(user_indices, positive_item_indices)], dtype=np.int64).flatten()
         return (user_indices, positive_item_indices, negative_item_indices), []
 
 
@@ -360,15 +378,14 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index()
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
-        
-
 
         self._negative_indices_generator = NegativeIndicesGenerator(data_frame, metadata_data_frame,
                                                                     self._input_columns,
                                                                     possible_negative_indices_columns)
 
-        self._items_df = self._metadata_data_frame[self._input_columns[1:] + self._metadata_columns].set_index(self._input_columns[1],
-                                                                                      drop=False)
+        self._items_df = self._metadata_data_frame[self._input_columns[1:] + self._metadata_columns].set_index(
+            self._input_columns[1],
+            drop=False)
 
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
@@ -382,10 +399,10 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         return self._data_frame.shape[0]
 
     def _get_items(self, item_indices: List[int]) -> Tuple[torch.Tensor, ...]:
-        res      = []
+        res = []
         df_items = self._items_df.loc[item_indices]
         for column_name in self._metadata_columns:
-            c   = df_items[column_name].values.tolist()
+            c = df_items[column_name].values.tolist()
             dtype = torch.float32 if column_name == "restaurant_complete_info" else torch.int64
             res.append(torch.tensor(np.array(c), dtype=dtype))
         return tuple(res)
@@ -396,14 +413,14 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         if isinstance(indices, int):
             indices = [indices]
 
-        rows: pd.Series       = self._data_frame.iloc[indices]
-        user_indices          = rows[self._input_columns[0]].values
+        rows: pd.Series = self._data_frame.iloc[indices]
+        user_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
         negative_item_indices = np.array(
-            [self._negative_indices_generator.generate_negative_indices([user_index])
-             for user_index in user_indices], dtype=np.int64).flatten()
+            [self._negative_indices_generator.generate_negative_indices_given_positive([user_index, item_index])[-1]
+             for user_index, item_index in zip(user_indices, positive_item_indices)], dtype=np.int64).flatten()
 
-        #raise Exception("indices: {} | {}".format(
+        # raise Exception("indices: {} | {}".format(
         #    positive_item_indices, negative_item_indices))
 
         positive_items = self._get_items(positive_item_indices)
