@@ -241,6 +241,8 @@ class BaseTorchModelTraining(BaseModelTraining):
     gradient_norm_clipping_type: float = luigi.IntParameter(default=2)
     early_stopping_patience: int = luigi.IntParameter(default=10)
     early_stopping_min_delta: float = luigi.FloatParameter(default=1e-6)
+    monitor_metric: str = luigi.Parameter(default="val_loss")
+    monitor_mode: str = luigi.Parameter(default="min")
     generator_workers: int = luigi.IntParameter(default=min(multiprocessing.cpu_count(), 20))
     pin_memory: bool = luigi.BoolParameter(default=False)
 
@@ -342,8 +344,10 @@ class BaseTorchModelTraining(BaseModelTraining):
     def _get_callbacks(self):
         callbacks = [
             *self._get_extra_callbacks(),
-            ModelCheckpoint(get_weights_path(self.output().path), save_best_only=True),
-            EarlyStopping(patience=self.early_stopping_patience, min_delta=self.early_stopping_min_delta),
+            ModelCheckpoint(get_weights_path(self.output().path), save_best_only=True, monitor=self.monitor_metric,
+                            mode=self.monitor_mode),
+            EarlyStopping(patience=self.early_stopping_patience, min_delta=self.early_stopping_min_delta,
+                          monitor=self.monitor_metric, mode=self.monitor_mode),
             CSVLogger(get_history_path(self.output().path)), MLFlowLogger(),
             TensorBoard(get_tensorboard_logdir(self.task_id), write_graph=False),
         ]

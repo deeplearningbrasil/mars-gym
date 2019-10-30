@@ -266,7 +266,7 @@ class NegativeIndicesGenerator(object):
         self._max_values = [data_frame[input_column].max() for input_column in self._input_columns]
 
     def _get_pivot_index(self, input_column: str, previous_indices: List[int]):
-        positive_examples_df = self._data_frame.loc[previous_indices]
+        positive_examples_df = self._data_frame.loc[tuple(previous_indices)]
         random_positive_row = positive_examples_df.iloc[np.random.randint(0, len(positive_examples_df))]
         pivot_index = random_positive_row[input_column]
         return pivot_index
@@ -407,9 +407,8 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
             res.append(torch.tensor(np.array(c), dtype=dtype))
         return tuple(res)
 
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[
-        Tuple[np.ndarray, Tuple[np.ndarray, ...], Tuple[np.ndarray, ...]],
-        list]:
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...],
+                                                                         Tuple[np.ndarray, ...]], list]:
         if isinstance(indices, int):
             indices = [indices]
 
