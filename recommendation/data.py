@@ -291,7 +291,7 @@ class NegativeIndicesGenerator(object):
 
     def generate_negative_indices(self, fixed_indices: List[int] = None) -> Tuple[int, ...]:
         while True:
-            indices = fixed_indices
+            indices = fixed_indices or []
             num_fixed_indices = len(fixed_indices) if fixed_indices is not None else 0
 
             for input_column, max_value in \
