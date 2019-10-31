@@ -136,6 +136,8 @@ class InteractionsDataset(Dataset):
         self._data_frame = data_frame
         self._metadata_data_frame = metadata_data_frame
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
+        self._index_input_columns = [input_column.name for input_column in project_config.input_columns
+                                     if input_column.type == IOType.INDEX]
         self._metadata_columns = [metadata_column.name for metadata_column in project_config.metadata_columns]
         self._output_column = project_config.output_column.name
 
@@ -325,7 +327,7 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
 
         self._negative_indices_generator = NegativeIndicesGenerator(data_frame, metadata_data_frame,
-                                                                    self._input_columns,
+                                                                    self._index_input_columns,
                                                                     possible_negative_indices_columns)
 
     def __len__(self) -> int:
@@ -380,7 +382,7 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
 
         self._negative_indices_generator = NegativeIndicesGenerator(data_frame, metadata_data_frame,
-                                                                    self._input_columns,
+                                                                    self._index_input_columns,
                                                                     possible_negative_indices_columns)
 
         self._items_df = self._metadata_data_frame[self._input_columns[1:] + self._metadata_columns].set_index(
