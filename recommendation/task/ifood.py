@@ -198,6 +198,17 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
         print("Creating the dictionary of scores...")
         return dict(scores_per_tuple)
 
+class GenerateRelevanceListsTripletWeightedModel(GenerateRelevanceListsForIfoodModel):
+
+    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
+        assert self.model_training.project_config.input_columns[0].name == 'account_idx'
+        assert self.model_training.project_config.input_columns[1].name == 'merchant_idx'
+
+        return [torch.tensor(rows[column].values, dtype=torch.int64)
+                          .to(self.model_training.torch_device)
+                      for column in ['account_idx', 'merchant_idx']]
+    
+
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
@@ -417,7 +428,11 @@ class EvaluateIfoodTripletNetContentModel(EvaluateIfoodModel):
         return GenerateRelevanceListsTripletContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id)
 
-
+class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
+    def requires(self):
+        return GenerateRelevanceListsTripletWeightedModel(model_module=self.model_module, model_cls=self.model_cls,
+                                                      model_task_id=self.model_task_id)
+                                                      
 class GenerateContentEmbeddings(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
 

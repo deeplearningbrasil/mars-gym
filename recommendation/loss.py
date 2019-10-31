@@ -115,9 +115,34 @@ class BayesianPersonalizedRankingTripletLoss(_Loss):
         loss = 1 - F.sigmoid(positive_distance - negative_distance)
         if self.reduction == "mean":
             return loss.mean()
+        elif self.reduction == "sum":
+            return loss.sum()
+        elif self.reduction == "none":
+            return loss
+
+class WeightedTripletLoss(_Loss):
+    def __init__(self, p=2., eps=1e-6, swap=False, size_average=None,
+                 reduce=None, reduction="mean", triplet_loss="triplet_margin", balance_factor=1.0):
+        super().__init__(size_average, reduce, reduction)
+        self.p = p
+        self.eps = eps
+        self.swap = swap
+        self.balance_factor = balance_factor
+        if triplet_loss == "triplet_margin":
+            self.triplet_loss = nn.TripletMarginLoss(p = self.p, reduction="none")
+        elif triplet_loss == "bpr_triplet":
+            self.triplet_loss = BayesianPersonalizedRankingTripletLoss(p = self.p, reduction="none")
+        else:
+            raise NotImplementedError
+
+    def forward(self, anchor, positive, negative, visits, buys):
+        loss = self.triplet_loss(anchor, positive, negative)
+        loss *= (visits + self.balance_factor * buys)
+
+        if self.reduction == "mean":
+            return loss.mean()
         else:
             return loss.sum()
-
 
 class VAELoss(nn.Module):
     def __init__(self, anneal=1.0):

@@ -126,7 +126,7 @@ class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
                  project_config: ProjectConfig, transformation: Union[Callable] = None) -> None:
         assert len(project_config.input_columns) >= 2
-        assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY for input_column in
+        assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY or input_column.type == IOType.NUMBER for input_column in
                    project_config.input_columns)
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
@@ -428,3 +428,21 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         negative_items = self._get_items(negative_item_indices)
 
         return (user_indices, positive_items, negative_items), []
+
+class UserTripletWeightedWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWithOnlineRandomNegativeGenerationDataset):
+    def __len__(self) -> int:
+        return self._data_frame.shape[0]
+
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, np.ndarray, np.ndarray],
+                                                                   list]:
+        if isinstance(indices, int):
+            indices = [indices]
+
+        rows: pd.Series = self._data_frame.iloc[indices]
+        user_indices = rows[self._input_columns[0]].values
+        positive_item_indices = rows[self._input_columns[1]].values
+        positive_item_visits = rows[self._input_columns[2]].values
+        positive_item_buys = rows[self._input_columns[3]].values
+        negative_item_indices = np.random.randint(0, self._data_frame[self._input_columns[1]].max() + 1, len(positive_item_indices))
+        return (user_indices, positive_item_indices, negative_item_indices, \
+                    positive_item_visits, positive_item_buys), []

@@ -13,7 +13,7 @@ from recommendation.task.ifood import GenerateContentEmbeddings
 
 
 class TripletNetTraining(UserAndItemEmbeddingTraining):
-    loss_function: str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet"], default="triplet_margin")
+    loss_function: str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet", "weighted_triplet"], default="triplet_margin")
 
     def create_module(self) -> nn.Module:
         return TripletNet(
