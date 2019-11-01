@@ -248,7 +248,7 @@ class NegativeIndicesGenerator(object):
         self._input_columns = input_columns
 
         if possible_negative_indices_columns:
-            self._data_frame = self._data_frame.set_index(input_columns, drop=False)
+            self._data_frame = self._data_frame.set_index(input_columns, drop=False).sort_index()
 
             assert all(column in self._input_columns
                        for column in possible_negative_indices_columns.keys())
@@ -387,7 +387,7 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         self._items_df = self._metadata_data_frame[self._input_columns[1:] + self._metadata_columns].set_index(
             self._input_columns[1],
-            drop=False)
+            drop=False).sort_index()
 
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
