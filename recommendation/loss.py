@@ -137,7 +137,7 @@ class WeightedTripletLoss(_Loss):
 
     def forward(self, anchor, positive, negative, visits, buys):
         loss = self.triplet_loss(anchor, positive, negative)
-        loss *= (visits + self.balance_factor * buys)
+        loss *= (buys + (visits/self.balance_factor))
 
         if self.reduction == "mean":
             return loss.mean()
