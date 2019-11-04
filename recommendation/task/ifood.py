@@ -478,3 +478,41 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
         print("Saving the output file...")
         np.savetxt(os.path.join(self.output()[0].path), embeddings, delimiter="\t")
         restaurant_df.to_csv(os.path.join(self.output()[1].path), sep='\t', index=False)
+
+class GenerateEmbeddings(BaseEvaluationTask):
+    user_embeddings = luigi.BoolParameter(default=False)
+    item_embeddings = luigi.BoolParameter(default=False)
+    test_size: float = luigi.FloatParameter(default=0.2)
+
+    def requires(self):
+        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
+
+    def output(self):
+        return luigi.LocalTarget(
+            os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.model_task_id, "user_embeddings.tsv")),\
+                luigi.LocalTarget(
+            os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.model_task_id, "restaurant_embeddings.tsv")), \
+                luigi.LocalTarget(
+            os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.model_task_id, "restaurant_metadata.tsv"))
+            
+
+    def run(self):
+        os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
+
+        print("Loading trained model...")
+        module = self.model_training.get_trained_module()
+
+        restaurant_df = pd.read_csv(self.input()[1].path)
+
+        if self.user_embeddings:
+            user_embeddings: np.ndarray = module.user_embeddings.weight.data.cpu().numpy()
+            np.savetxt(self.output()[0].path, user_embeddings, delimiter="\t")
+
+        if self.item_embeddings:
+            item_embeddings: np.ndarray = module.item_embeddings.weight.data.cpu().numpy()
+            np.savetxt(self.output()[1].path, item_embeddings, delimiter="\t")
+
+        restaurant_df.to_csv(os.path.join(self.output()[2].path), sep='\t', index=False)
