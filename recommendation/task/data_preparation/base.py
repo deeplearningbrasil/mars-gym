@@ -105,6 +105,8 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
                       )
         if self.metadata_data_frame_path:
             return output + (luigi.LocalTarget(self.metadata_data_frame_path),)
+        
+        return output
 
     def run(self):
         os.makedirs(self.dataset_dir, exist_ok=True)
