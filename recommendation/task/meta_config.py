@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import List, Type
+from typing import List, Type, Dict
 
 from torch.utils.data import Dataset
 
@@ -34,6 +34,7 @@ class ProjectConfig(object):
                  n_items_column: str = "n_items",
                  default_balance_fields: List[str] = [],
                  metadata_columns: List[Column] = [],
+                 possible_negative_indices_columns: Dict[str, List[str]] = None,
                  ) -> None:
         self.base_dir = base_dir
         self.prepare_data_frames_task = prepare_data_frames_task
@@ -46,3 +47,4 @@ class ProjectConfig(object):
         self.n_items_column = n_items_column
         self.default_balance_fields = default_balance_fields
         self.metadata_columns = metadata_columns
+        self.possible_negative_indices_columns = possible_negative_indices_columns

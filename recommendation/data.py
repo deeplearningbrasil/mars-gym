@@ -86,7 +86,8 @@ class SaltAndPepperNoiseCorruptionTransformation(MaskingNoiseCorruptionTransform
 
 class CriteoDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, project_config: ProjectConfig,
-                 transformation: Union[Callable] = None) -> None:
+                 metadata_data_frame: Optional[pd.DataFrame], transformation: Union[Callable] = None,
+                 negative_indices_generator: 'NegativeIndicesGenerator' = None) -> None:
 
         self._data_frame = data_frame
 
@@ -124,7 +125,8 @@ def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
 
 class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
-                 project_config: ProjectConfig, transformation: Union[Callable] = None) -> None:
+                 project_config: ProjectConfig, transformation: Union[Callable] = None,
+                 negative_indices_generator: 'NegativeIndicesGenerator' = None) -> None:
         assert len(project_config.input_columns) >= 2
         assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY for input_column in
                    project_config.input_columns)
@@ -155,7 +157,8 @@ class InteractionsDataset(Dataset):
 class InteractionsMatrixDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
                  project_config: ProjectConfig,
-                 transformation: Union[CorruptionTransformation, Callable] = None) -> None:
+                 transformation: Union[CorruptionTransformation, Callable] = None,
+                 negative_indices_generator: 'NegativeIndicesGenerator' = None) -> None:
         assert len(project_config.input_columns) == 1
         assert project_config.input_columns[0].name == project_config.output_column.name
 
@@ -194,7 +197,8 @@ class InteractionsMatrixDataset(Dataset):
 class InteractionsAndContentDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
                  project_config: ProjectConfig,
-                 transformation: Union[CorruptionTransformation, Callable] = None) -> None:
+                 transformation: Union[CorruptionTransformation, Callable] = None,
+                 negative_indices_generator: 'NegativeIndicesGenerator' = None) -> None:
         assert len(project_config.input_columns) >= 1
 
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
@@ -322,13 +326,11 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
                  project_config: ProjectConfig, transformation: Union[Callable] = None,
-                 possible_negative_indices_columns: Dict[str, List[str]] = None) -> None:
+                 negative_indices_generator: NegativeIndicesGenerator = None) -> None:
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
 
-        self._negative_indices_generator = NegativeIndicesGenerator(data_frame, metadata_data_frame,
-                                                                    self._index_input_columns,
-                                                                    possible_negative_indices_columns)
+        self._negative_indices_generator = negative_indices_generator
 
     def __len__(self) -> int:
         return super().__len__() * 2
@@ -376,14 +378,12 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
                  project_config: ProjectConfig, transformation: Union[Callable] = None,
-                 possible_negative_indices_columns: Dict[str, List[str]] = None) -> None:
+                 negative_indices_generator: NegativeIndicesGenerator = None) -> None:
 
         data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index()
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
 
-        self._negative_indices_generator = NegativeIndicesGenerator(data_frame, metadata_data_frame,
-                                                                    self._index_input_columns,
-                                                                    possible_negative_indices_columns)
+        self._negative_indices_generator = negative_indices_generator
 
         self._items_df = self._metadata_data_frame[self._input_columns[1:] + self._metadata_columns].set_index(
             self._input_columns[1],

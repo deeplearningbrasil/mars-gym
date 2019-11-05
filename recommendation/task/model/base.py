@@ -32,13 +32,14 @@ from torchbearer.callbacks.tensor_board import TensorBoard
 from torchbearer.callbacks.torch_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau, StepLR
 
 from recommendation.data import SupportBasedCorruptionTransformation, \
-    MaskingNoiseCorruptionTransformation, SaltAndPepperNoiseCorruptionTransformation
+    MaskingNoiseCorruptionTransformation, SaltAndPepperNoiseCorruptionTransformation, NegativeIndicesGenerator
 from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
-from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss, VAELoss, FocalVAELoss, AttentiveVAELoss
+from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss, VAELoss, FocalVAELoss, \
+    AttentiveVAELoss
 from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
 from recommendation.summary import summary
-from recommendation.task.config import PROJECTS
+from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
 from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, \
     NoAutoCollationDataLoader
@@ -54,7 +55,8 @@ TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, 
 TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss,
                             mlm=nn.MultiLabelMarginLoss,
                             focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
-                            bpr_triplet=BayesianPersonalizedRankingTripletLoss, vae_loss=VAELoss, focal_vae_loss=FocalVAELoss, attentive_vae_loss=AttentiveVAELoss)
+                            bpr_triplet=BayesianPersonalizedRankingTripletLoss, vae_loss=VAELoss,
+                            focal_vae_loss=FocalVAELoss, attentive_vae_loss=AttentiveVAELoss)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)
@@ -146,59 +148,76 @@ class BaseModelTraining(luigi.Task):
     @property
     def metadata_data_frame(self) -> Optional[pd.DataFrame]:
         if not hasattr(self, "_metadata_data_frame"):
-            self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path)\
+            self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path) \
                 if self.metadata_data_frame_path else None
         return self._metadata_data_frame
 
     @property
+    def train_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_train_data_frame"):
+            self._train_data_frame = pd.read_csv(self.train_data_frame_path)
+        return self._train_data_frame
+
+    @property
+    def val_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_val_data_frame"):
+            self._val_data_frame = pd.read_csv(self.val_data_frame_path)
+        return self._val_data_frame
+
+    @property
+    def test_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_test_data_frame"):
+            self._test_data_frame = pd.read_csv(self.test_data_frame_path)
+        return self._test_data_frame
+
+    @property
+    def negative_indices_generator(self) -> NegativeIndicesGenerator:
+        if not hasattr(self, "_negative_indices_generator"):
+            self._negative_indices_generator = NegativeIndicesGenerator(
+                pd.concat([self.train_data_frame, self.val_data_frame, self.test_data_frame]),
+                self.metadata_data_frame,
+                [input_column.name for input_column in self.project_config.input_columns
+                 if input_column.type == IOType.INDEX],
+                self.project_config.possible_negative_indices_columns)
+        return self._negative_indices_generator
+
+    @property
     def train_dataset(self) -> Dataset:
         if not hasattr(self, "_train_dataset"):
-            train_df = pd.read_csv(self.train_data_frame_path)
-            self._train_dataset = self.project_config.dataset_class(train_df, self.metadata_data_frame,
-                                                                    self.project_config,
-                                                                    transformation=self.get_data_transformation(),
-                                                                    **self.project_config.dataset_extra_params)
+            self._train_dataset = self.project_config.dataset_class(
+                self.train_data_frame, self.metadata_data_frame, self.project_config,
+                transformation=self.get_data_transformation(),
+                negative_indices_generator=self.negative_indices_generator, **self.project_config.dataset_extra_params)
         return self._train_dataset
 
     @property
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
-            val_df = pd.read_csv(self.val_data_frame_path)
-            self._val_dataset = self.project_config.dataset_class(val_df, self.metadata_data_frame, self.project_config,
-                                                                  transformation=self.get_data_transformation(),
-                                                                  **self.project_config.dataset_extra_params)
+            self._val_dataset = self.project_config.dataset_class(
+                self.val_data_frame, self.metadata_data_frame, self.project_config,
+                transformation=self.get_data_transformation(),
+                negative_indices_generator=self.negative_indices_generator, **self.project_config.dataset_extra_params)
         return self._val_dataset
 
     @property
     def test_dataset(self) -> Dataset:
         if not hasattr(self, "_test_dataset"):
-            test_df = pd.read_csv(self.test_data_frame_path)
-            self._test_dataset = self.project_config.dataset_class(test_df, self.metadata_data_frame,
-                                                                   self.project_config,
-                                                                   **self.project_config.dataset_extra_params)
+            self._test_dataset = self.project_config.dataset_class(
+                self.test_data_frame, self.metadata_data_frame, self.project_config,
+                negative_indices_generator=self.negative_indices_generator, ** self.project_config.dataset_extra_params)
         return self._test_dataset
 
     @property
     def n_users(self):
         if not hasattr(self, "_n_users"):
-            train_df = pd.read_csv(self.train_data_frame_path, nrows=1)
-            self._n_users = int(train_df.iloc[0][self.project_config.n_users_column])
+            self._n_users = int(self.train_data_frame.iloc[0][self.project_config.n_users_column])
         return self._n_users
 
     @property
     def n_items(self):
         if not hasattr(self, "_n_items"):
-            train_df = pd.read_csv(self.train_data_frame_path, nrows=1)
-            self._n_items = int(train_df.iloc[0][self.project_config.n_items_column])
+            self._n_items = int(self.train_data_frame.iloc[0][self.project_config.n_items_column])
         return self._n_items
-
-
-    
-
-
-
-
-
 
     @abc.abstractmethod
     def train(self):
@@ -329,7 +348,7 @@ class BaseTorchModelTraining(BaseModelTraining):
     def create_trial(self, module: nn.Module) -> Trial:
         loss_function = self._get_loss_function()
         trial = Trial(module, self._get_optimizer(module), loss_function, callbacks=self._get_callbacks(),
-                   metrics=self.metrics).to(self.torch_device)
+                      metrics=self.metrics).to(self.torch_device)
         if hasattr(loss_function, "torchbearer_state"):
             loss_function.torchbearer_state = trial.state
         return trial
