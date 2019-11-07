@@ -282,7 +282,11 @@ class NegativeIndicesGenerator(object):
         for pivot_column, pivot_possible_indices in self._possible_negative_indices[input_column].items():
             if pivot_index in pivot_possible_indices:
                 possible_indices.extend([index for index in pivot_possible_indices if index != pivot_index])
-        return np.random.choice(possible_indices)
+        if possible_indices:
+            return np.random.choice(possible_indices)
+        else:
+            print("No possible indices for %s=%d" % (input_column, pivot_index))
+            return pivot_index
 
     def _generate_random_index(self, input_column: str, max_value: int, previous_indices: List[int]):
         if hasattr(self, "_possible_negative_indices"):
