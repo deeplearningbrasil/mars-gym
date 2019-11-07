@@ -8,9 +8,9 @@ import numpy as np
 ## PYTHONPATH="." ./cuda_luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --workers 4
 # - Para uma única GPU:
 ## PYTHONPATH="." luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --local-scheduler
-from recommendation.task.ifood import EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel, EvaluateIfoodTripletNetContentModel
+from recommendation.task.ifood import EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel, EvaluateIfoodTripletNetContentModel, EvaluateIfoodTripletNetWeightedModel
 from recommendation.task.model.auto_encoder import UnconstrainedAutoEncoderTraining, AttentiveVariationalAutoEncoderTraining
-from recommendation.task.model.triplet_net import TripletNetContentTraining
+from recommendation.task.model.triplet_net import TripletNetContentTraining, TripletNetTraining
 
 class EnqueueEvaluateCDAE(luigi.WrapperTask):
     task_ids: List[str] = luigi.ListParameter()
@@ -139,6 +139,39 @@ class EnqueueEvaluateTripletNetContent(luigi.WrapperTask):
         for task_id in self.task_ids:
             print(task_id)
             yield EvaluateIfoodTripletNetContentModel(
+                model_module="recommendation.task.model.triplet_net",
+                model_cls="TripletNetContentTraining",
+                model_task_id=task_id,
+            )
+
+class EnqueueTripletNetTraining(luigi.WrapperTask):
+    balance_options: list = luigi.ListParameter(default=[5, 25, 50, 150, 200, 250, 500, 1000, 5000, 10000])
+
+    def requires(self):
+
+        for i in self.balance_options:
+            training_model = TripletNetTraining(
+                project="ifood_buys_visits_triplet_with_random_negative",
+                batch_size=512,
+                loss_function="weighted_triplet",
+                lr_scheduler_params={"step_size": 5, "gamma": 0.8},
+                loss_function_params={"balance_factor": i},
+                n_factors=2048,
+                epochs=250,
+                optimizer="adam",
+                learning_rate=0.001,
+                lr_scheduler="step",
+            )
+
+            yield training_model
+
+class EnqueueEvaluateTripletNetWeighted(luigi.WrapperTask):
+    task_ids: List[str] = luigi.ListParameter(default=["TripletNetTraining____512____2d71bdc6d8","TripletNetTraining____512____37524fd14f","TripletNetTraining____512____3d67f3440a","TripletNetTraining____512____5c9517a5f1","TripletNetTraining____512____696eb4448e","TripletNetTraining____512____931fd9ee9f","TripletNetTraining____512____c3b2fe06b7","TripletNetTraining____512____eb375b71c2","TripletNetTraining____512____fe99d4b203"])
+
+    def requires(self):
+        for task_id in self.task_ids:
+            print(task_id)
+            yield EvaluateIfoodTripletNetWeightedModel(
                 model_module="recommendation.task.model.triplet_net",
                 model_cls="TripletNetContentTraining",
                 model_task_id=task_id,

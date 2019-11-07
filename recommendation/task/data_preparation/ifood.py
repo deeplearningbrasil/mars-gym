@@ -438,6 +438,19 @@ class PrepareIfoodBinaryBuysInteractionsDataFrames(BasePrepareDataFrames):
     def metadata_data_frame_path(self) -> str:
         return self.input()[0][1].path
 
+class PrepareIfoodVisitsBuysInteractionsDataFrames(PrepareIfoodBinaryBuysInteractionsDataFrames):
+
+    @property
+    def stratification_property(self) -> str:
+        pass
+    
+    def read_data_frame(self) -> pd.DataFrame:
+        df = pd.read_parquet(self.input()[1].path)
+        df['buys'] = df['buys'].astype(float)
+        df['visits'] = df['visits'].astype(float)
+        df["n_users"] = self.num_users
+        df["n_items"] = self.num_businesses
+        return df
 
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
     session_test_size: float = luigi.FloatParameter(default=0.2)

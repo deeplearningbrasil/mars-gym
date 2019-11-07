@@ -16,12 +16,17 @@ class TripletNet(UserAndItemEmbedding):
         super().__init__(n_users, n_items, n_factors, weight_init)
 
     def forward(self, user_ids: torch.Tensor, positive_item_ids: torch.Tensor,
-                negative_item_ids: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
+                negative_item_ids: torch.Tensor = None, positive_visits: torch.Tensor = None,
+                positive_buys: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         if negative_item_ids is None:
             return torch.cosine_similarity(self.user_embeddings(user_ids), self.item_embeddings(positive_item_ids))
+        
+        if positive_visits is None:
+            return self.user_embeddings(user_ids), self.item_embeddings(positive_item_ids), \
+                self.item_embeddings(negative_item_ids)
+                
         return self.user_embeddings(user_ids), self.item_embeddings(positive_item_ids), \
-               self.item_embeddings(negative_item_ids)
-
+                self.item_embeddings(negative_item_ids), positive_visits, positive_buys
 
 class TripletNetSimpleContent(nn.Module):
     def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
