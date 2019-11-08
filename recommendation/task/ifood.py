@@ -262,6 +262,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             "ndcg_at_50": df["ndcg_at_50"].mean(),
         }
 
+        print(metrics)
         df.to_csv(self.output()[0].path)
         with open(self.output()[1].path, "w") as metrics_file:
             json.dump(metrics, metrics_file, indent=4)

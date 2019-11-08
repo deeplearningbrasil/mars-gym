@@ -535,6 +535,8 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         spark = SparkSession(sc)
 
         session_df = spark.read.parquet(self.input()[0][1].path)
+
+
         account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
             .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
@@ -544,6 +546,7 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                                                  merchant_df.days_of_week.contains(orders_df.day_of_week)]) \
             .drop(merchant_df.merchant_id) \
             .select(session_df.columns + ["merchant_idx"])
+        
         orders_df = orders_df.groupBy(session_df.columns).agg(collect_set("merchant_idx").alias("merchant_idx_list")) \
             .drop("merchant_idx")
 
@@ -551,7 +554,7 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
             .join(account_df, "account_id", how="inner") \
             .join(merchant_df, "merchant_id", how="inner") \
             .select("session_id", "account_idx", "merchant_idx", "merchant_idx_list", "shift", "shift_idx",
-                    "day_of_week")
+                    "day_of_week").dropDuplicates()
 
         orders_df.write.parquet(self.output().path)
 
