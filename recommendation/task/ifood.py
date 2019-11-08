@@ -318,7 +318,7 @@ class SortMerchantListsRandomly(luigi.Task):
 
     def random(self, l):
         np.random.shuffle(l)
-        return l
+        return list(l)
 
     def run(self):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
@@ -333,6 +333,7 @@ class SortMerchantListsRandomly(luigi.Task):
         orders_df["sorted_merchant_idx_list"] = list(tqdm(
             map(self.random, orders_df["merchant_idx_list"]),
             total=len(orders_df)))
+
 
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
@@ -419,6 +420,7 @@ class SortMerchantListsByMostPopular(luigi.Task):
             starmap(functools.partial(_sort_merchants_by_merchant_score, scores_per_merchant=scores_dict),
                     zip(orders_df["merchant_idx_list"])),
             total=len(orders_df)))
+
 
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
