@@ -297,6 +297,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             "personalization_at_50": personalization_at_k(sample_df["sorted_merchant_idx_list"], 20),
         }
 
+        print(metrics)
         df = df.drop(columns=["sorted_merchant_idx_list", "relevance_list"])
         df.to_csv(self.output()[0].path)
         with open(self.output()[1].path, "w") as metrics_file:
