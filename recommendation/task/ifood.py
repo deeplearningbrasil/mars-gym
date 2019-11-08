@@ -19,7 +19,8 @@ from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
     PrepareRestaurantContentDataset, \
-    CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset
+    CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset, \
+    IndexAccountsAndMerchantsOfSessionTrainDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks, parallel_literal_eval
 
@@ -240,10 +241,17 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         return luigi.LocalTarget(os.path.join(model_path, "orders_with_metrics.csv")), \
                luigi.LocalTarget(os.path.join(model_path, "metrics.json")),
 
+    def read_evaluation_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.input().path)
+
+    @property
+    def n_items(self):
+        return self.model_training.n_items
+
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
 
-        df: pd.DataFrame = pd.read_csv(self.input().path)
+        df: pd.DataFrame = self.read_evaluation_data_frame()
 
         with Pool(self.num_processes) as p:
             df["sorted_merchant_idx_list"] = parallel_literal_eval(df["sorted_merchant_idx_list"], pool=p)
@@ -263,7 +271,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             df["ndcg_at_50"] = list(
                 tqdm(p.map(functools.partial(ndcg_at_k, k=50), df["relevance_list"]), total=len(df)))
 
-        catalog = range(self.model_training.n_items)
+        catalog = range(self.n_items)
 
         metrics = {
             "count": len(df),
@@ -356,7 +364,14 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return SortMerchantListsRandomly()
+        return SortMerchantListsRandomly(), GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset()
+
+    def read_evaluation_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.input()[0].path)
+
+    @property
+    def n_items(self):
+        return len(pd.read_csv(self.input()[1][1].path))
 
 
 class SortMerchantListsByMostPopular(luigi.Task):
@@ -408,7 +423,14 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return SortMerchantListsByMostPopular()
+        return SortMerchantListsByMostPopular(), GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset()
+
+    def read_evaluation_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.input()[0].path)
+
+    @property
+    def n_items(self):
+        return len(pd.read_csv(self.input()[1][1].path))
 
 
 class SortMerchantListsByMostPopularPerUser(luigi.Task):
@@ -470,7 +492,15 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
 
     def requires(self):
         return SortMerchantListsByMostPopularPerUser(buy_importance=self.buy_importance,
-                                                     visit_importance=self.visit_importance)
+                                                     visit_importance=self.visit_importance),\
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset()
+
+    def read_evaluation_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.input()[0].path)
+
+    @property
+    def n_items(self):
+        return len(pd.read_csv(self.input()[1][1].path))
 
     def output(self):
         model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
