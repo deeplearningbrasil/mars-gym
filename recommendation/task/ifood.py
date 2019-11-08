@@ -15,13 +15,29 @@ from tqdm import tqdm
 
 from recommendation.data import literal_eval_array_columns
 from recommendation.plot import plot_histogram
-from recommendation.rank_metrics import average_precision, ndcg_at_k
+from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
     PrepareRestaurantContentDataset, \
     CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks, parallel_literal_eval
+
+
+def _sort_merchants_by_tuple_score(account_idx: int, merchant_idx_list: List[int],
+                                   scores_per_tuple: Dict[Tuple[int, int], float]) -> List[int]:
+    scores = list(map(lambda merchant_idx: scores_per_tuple.get((account_idx, merchant_idx), -1.0), merchant_idx_list))
+    return [merchant_idx for _, merchant_idx in sorted(zip(scores, merchant_idx_list), reverse=True)]
+
+
+def _sort_merchants_by_merchant_score(merchant_idx_list: List[int], scores_per_merchant: Dict[int, float]) -> List[int]:
+    scores = list(map(lambda merchant_idx: scores_per_merchant[merchant_idx], merchant_idx_list))
+    return [merchant_idx for _, merchant_idx in
+                                sorted(zip(scores, merchant_idx_list), reverse=True)]
+
+
+def _create_relevance_list(sorted_merchant_idx_list: List[int], ordered_merchant_idx: int) -> List[int]:
+    return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
 
 def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int],
@@ -34,7 +50,7 @@ def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, mercha
 
 def _generate_random_relevance_list(ordered_merchant_idx: int, merchant_idx_list: List[int]) -> List[int]:
     np.random.shuffle(merchant_idx_list)
-    return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in merchant_idx_list]
+    return _create_relevance_list(merchant_idx_list, ordered_merchant_idx)
 
 
 def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, merchant_idx_list: List[int],
@@ -45,7 +61,7 @@ def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, mer
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
 
-class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
+class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
 
     # num_processes: int = luigi.IntParameter(default=os.cpu_count())
@@ -99,10 +115,15 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         print("Filtering orders where the ordered merchant isn't in the list...")
         orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
 
-        print("Generating the relevance lists...")
+        print("Sorting the merchant lists")
+        orders_df["sorted_merchant_idx_list"] = list(tqdm(
+            starmap(functools.partial(_sort_merchants_by_tuple_score, scores_per_tuple=scores_per_tuple),
+                    zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
+            total=len(orders_df)))
+
+        print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
-            starmap(functools.partial(_generate_relevance_list, scores_per_tuple=scores_per_tuple),
-                    zip(orders_df["account_idx"], orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
+            starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
             total=len(orders_df)))
 
         # with mp.Manager() as manager:
@@ -120,7 +141,7 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
         orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
-class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel):
+class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
     variational = luigi.BoolParameter(default=False)
     attentive = luigi.BoolParameter(default=False)
     context = luigi.BoolParameter(default=False)
@@ -195,7 +216,7 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
         return dict(scores_per_tuple)
 
 
-class GenerateRelevanceListsTripletWeightedModel(GenerateRelevanceListsForIfoodModel):
+class SortMerchantListsTripletWeightedModel(SortMerchantListsForIfoodModel):
 
     def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
         assert self.model_training.project_config.input_columns[0].name == 'account_idx'
@@ -210,8 +231,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     def requires(self):
-        return GenerateRelevanceListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                   model_task_id=self.model_task_id)
+        return SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
+                                              model_task_id=self.model_task_id)
 
     def output(self):
         model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
@@ -224,14 +245,9 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
         df: pd.DataFrame = pd.read_csv(self.input().path)
 
-        df["relevance_list"] = parallel_literal_eval(df["relevance_list"])
         with Pool(self.num_processes) as p:
-            # df["precision_at_5"] = list(
-            #     tqdm(p.map(functools.partial(precision_at_k, k=5), df["relevance_list"]), total=len(df)))
-            # df["precision_at_10"] = list(
-            #     tqdm(p.map(functools.partial(precision_at_k, k=10), df["relevance_list"]), total=len(df)))
-            # df["precision_at_15"] = list(
-            #     tqdm(p.map(functools.partial(precision_at_k, k=15), df["relevance_list"]), total=len(df)))
+            df["sorted_merchant_idx_list"] = parallel_literal_eval(df["sorted_merchant_idx_list"], pool=p)
+            df["relevance_list"] = parallel_literal_eval(df["relevance_list"], pool=p)
 
             df["average_precision"] = list(
                 tqdm(p.map(average_precision, df["relevance_list"]), total=len(df)))
@@ -247,27 +263,35 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             df["ndcg_at_50"] = list(
                 tqdm(p.map(functools.partial(ndcg_at_k, k=50), df["relevance_list"]), total=len(df)))
 
-        df = df.drop(columns=["relevance_list"])
+        catalog = range(self.model_training.n_items)
 
         metrics = {
-            # "precision_at_5": df["precision_at_5"].mean(),
-            # "precision_at_10": df["precision_at_10"].mean(),
-            # "precision_at_15": df["precision_at_15"].mean(),
             "count": len(df),
-            "average_precision": df["average_precision"].mean(),
+            "mean_average_precision": df["average_precision"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
             "ndcg_at_10": df["ndcg_at_10"].mean(),
             "ndcg_at_15": df["ndcg_at_15"].mean(),
             "ndcg_at_20": df["ndcg_at_20"].mean(),
             "ndcg_at_50": df["ndcg_at_50"].mean(),
+            "coverage_at_5": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 5),
+            "coverage_at_10": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 10),
+            "coverage_at_15": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 15),
+            "coverage_at_20": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 20),
+            "coverage_at_50": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 50),
+            "personalization_at_5": personalization_at_k(df["sorted_merchant_idx_list"], 5),
+            "personalization_at_10": personalization_at_k(df["sorted_merchant_idx_list"], 10),
+            "personalization_at_15": personalization_at_k(df["sorted_merchant_idx_list"], 15),
+            "personalization_at_20": personalization_at_k(df["sorted_merchant_idx_list"], 20),
+            "personalization_at_50": personalization_at_k(df["sorted_merchant_idx_list"], 20),
         }
 
+        df = df.drop(columns=["sorted_merchant_idx_list", "relevance_list"])
         df.to_csv(self.output()[0].path)
         with open(self.output()[1].path, "w") as metrics_file:
             json.dump(metrics, metrics_file, indent=4)
 
 
-class GenerateRandomRelevanceLists(luigi.Task):
+class SortMerchantListsRandomly(luigi.Task):
     test_size: float = luigi.FloatParameter(default=0.2)
 
     def requires(self):
@@ -287,10 +311,14 @@ class GenerateRandomRelevanceLists(luigi.Task):
         print("Filtering orders where the ordered merchant isn't in the list...")
         orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
 
-        print("Generating the relevance lists...")
+        print("Sorting the merchant lists")
+        orders_df["sorted_merchant_idx_list"] = list(tqdm(
+            map(np.random.shuffle, orders_df["merchant_idx_list"]),
+            total=len(orders_df)))
+
+        print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
-            starmap(_generate_random_relevance_list,
-                    zip(orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
+            starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
             total=len(orders_df)))
 
         print("Saving the output file...")
@@ -299,39 +327,39 @@ class GenerateRandomRelevanceLists(luigi.Task):
 
 class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
     def requires(self):
-        return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
-                                                      model_task_id=self.model_task_id)
+        return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
+                                                         model_task_id=self.model_task_id)
 
 
 class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
     def requires(self):
-        return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
-                                                      model_task_id=self.model_task_id,
-                                                      variational=True)
+        return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
+                                                         model_task_id=self.model_task_id,
+                                                         variational=True)
 
 
 class EvaluateIfoodAttCVAEModel(EvaluateIfoodModel):
     def requires(self):
-        return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
-                                                      model_task_id=self.model_task_id,
-                                                      attentive=True)
+        return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
+                                                         model_task_id=self.model_task_id,
+                                                         attentive=True)
 
 
 class EvaluateIfoodHybridCVAEModel(EvaluateIfoodModel):
     def requires(self):
-        return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
-                                                      model_task_id=self.model_task_id, context=True,
-                                                      variational=True)
+        return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
+                                                         model_task_id=self.model_task_id, context=True,
+                                                         variational=True)
 
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return GenerateRandomRelevanceLists()
+        return SortMerchantListsRandomly()
 
 
-class GenerateMostPopularRelevanceLists(luigi.Task):
+class SortMerchantListsByMostPopular(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.2)
 
@@ -361,10 +389,15 @@ class GenerateMostPopularRelevanceLists(luigi.Task):
         print("Filtering orders where the ordered merchant isn't in the list...")
         orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
 
-        print("Generating the relevance lists...")
+        print("Sorting the merchant lists")
+        orders_df["sorted_merchant_idx_list"] = list(tqdm(
+            starmap(functools.partial(_sort_merchants_by_merchant_score, scores_per_merchant=scores_dict),
+                    zip(orders_df["merchant_idx_list"])),
+            total=len(orders_df)))
+
+        print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
-            starmap(functools.partial(_generate_relevance_list_from_merchant_scores, scores_per_merchant=scores_dict),
-                    zip(orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
+            starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
             total=len(orders_df)))
 
         print("Saving the output file...")
@@ -375,10 +408,10 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
 
     def requires(self):
-        return GenerateMostPopularRelevanceLists()
+        return SortMerchantListsByMostPopular()
 
 
-class GenerateMostPopularPerUserRelevanceLists(luigi.Task):
+class SortMerchantListsByMostPopularPerUser(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.2)
     buy_importance: float = luigi.FloatParameter(default=1.0)
@@ -392,8 +425,8 @@ class GenerateMostPopularPerUserRelevanceLists(luigi.Task):
         return luigi.LocalTarget(
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
                          self.task_id + "GenerateMostPopularPerUserRelevanceLists_buy_importance=%.2f_visit_importance=%.2f" % (
-                         self.buy_importance,
-                         self.visit_importance),
+                             self.buy_importance,
+                             self.visit_importance),
                          "orders_with_relevance_lists.csv"))
 
     def run(self):
@@ -415,10 +448,15 @@ class GenerateMostPopularPerUserRelevanceLists(luigi.Task):
         print("Filtering orders where the ordered merchant isn't in the list...")
         orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
 
-        print("Generating the relevance lists...")
+        print("Sorting the merchant lists")
+        orders_df["sorted_merchant_idx_list"] = list(tqdm(
+            starmap(functools.partial(_sort_merchants_by_tuple_score, scores_per_tuple=scores_per_tuple),
+                    zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
+            total=len(orders_df)))
+
+        print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
-            starmap(functools.partial(_generate_relevance_list, scores_per_tuple=scores_per_tuple),
-                    zip(orders_df["account_idx"], orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
+            starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
             total=len(orders_df)))
 
         print("Saving the output file...")
@@ -431,8 +469,8 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
     visit_importance: float = luigi.FloatParameter(default=0.0)
 
     def requires(self):
-        return GenerateMostPopularPerUserRelevanceLists(buy_importance=self.buy_importance,
-                                                        visit_importance=self.visit_importance)
+        return SortMerchantListsByMostPopularPerUser(buy_importance=self.buy_importance,
+                                                     visit_importance=self.visit_importance)
 
     def output(self):
         model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
@@ -443,7 +481,7 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
                luigi.LocalTarget(os.path.join(model_path, "metrics.json")),
 
 
-class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodModel):
+class SortMerchantListsTripletContentModel(SortMerchantListsForIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
 
     def requires(self):
@@ -491,14 +529,14 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
 
 class EvaluateIfoodTripletNetContentModel(EvaluateIfoodModel):
     def requires(self):
-        return GenerateRelevanceListsTripletContentModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                         model_task_id=self.model_task_id)
+        return SortMerchantListsTripletContentModel(model_module=self.model_module, model_cls=self.model_cls,
+                                                    model_task_id=self.model_task_id)
 
 
 class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
     def requires(self):
-        return GenerateRelevanceListsTripletWeightedModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                          model_task_id=self.model_task_id)
+        return SortMerchantListsTripletWeightedModel(model_module=self.model_module, model_cls=self.model_cls,
+                                                     model_task_id=self.model_task_id)
 
 
 class GenerateContentEmbeddings(BaseEvaluationTask):
@@ -516,7 +554,7 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
                                 self.model_task_id, "restaurant_metadata.tsv"))
 
     def _generate_content_tensors(self, rows):
-        return GenerateRelevanceListsTripletContentModel._generate_content_tensors(self, rows)
+        return SortMerchantListsTripletContentModel._generate_content_tensors(self, rows)
 
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)

@@ -32,3 +32,4 @@ dependencies:
   - mlflow==1.0.0
   - pytorch-nlp==0.4.1
   - unidecode==1.1.1
+  - recmetrics==0.0.12

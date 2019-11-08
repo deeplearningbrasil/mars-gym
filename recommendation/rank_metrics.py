@@ -6,7 +6,10 @@ http://www.stanford.edu/class/cs276/handouts/EvaluationNew-handout-6-per.pdf
 http://hal.archives-ouvertes.fr/docs/00/72/67/60/PDF/07-busa-fekete.pdf
 Learning to Rank for Information Retrieval (Tie-Yan Liu)
 """
+from typing import List
+
 import numpy as np
+from recmetrics.metrics import prediction_coverage, personalization
 
 
 def mean_reciprocal_rank(rs):
@@ -196,3 +199,15 @@ def ndcg_at_k(r, k, method=0):
     if not dcg_max:
         return 0.
     return dcg_at_k(r, k, method) / dcg_max
+
+
+def _get_predicted_at_k(predicted: List[list], k:int) -> List[list]:
+    return [p[:k] for p in predicted]
+
+
+def prediction_coverage_at_k(predicted: List[list], catalog: list, k: int) -> float:
+    return prediction_coverage(_get_predicted_at_k(predicted, k), catalog)
+
+
+def personalization_at_k(predicted: List[list], k: int) -> float:
+    return personalization(_get_predicted_at_k(predicted, k))
