@@ -9,7 +9,9 @@ Learning to Rank for Information Retrieval (Tie-Yan Liu)
 from typing import List
 
 import numpy as np
-from recmetrics.metrics import prediction_coverage, personalization
+import pandas as pd
+import scipy.sparse as sp
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 def mean_reciprocal_rank(rs):
@@ -201,7 +203,77 @@ def ndcg_at_k(r, k, method=0):
     return dcg_at_k(r, k, method) / dcg_max
 
 
-def _get_predicted_at_k(predicted: List[list], k:int) -> List[list]:
+def prediction_coverage(predicted: List[list], catalog: list) -> float:
+    """
+    Forked from https://github.com/statisticianinstilettos/recmetrics
+    Computes the prediction coverage for a list of recommendations
+    Parameters
+    ----------
+    predicted : a list of lists
+        Ordered predictions
+        example: [['X', 'Y', 'Z'], ['X', 'Y', 'Z']]
+    catalog: list
+        A list of all unique items in the training data
+        example: ['A', 'B', 'C', 'X', 'Y', Z]
+    Returns
+    ----------
+    prediction_coverage:
+        The prediction coverage of the recommendations as a percent
+        rounded to 2 decimal places
+    ----------
+    Metric Defintion:
+    Ge, M., Delgado-Battenfeld, C., & Jannach, D. (2010, September).
+    Beyond accuracy: evaluating recommender systems by coverage and serendipity.
+    In Proceedings of the fourth ACM conference on Recommender systems (pp. 257-260). ACM.
+    """
+    predicted_flattened = [p for sublist in predicted for p in sublist]
+    unique_predictions = len(set(predicted_flattened))
+    prediction_coverage = round(unique_predictions / (len(catalog) * 1.0) * 100, 2)
+    return prediction_coverage
+
+
+def personalization(predicted: List[list]) -> float:
+    """
+    Forked from https://github.com/statisticianinstilettos/recmetrics
+    Personalization measures recommendation similarity across users.
+    A high score indicates good personalization (user's lists of recommendations are different).
+    A low score indicates poor personalization (user's lists of recommendations are very similar).
+    A model is "personalizing" well if the set of recommendations for each user is different.
+    Parameters:
+    ----------
+    predicted : a list of lists
+        Ordered predictions
+        example: [['X', 'Y', 'Z'], ['X', 'Y', 'Z']]
+    Returns:
+    -------
+        The personalization score for all recommendations.
+    """
+
+    def make_rec_matrix(predicted):
+        df = pd.DataFrame(data=predicted).reset_index().melt(
+            id_vars='index', value_name='item',
+        )
+        df = df[['index', 'item']].pivot(index='index', columns='item', values='item')
+        df = df.mask(pd.notna(df), 1)
+        rec_matrix = sp.csr_matrix(df.values)
+        return rec_matrix
+
+    # create matrix for recommendations
+    predicted = np.array(predicted)
+    rec_matrix_sparse = make_rec_matrix(predicted)
+
+    # calculate similarity for every user's recommendation list
+    similarity = cosine_similarity(X=rec_matrix_sparse, dense_output=False)
+
+    # get indicies for upper right triangle w/o diagonal
+    upper_right = np.triu_indices(similarity.shape[0], k=1)
+
+    # calculate average similarity
+    mean_similarity = np.mean(similarity[upper_right])
+    return 1 - mean_similarity
+
+
+def _get_predicted_at_k(predicted: List[list], k: int) -> List[list]:
     return [p[:k] for p in predicted]
 
 
