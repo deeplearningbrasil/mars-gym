@@ -74,7 +74,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     def output(self):
         return luigi.LocalTarget(
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.model_task_id, "orders_with_relevance_lists.csv"))
+                         self.model_task_id, "orders_with_sorted_merchants.csv"))
 
     def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
         return [torch.tensor(rows[input_column.name].values, dtype=torch.int64)
@@ -138,7 +138,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         plot_histogram(scores_per_tuple.values()).savefig(
             os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
-        orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
 class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
@@ -300,7 +300,7 @@ class SortMerchantListsRandomly(luigi.Task):
     def output(self):
         return luigi.LocalTarget(
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.task_id, "orders_with_relevance_lists.csv"))
+                         self.task_id, "orders_with_sorted_merchants.csv"))
 
     def run(self):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
@@ -322,7 +322,7 @@ class SortMerchantListsRandomly(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
 class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
@@ -370,7 +370,7 @@ class SortMerchantListsByMostPopular(luigi.Task):
     def output(self):
         return luigi.LocalTarget(
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.task_id, "orders_with_relevance_lists.csv"))
+                         self.task_id, "orders_with_sorted_merchants.csv"))
 
     def run(self):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
@@ -401,7 +401,7 @@ class SortMerchantListsByMostPopular(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
 class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
@@ -427,7 +427,7 @@ class SortMerchantListsByMostPopularPerUser(luigi.Task):
                          self.task_id + "GenerateMostPopularPerUserRelevanceLists_buy_importance=%.2f_visit_importance=%.2f" % (
                              self.buy_importance,
                              self.visit_importance),
-                         "orders_with_relevance_lists.csv"))
+                         "orders_with_sorted_merchants.csv"))
 
     def run(self):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
@@ -460,7 +460,7 @@ class SortMerchantListsByMostPopularPerUser(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
 class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
