@@ -1,31 +1,27 @@
-import ast
+import functools
 import functools
 import json
 import math
 import os
 from itertools import starmap
-import multiprocessing as mp
 from multiprocessing.pool import Pool
 from typing import Dict, Tuple, List
-import numpy as np
 
 import luigi
 import numpy as np
 import pandas as pd
 import torch
-from scipy.sparse import csr_matrix
 from tqdm import tqdm
-import timeit
 
 from recommendation.data import literal_eval_array_columns
-from recommendation.rank_metrics import precision_at_k, average_precision, ndcg_at_k
+from recommendation.plot import plot_histogram
+from recommendation.rank_metrics import average_precision, ndcg_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
-    ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, IndexAccountsAndMerchantsOfSessionTrainDataset, \
-    ProcessRestaurantContentDataset, PrepareRestaurantContentDataset, \
+    ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
+    PrepareRestaurantContentDataset, \
     CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks, parallel_literal_eval
-from recommendation.plot import plot_histogram
 
 
 def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int],
@@ -66,8 +62,8 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
     def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
         return [torch.tensor(rows[input_column.name].values, dtype=torch.int64)
-                          .to(self.model_training.torch_device)
-                      for input_column in self.model_training.project_config.input_columns]
+                    .to(self.model_training.torch_device)
+                for input_column in self.model_training.project_config.input_columns]
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
         print("Reading tuples files...")
@@ -119,7 +115,8 @@ class GenerateRelevanceListsForIfoodModel(BaseEvaluationTask):
 
         print("Saving the output file...")
 
-        plot_histogram(scores_per_tuple.values()).savefig(os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
+        plot_histogram(scores_per_tuple.values()).savefig(
+            os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
         orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
 
 
@@ -167,8 +164,8 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
             rows: pd.DataFrame = df.iloc[indices]
 
             i, j, data = zip(
-            *((index, int(t[0]), t[1]) for index, row in enumerate(rows["buys_per_merchant"])
-                for t in row))
+                *((index, int(t[0]), t[1]) for index, row in enumerate(rows["buys_per_merchant"])
+                  for t in row))
             batch_tensor = torch.sparse_coo_tensor(
                 indices=torch.tensor([i, j]),
                 values=torch.tensor(data),
@@ -180,7 +177,6 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
                 batch_output_tensor = module(batch_tensor, batch_context)
             else:
                 batch_output_tensor = module(batch_tensor)
-
 
             if self.attentive:
                 batch_output_tensor, _, _, _, _ = batch_output_tensor
@@ -198,6 +194,7 @@ class GenerateReconstructedInteractionMatrix(GenerateRelevanceListsForIfoodModel
         print("Creating the dictionary of scores...")
         return dict(scores_per_tuple)
 
+
 class GenerateRelevanceListsTripletWeightedModel(GenerateRelevanceListsForIfoodModel):
 
     def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
@@ -205,9 +202,9 @@ class GenerateRelevanceListsTripletWeightedModel(GenerateRelevanceListsForIfoodM
         assert self.model_training.project_config.input_columns[1].name == 'merchant_idx'
 
         return [torch.tensor(rows[column].values, dtype=torch.int64)
-                          .to(self.model_training.torch_device)
-                      for column in ['account_idx', 'merchant_idx']]
-    
+                    .to(self.model_training.torch_device)
+                for column in ['account_idx', 'merchant_idx']]
+
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
@@ -305,11 +302,13 @@ class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id)
 
+
 class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id,
                                                       variational=True)
+
 
 class EvaluateIfoodAttCVAEModel(EvaluateIfoodModel):
     def requires(self):
@@ -317,11 +316,13 @@ class EvaluateIfoodAttCVAEModel(EvaluateIfoodModel):
                                                       model_task_id=self.model_task_id,
                                                       attentive=True)
 
+
 class EvaluateIfoodHybridCVAEModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateReconstructedInteractionMatrix(model_module=self.model_module, model_cls=self.model_cls,
                                                       model_task_id=self.model_task_id, context=True,
                                                       variational=True)
+
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
@@ -347,7 +348,7 @@ class GenerateMostPopularRelevanceLists(luigi.Task):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
 
         print("Reading the interactions DataFrame...")
-        interactions_df: pd.DataFrame = pd.read_csv(self.input()[0].path)
+        interactions_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)
         print("Generating the scores")
         scores: pd.Series = interactions_df.groupby("merchant_idx")["buys"].sum()
         scores_dict: Dict[int, float] = {merchant_idx: score for merchant_idx, score
@@ -377,6 +378,71 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
         return GenerateMostPopularRelevanceLists()
 
 
+class GenerateMostPopularPerUserRelevanceLists(luigi.Task):
+    model_task_id: str = luigi.Parameter(default="none")
+    test_size: float = luigi.FloatParameter(default=0.2)
+    buy_importance: float = luigi.FloatParameter(default=1.0)
+    visit_importance: float = luigi.FloatParameter(default=0.0)
+
+    def requires(self):
+        return CreateInteractionDataset(test_size=self.test_size), \
+               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
+
+    def output(self):
+        return luigi.LocalTarget(
+            os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.task_id + "GenerateMostPopularPerUserRelevanceLists_buy_importance=%.2f_visit_importance=%.2f" % (
+                         self.buy_importance,
+                         self.visit_importance),
+                         "orders_with_relevance_lists.csv"))
+
+    def run(self):
+        os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
+
+        print("Reading the interactions DataFrame...")
+        interactions_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)
+        print("Generating the scores")
+        grouped_interactions = interactions_df.groupby(["account_idx", "merchant_idx"])
+        scores: pd.Series = grouped_interactions["buys"].sum() * self.buy_importance \
+                            + grouped_interactions["visits"].sum() * self.visit_importance
+        scores_per_tuple: Dict[Tuple[int, int], float] = {(account_idx, merchant_idx): score
+                                                          for (account_idx, merchant_idx), score
+                                                          in tqdm(zip(scores.index, scores), total=len(scores))}
+
+        print("Reading the orders DataFrame...")
+        orders_df: pd.DataFrame = pd.read_parquet(self.input()[1].path)
+
+        print("Filtering orders where the ordered merchant isn't in the list...")
+        orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
+
+        print("Generating the relevance lists...")
+        orders_df["relevance_list"] = list(tqdm(
+            starmap(functools.partial(_generate_relevance_list, scores_per_tuple=scores_per_tuple),
+                    zip(orders_df["account_idx"], orders_df["merchant_idx"], orders_df["merchant_idx_list"])),
+            total=len(orders_df)))
+
+        print("Saving the output file...")
+        orders_df[["session_id", "relevance_list"]].to_csv(self.output().path, index=False)
+
+
+class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
+    model_task_id: str = luigi.Parameter(default="none")
+    buy_importance: float = luigi.FloatParameter(default=1.0)
+    visit_importance: float = luigi.FloatParameter(default=0.0)
+
+    def requires(self):
+        return GenerateMostPopularPerUserRelevanceLists(buy_importance=self.buy_importance,
+                                                        visit_importance=self.visit_importance)
+
+    def output(self):
+        model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                                  self.task_id + "_buy_importance=%.6f_visit_importance=%.6f" % (
+                                      self.buy_importance,
+                                      self.visit_importance))
+        return luigi.LocalTarget(os.path.join(model_path, "orders_with_metrics.csv")), \
+               luigi.LocalTarget(os.path.join(model_path, "metrics.json")),
+
+
 class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
 
@@ -403,36 +469,38 @@ class GenerateRelevanceListsTripletContentModel(GenerateRelevanceListsForIfoodMo
         for input_column in self.model_training.project_config.metadata_columns:
             dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
             values = rows[input_column.name].values.tolist()
-            inputs.append(torch.tensor(values, dtype=dtype) .to(self.model_training.torch_device))
-            
+            inputs.append(torch.tensor(values, dtype=dtype).to(self.model_training.torch_device))
+
         return inputs
 
     def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
-
-        metadata_columns_name = [input_column.name for input_column in self.model_training.project_config.metadata_columns]
+        metadata_columns_name = [input_column.name for input_column in
+                                 self.model_training.project_config.metadata_columns]
 
         assert metadata_columns_name == ['trading_name', 'description', 'category_names', 'restaurant_complete_info']
-        
+
         account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
-                .to(self.model_training.torch_device)
-            
+            .to(self.model_training.torch_device)
+
         merchant_rows = self.merchant_df.loc[rows["merchant_idx"]]
 
         inputs = self._generate_content_tensors(merchant_rows)
-            
+
         return [account_idxs, inputs]
 
 
 class EvaluateIfoodTripletNetContentModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateRelevanceListsTripletContentModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                      model_task_id=self.model_task_id)
+                                                         model_task_id=self.model_task_id)
+
 
 class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
     def requires(self):
         return GenerateRelevanceListsTripletWeightedModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                      model_task_id=self.model_task_id)
-                                                      
+                                                          model_task_id=self.model_task_id)
+
+
 class GenerateContentEmbeddings(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
 
@@ -442,10 +510,10 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
     def output(self):
         return luigi.LocalTarget(
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.model_task_id, "restaurant_embeddings.tsv")),\
-                luigi.LocalTarget(
-            os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.model_task_id, "restaurant_metadata.tsv"))
+                         self.model_task_id, "restaurant_embeddings.tsv")), \
+               luigi.LocalTarget(
+                   os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                                self.model_task_id, "restaurant_metadata.tsv"))
 
     def _generate_content_tensors(self, rows):
         return GenerateRelevanceListsTripletContentModel._generate_content_tensors(self, rows)
@@ -471,13 +539,14 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
             inputs = self._generate_content_tensors(rows)
             batch_embeddings: torch.Tensor = module.compute_item_embeddings(inputs)
             embeddings.extend(batch_embeddings.detach().cpu().numpy())
-           
+
         restaurant_df = pd.read_csv(self.input()[1].path).replace(['\n', '\t'], ' ', regex=True)
         del restaurant_df['item_imagesurl']
 
         print("Saving the output file...")
         np.savetxt(os.path.join(self.output()[0].path), embeddings, delimiter="\t")
         restaurant_df.to_csv(os.path.join(self.output()[1].path), sep='\t', index=False)
+
 
 class GenerateEmbeddings(BaseEvaluationTask):
     user_embeddings = luigi.BoolParameter(default=False)
@@ -490,14 +559,13 @@ class GenerateEmbeddings(BaseEvaluationTask):
     def output(self):
         return luigi.LocalTarget(
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.model_task_id, "user_embeddings.tsv")),\
-                luigi.LocalTarget(
-            os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.model_task_id, "restaurant_embeddings.tsv")), \
-                luigi.LocalTarget(
-            os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.model_task_id, "restaurant_metadata.tsv"))
-            
+                         self.model_task_id, "user_embeddings.tsv")), \
+               luigi.LocalTarget(
+                   os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                                self.model_task_id, "restaurant_embeddings.tsv")), \
+               luigi.LocalTarget(
+                   os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                                self.model_task_id, "restaurant_metadata.tsv"))
 
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
