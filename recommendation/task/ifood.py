@@ -22,6 +22,7 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
     CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset, \
     IndexAccountsAndMerchantsOfSessionTrainDataset
 from recommendation.task.evaluation import BaseEvaluationTask
+from recommendation.task.model.base import SEED
 from recommendation.utils import chunks, parallel_literal_eval
 
 
@@ -230,6 +231,7 @@ class SortMerchantListsTripletWeightedModel(SortMerchantListsForIfoodModel):
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
+    sample_size_for_personalization: int = luigi.IntParameter(default=10000)
 
     def requires(self):
         return SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
@@ -273,6 +275,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
         catalog = range(self.n_items)
 
+        sample_df = df.sample(min(self.sample_size_for_personalization, len(df)), random_state=SEED)
+
         metrics = {
             "count": len(df),
             "mean_average_precision": df["average_precision"].mean(),
@@ -286,11 +290,11 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             "coverage_at_15": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 15),
             "coverage_at_20": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 20),
             "coverage_at_50": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 50),
-            "personalization_at_5": personalization_at_k(df["sorted_merchant_idx_list"], 5),
-            "personalization_at_10": personalization_at_k(df["sorted_merchant_idx_list"], 10),
-            "personalization_at_15": personalization_at_k(df["sorted_merchant_idx_list"], 15),
-            "personalization_at_20": personalization_at_k(df["sorted_merchant_idx_list"], 20),
-            "personalization_at_50": personalization_at_k(df["sorted_merchant_idx_list"], 20),
+            "personalization_at_5": personalization_at_k(sample_df["sorted_merchant_idx_list"], 5),
+            "personalization_at_10": personalization_at_k(sample_df["sorted_merchant_idx_list"], 10),
+            "personalization_at_15": personalization_at_k(sample_df["sorted_merchant_idx_list"], 15),
+            "personalization_at_20": personalization_at_k(sample_df["sorted_merchant_idx_list"], 20),
+            "personalization_at_50": personalization_at_k(sample_df["sorted_merchant_idx_list"], 20),
         }
 
         df = df.drop(columns=["sorted_merchant_idx_list", "relevance_list"])
