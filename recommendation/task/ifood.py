@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
+import random
 
 from recommendation.data import literal_eval_array_columns
 from recommendation.plot import plot_histogram
@@ -315,6 +316,10 @@ class SortMerchantListsRandomly(luigi.Task):
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
                          self.task_id, "orders_with_sorted_merchants.csv"))
 
+    def random(self, l):
+        np.random.shuffle(l)
+        return l
+
     def run(self):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
 
@@ -326,7 +331,7 @@ class SortMerchantListsRandomly(luigi.Task):
 
         print("Sorting the merchant lists")
         orders_df["sorted_merchant_idx_list"] = list(tqdm(
-            map(np.random.shuffle, orders_df["merchant_idx_list"]),
+            map(self.random, orders_df["merchant_idx_list"]),
             total=len(orders_df)))
 
         print("Creating the relevance lists...")
