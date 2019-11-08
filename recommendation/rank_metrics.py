@@ -255,6 +255,7 @@ def personalization(predicted: List[list]) -> float:
         )
         df = df[['index', 'item']].pivot(index='index', columns='item', values='item')
         df = df.mask(pd.notna(df), 1)
+        df = df.mask(pd.isna(df), 0)
         rec_matrix = sp.csr_matrix(df.values)
         return rec_matrix
 
