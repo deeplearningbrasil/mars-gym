@@ -269,7 +269,7 @@ def personalization(predicted: List[list]) -> float:
     del predicted, rec_matrix_sparse
 
     # calculate average similarity
-    mean_similarity = np.mean(sp.triu(similarity, k=1))
+    mean_similarity = np.mean(sp.triu(similarity, k=1).data)
     return 1 - mean_similarity
 
 

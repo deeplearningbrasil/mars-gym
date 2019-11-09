@@ -140,7 +140,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         plot_histogram(scores_per_tuple.values()).savefig(
             os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(self.output().path, index=False)
 
 
 class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
@@ -231,7 +231,6 @@ class SortMerchantListsTripletWeightedModel(SortMerchantListsForIfoodModel):
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
-    sample_size_for_personalization: int = luigi.IntParameter(default=10000)
 
     def requires(self):
         return SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
@@ -249,6 +248,13 @@ class EvaluateIfoodModel(BaseEvaluationTask):
     @property
     def n_items(self):
         return self.model_training.n_items
+
+    def _mean_personalization(self, df: pd.DataFrame, k: int):
+        grouped_df = df.groupby(["shift_idx", "day_of_week"])
+        personalization_per_shift: List[float] = []
+        for _, group_df in grouped_df:
+            personalization_per_shift.append(personalization_at_k(group_df["sorted_merchant_idx_list"], 5))
+        return np.mean(personalization_per_shift)
 
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
@@ -275,8 +281,6 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
         catalog = range(self.n_items)
 
-        sample_df = df.sample(min(self.sample_size_for_personalization, len(df)), random_state=SEED)
-
         metrics = {
             "count": len(df),
             "mean_average_precision": df["average_precision"].mean(),
@@ -290,11 +294,11 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             "coverage_at_15": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 15),
             "coverage_at_20": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 20),
             "coverage_at_50": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 50),
-            "personalization_at_5": personalization_at_k(sample_df["sorted_merchant_idx_list"], 5),
-            "personalization_at_10": personalization_at_k(sample_df["sorted_merchant_idx_list"], 10),
-            "personalization_at_15": personalization_at_k(sample_df["sorted_merchant_idx_list"], 15),
-            "personalization_at_20": personalization_at_k(sample_df["sorted_merchant_idx_list"], 20),
-            "personalization_at_50": personalization_at_k(sample_df["sorted_merchant_idx_list"], 20),
+            "personalization_at_5": self._mean_personalization(df, 5),
+            "personalization_at_10": self._mean_personalization(df, 10),
+            "personalization_at_15": self._mean_personalization(df, 15),
+            "personalization_at_20": self._mean_personalization(df, 20),
+            "personalization_at_50": self._mean_personalization(df, 50),
         }
 
         print(metrics)
@@ -335,7 +339,7 @@ class SortMerchantListsRandomly(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(self.output().path, index=False)
 
 
 class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
@@ -421,7 +425,7 @@ class SortMerchantListsByMostPopular(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(self.output().path, index=False)
 
 
 class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
@@ -487,7 +491,7 @@ class SortMerchantListsByMostPopularPerUser(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(self.output().path, index=False)
 
 
 class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
