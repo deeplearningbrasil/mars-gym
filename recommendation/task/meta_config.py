@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import List, Type, Dict
+from typing import List, Type, Dict, Any
 
 from torch.utils.data import Dataset
 
@@ -15,6 +15,7 @@ class RecommenderType(Enum):
     USER_BASED_COLLABORATIVE_FILTERING = auto()
     ITEM_BASED_COLLABORATIVE_FILTERING = auto()
     CONTENT_BASED = auto()
+
 
 class Column(object):
     def __init__(self, name: str, type: IOType) -> None:
@@ -34,6 +35,7 @@ class ProjectConfig(object):
                  n_items_column: str = "n_items",
                  default_balance_fields: List[str] = [],
                  metadata_columns: List[Column] = [],
+                 auxiliar_output_columns: List[Column] = [],
                  possible_negative_indices_columns: Dict[str, List[str]] = None,
                  ) -> None:
         self.base_dir = base_dir
@@ -42,6 +44,7 @@ class ProjectConfig(object):
         self.dataset_extra_params = dataset_extra_params
         self.input_columns = input_columns
         self.output_column = output_column
+        self.auxiliar_output_columns = auxiliar_output_columns
         self.recommender_type = recommender_type
         self.n_users_column = n_users_column
         self.n_items_column = n_items_column

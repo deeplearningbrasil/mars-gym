@@ -59,23 +59,51 @@ PROJECTS: Dict[str, ProjectConfig] = {
     ),
     "ifood_binary_buys_cf": ProjectConfig(
         base_dir=ifood.BASE_DIR,
-        prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
         dataset_class=InteractionsDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
-        output_column=Column("buys", IOType.NUMBER),
+        output_column=Column("binary_buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
-    "ifood_binary_buys_cf_with_random_negative": ProjectConfig(
+    "ifood_binary_buys_and_buys_cf": ProjectConfig(
         base_dir=ifood.BASE_DIR,
-        prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
+        dataset_class=InteractionsDataset,
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        output_column=Column("binary_buys", IOType.NUMBER),
+        auxiliar_output_columns=[Column("buys", IOType.NUMBER)],
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_binary_buys_and_buys_and_visits_cf": ProjectConfig(
+        base_dir=ifood.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
+        dataset_class=InteractionsDataset,
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        output_column=Column("binary_buys", IOType.NUMBER),
+        auxiliar_output_columns=[Column("buys", IOType.NUMBER), Column("visits", IOType.NUMBER)],
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_binary_buys_and_buys_cf_with_random_negative": ProjectConfig(
+        base_dir=ifood.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
         dataset_class=BinaryInteractionsWithOnlineRandomNegativeGenerationDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
-        output_column=Column("buys", IOType.NUMBER),
+        output_column=Column("binary_buys", IOType.NUMBER),
+        auxiliar_output_columns=[Column("buys", IOType.NUMBER)],
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_binary_buys_and_buys_and_visits_cf_with_random_negative": ProjectConfig(
+        base_dir=ifood.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
+        dataset_class=BinaryInteractionsWithOnlineRandomNegativeGenerationDataset,
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        output_column=Column("binary_buys", IOType.NUMBER),
+        auxiliar_output_columns=[Column("buys", IOType.NUMBER), Column("visits", IOType.NUMBER)],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_binary_buys_cf_with_shift_based_random_negative": ProjectConfig(
         base_dir=ifood.BASE_DIR,
-        prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
         dataset_class=BinaryInteractionsWithOnlineRandomNegativeGenerationDataset,
         possible_negative_indices_columns={
             "merchant_idx": ["weekday breakfast", "weekday dawn", "weekday dinner", "weekday lunch",
@@ -83,7 +111,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
                              "weekend lunch", "weekend snack"]
         },
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
-        output_column=Column("buys", IOType.NUMBER),
+        output_column=Column("binary_buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_buy_session_with_shift_cf_with_random_negative": ProjectConfig(
@@ -97,7 +125,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
     ),
     "ifood_binary_buys_triplet_with_random_negative": ProjectConfig(
         base_dir=ifood.BASE_DIR,
-        prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
         dataset_class=UserTripletWithOnlineRandomNegativeGenerationDataset,
         possible_negative_indices_columns={
             "merchant_idx": ["weekday breakfast", "weekday dawn", "weekday dinner", "weekday lunch",
@@ -105,20 +133,21 @@ PROJECTS: Dict[str, ProjectConfig] = {
                              "weekend lunch", "weekend snack"]
         },
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
-        output_column=Column("visits", IOType.NUMBER),
+        output_column=Column("binary_buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_buys_visits_triplet_with_random_negative": ProjectConfig(
         base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodVisitsBuysInteractionsDataFrames,
         dataset_class=UserTripletWeightedWithOnlineRandomNegativeGenerationDataset,
-        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX), Column("visits", IOType.NUMBER), Column("buys", IOType.NUMBER)],
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX),
+                       Column("visits", IOType.NUMBER), Column("buys", IOType.NUMBER)],
         output_column=Column("visits", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_binary_buys_content_triplet_with_random_negative": ProjectConfig(
         base_dir=ifood.BASE_DIR,
-        prepare_data_frames_task=ifood.PrepareIfoodBinaryBuysInteractionsDataFrames,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
         dataset_class=UserTripletContentWithOnlineRandomNegativeGenerationDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
         possible_negative_indices_columns={
@@ -128,7 +157,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         },
         metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
                           Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
-        output_column=Column("buys", IOType.NUMBER),
+        output_column=Column("binary_buys", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
     "ifood_user_cdae": ProjectConfig(

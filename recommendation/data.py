@@ -128,8 +128,10 @@ class InteractionsDataset(Dataset):
                  project_config: ProjectConfig, transformation: Union[Callable] = None,
                  negative_indices_generator: 'NegativeIndicesGenerator' = None) -> None:
         assert len(project_config.input_columns) >= 2
-        assert all(input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY or input_column.type == IOType.NUMBER for input_column in
-                   project_config.input_columns)
+        assert all(
+            input_column.type == IOType.INDEX or input_column.type == IOType.ARRAY or input_column.type == IOType.NUMBER
+            for input_column in
+            project_config.input_columns)
 
         literal_eval_array_columns(data_frame, project_config.input_columns + [project_config.output_column])
         literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [
@@ -142,16 +144,23 @@ class InteractionsDataset(Dataset):
                                      if input_column.type == IOType.INDEX]
         self._metadata_columns = [metadata_column.name for metadata_column in project_config.metadata_columns]
         self._output_column = project_config.output_column.name
+        self._auxiliar_output_columns = [auxiliar_output_column.name
+                                         for auxiliar_output_column in project_config.auxiliar_output_columns]
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...],
+                                                                   Union[np.ndarray, Tuple[np.ndarray, ...]]]:
         if isinstance(indices, int):
             indices = [indices]
         rows: pd.Series = self._data_frame.iloc[indices]
+        output = rows[self._output_column].values
+        if self._auxiliar_output_columns:
+            output = tuple([output]) + tuple(rows[auxiliar_output_column].values
+                                             for auxiliar_output_column in self._auxiliar_output_columns)
         return tuple(rows[input_column].values for input_column in self._input_columns), \
-               rows[self._output_column].values
+               output
 
 
 class InteractionsMatrixDataset(Dataset):
@@ -339,7 +348,8 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
     def __len__(self) -> int:
         return super().__len__() * 2
 
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...],
+                                                                   Union[np.ndarray, Tuple[np.ndarray, ...]]]:
         if isinstance(indices, int):
             indices = [indices]
 
@@ -348,14 +358,26 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         positive_indices = [index for index in indices if index < n]
         num_of_negatives = len(indices) - len(positive_indices)
 
-        positive_batch: Tuple[Tuple[np.ndarray, ...], np.ndarray] = super().__getitem__(positive_indices)
+        positive_batch = super().__getitem__(positive_indices)
         if num_of_negatives > 0:
+            negative_output = np.zeros(num_of_negatives)
+            if self._auxiliar_output_columns:
+                negative_output = tuple([negative_output]) + tuple(np.zeros(num_of_negatives)
+                                                                   for _ in self._auxiliar_output_columns)
+
             negative_batch: Tuple[Tuple[List[int], ...], np.ndarray] = (tuple(zip(*[
                 self._negative_indices_generator.generate_negative_indices()
                 for _ in
-                range(num_of_negatives)])), np.zeros(num_of_negatives))
+                range(num_of_negatives)])), negative_output)
+
+            if isinstance(positive_batch[1], tuple):
+                output = tuple(np.append(positive_output, negative_output)
+                               for positive_output, negative_output in zip(positive_batch[1], negative_batch[1]))
+            else:
+                output = np.append(positive_batch[1], negative_batch[1])
+
             return tuple(np.append(positive_batch[0][i], negative_batch[0][i])
-                         for i, _ in enumerate(self._input_columns)), np.append(positive_batch[1], negative_batch[1])
+                         for i, _ in enumerate(self._input_columns)), output
         else:
             return tuple(positive_batch[0][i] for i, _ in enumerate(self._input_columns)), positive_batch[1]
 
@@ -433,7 +455,9 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         return (user_indices, positive_items, negative_items), []
 
-class UserTripletWeightedWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWithOnlineRandomNegativeGenerationDataset):
+
+class UserTripletWeightedWithOnlineRandomNegativeGenerationDataset(
+    BinaryInteractionsWithOnlineRandomNegativeGenerationDataset):
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
@@ -447,6 +471,7 @@ class UserTripletWeightedWithOnlineRandomNegativeGenerationDataset(BinaryInterac
         positive_item_indices = rows[self._input_columns[1]].values
         positive_item_visits = rows[self._input_columns[2]].values
         positive_item_buys = rows[self._input_columns[3]].values
-        negative_item_indices = np.random.randint(0, self._data_frame[self._input_columns[1]].max() + 1, len(positive_item_indices))
+        negative_item_indices = np.random.randint(0, self._data_frame[self._input_columns[1]].max() + 1,
+                                                  len(positive_item_indices))
         return (user_indices, positive_item_indices, negative_item_indices, \
-                    positive_item_visits, positive_item_buys), []
+                positive_item_visits, positive_item_buys), []

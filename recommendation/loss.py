@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import BCELoss
 from torch.nn.modules.loss import _Loss
 from typing import List
 
@@ -199,3 +200,24 @@ class FocalVAELoss(VAELoss):
         F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
 
         return F_loss.mean()
+
+
+class ImplicitFeedbackBCELoss(nn.Module):
+    def __init__(self, confidence_weights: List[float], weight=None, reduction='mean') -> None:
+        super().__init__()
+        self.confidence_weights = confidence_weights
+        self.weight = weight
+        self.reduction = reduction
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor, *confidence_targets: torch.Tensor) -> torch.Tensor:
+        assert len(self.confidence_weights) == len(confidence_targets)
+        confidence = torch.ones_like(target)
+        for confidence_target, confidence_weight in zip(confidence_targets, self.confidence_weights):
+            confidence += confidence_weight * confidence_target
+        loss = confidence * F.binary_cross_entropy(input, target, weight=self.weight, reduction="none")
+        if self.reduction == "mean":
+            return loss.mean()
+        elif self.reduction == "sum":
+            return loss.sum()
+        else:
+            return loss
