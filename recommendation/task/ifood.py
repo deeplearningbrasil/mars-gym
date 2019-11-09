@@ -254,7 +254,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         grouped_df = df.groupby(["shift_idx", "day_of_week"])
         personalization_per_shift: List[float] = []
         for _, group_df in grouped_df:
-            personalization_per_shift.append(personalization_at_k(group_df["sorted_merchant_idx_list"], 5))
+            personalization_per_shift.append(personalization_at_k(group_df["sorted_merchant_idx_list"], k))
         return np.mean(personalization_per_shift)
 
     def run(self):
