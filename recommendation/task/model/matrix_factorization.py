@@ -6,7 +6,7 @@ import torch.nn as nn
 import luigi
 
 from recommendation.model.matrix_factorization import MatrixFactorization, BiasedMatrixFactorization, \
-    DeepMatrixFactorization, MatrixFactorizationWithShift
+    DeepMatrixFactorization, MatrixFactorizationWithShift, MatrixFactorizationWithShiftTime
 from recommendation.task.model.base import BaseTorchModelTraining, TORCH_WEIGHT_INIT, TORCH_DROPOUT_MODULES, \
     TORCH_ACTIVATION_FUNCTIONS, TORCH_LOSS_FUNCTIONS
 from recommendation.task.model.embedding import UserAndItemEmbeddingTraining
@@ -41,6 +41,19 @@ class MatrixFactorizationWithShiftTraining(UserAndItemEmbeddingTraining):
             user_shift_combination=self.user_shift_combination,
         )
 
+class MatrixFactorizationWithShiftTimeTraining(UserAndItemEmbeddingTraining):
+    loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce")
+
+    user_shift_combination: str = luigi.ChoiceParameter(choices=["sum", "multiply"], default="sum")
+
+    def create_module(self) -> nn.Module:
+        return MatrixFactorizationWithShiftTime(
+            n_users=self.n_users,
+            n_items=self.n_items,
+            n_factors=self.n_factors,
+            weight_init=TORCH_WEIGHT_INIT[self.weight_init],
+            user_shift_combination=self.user_shift_combination,
+        )
 
 class DeepMatrixFactorizationTraining(UserAndItemEmbeddingTraining):
     dense_layers: List[int] = luigi.ListParameter(default=[64, 32])
