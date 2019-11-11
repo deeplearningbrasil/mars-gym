@@ -7,51 +7,51 @@ from torchbearer.metrics import default_for_key, running_mean, mean
 
 
 @metrics.default_for_key("binary_accuracy")
-@metrics.to_dict
+@running_mean
+@mean
 @metrics.lambda_metric("binary_accuracy", on_epoch=False)
 def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
         y_true = y_true.to_dense()
-    y_pred = _convert_pred(y_pred, threshold)
-    y_true = y_true.float()
 
-    correct = torch.eq(y_pred, y_true).view(-1)
-    num_correct = torch.sum(correct).item()
-    num_examples = correct.shape[0]
-    return num_correct / num_examples
+    y_pred = (y_pred.float() > threshold).long()
+    y_true = (y_true.float() > threshold).long()
+
+    return torch.eq(y_pred, y_true).view(-1).float()
+
 
 @metrics.default_for_key("precision")
-@metrics.to_dict
+@running_mean
+@mean
 @metrics.lambda_metric("precision", on_epoch=False)
 def precision(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
         y_true = y_true.to_dense()
-    y_pred = _convert_pred(y_pred, threshold)
-    y_true = y_true.float()
+    y_pred = (y_pred.float() > threshold).float()
+    y_true = (y_true.float() > threshold).float()
 
-    true_positive = (y_pred * y_true).sum(dim=1)
-    precision = true_positive.div(y_pred.sum(dim=1).add(eps))
-    return float(torch.mean(precision))
+    true_positive = (y_pred * y_true).sum(dim=-1)
+    return true_positive.div(y_pred.sum(dim=-1).add(eps))
 
 
 @metrics.default_for_key("recall")
-@metrics.to_dict
+@running_mean
+@mean
 @metrics.lambda_metric("recall", on_epoch=False)
 def recall(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
         y_true = y_true.to_dense()
-    y_pred = _convert_pred(y_pred, threshold)
-    y_true = y_true.float()
+    y_pred = (y_pred.float() > threshold).float()
+    y_true = (y_true.float() > threshold).float()
 
-    true_positive = (y_pred * y_true).sum(dim=1)
-    recall = true_positive.div(y_true.sum(dim=1).add(eps))
-    return float(torch.mean(recall))
+    true_positive = (y_pred * y_true).sum(dim=-1)
+    return true_positive.div(y_true.sum(dim=-1).add(eps))
 
 
 @default_for_key('masked_zeroes_mse')
@@ -83,7 +83,3 @@ class MaskedZeroesMeanSquaredError(Metric):
         y_true = y_true.masked_select(mask)
 
         return torch.pow(y_pred - y_true.view_as(y_pred), 2).data
-
-
-def _convert_pred(y_pred: torch.Tensor, threshold: float=0.5):
-    return torch.ge(y_pred.float(), threshold).float()
