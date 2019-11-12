@@ -117,8 +117,9 @@ class MatrixFactorizationWithShift(UserAndItemEmbedding):
 
 class MatrixFactorizationWithShiftTime(UserAndItemEmbedding):
 
-    def __init__(self, n_users: int, n_items: int, n_factors: int, weight_init: Callable = lecun_normal_init,
-                 user_shift_combination: str = "sum"):
+    def __init__(self, n_users: int, n_items: int, n_factors: int, 
+                    weight_init: Callable = lecun_normal_init,
+                    user_shift_combination: str = "sum"):
         super().__init__(n_users, n_items, n_factors, weight_init)
         self.shift_embeddings        = nn.Embedding(10, n_factors)
         self.weekday_embeddings      = nn.Embedding(7, n_factors)
@@ -163,7 +164,7 @@ class MatrixFactorizationWithShiftTime(UserAndItemEmbedding):
         if self._user_shift_combination == "sum":
             user_shift_embeddings = user_embeddings + shift_embeddings + weekday_embeddings
         elif self._user_shift_combination == "multiply":
-            user_shift_embeddings = user_embeddings * shift_embeddings
+            user_shift_embeddings = user_embeddings * shift_embeddings + weekday_embeddings
         else:
             raise ValueError("Unknown user_shift_combination")
 

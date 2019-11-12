@@ -554,6 +554,9 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
 
         session_df = spark.read.parquet(self.input()[0][1].path)
 
+        session_df = session_df.withColumn("mode_shift_idx", session_df.shift_idx)
+        session_df = session_df.withColumn("mode_day_of_week", session_df.day_of_week)
+
 
         account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
@@ -568,10 +571,14 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         orders_df = orders_df.groupBy(session_df.columns).agg(collect_set("merchant_idx").alias("merchant_idx_list")) \
             .drop("merchant_idx")
 
+
+
         orders_df = orders_df \
             .join(account_df, "account_id", how="inner") \
             .join(merchant_df, "merchant_id", how="inner") \
-            .select("session_id", "account_idx", "merchant_idx", "merchant_idx_list", "shift", "shift_idx",
+            .select("session_id", "account_idx", "merchant_idx", 
+                    "merchant_idx_list", "shift", "shift_idx",
+                    "mode_shift_idx", "mode_day_of_week",
                     "day_of_week").dropDuplicates()
 
         orders_df.write.parquet(self.output().path)
