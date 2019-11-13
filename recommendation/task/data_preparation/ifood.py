@@ -10,7 +10,7 @@ import luigi
 import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws
+from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col
 from pyspark.sql.functions import explode
 from pyspark.sql.types import IntegerType, StringType
 
@@ -262,7 +262,8 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
 
 class SplitSessionDataset(BasePySparkTask):
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.10)
+    limit_interactions: int = luigi.FloatParameter(default=4)
 
     def requires(self):
         return AddShiftAndWeekDayToSessionDataset()
@@ -271,24 +272,43 @@ class SplitSessionDataset(BasePySparkTask):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_%.2f" % self.test_size)), \
                luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_%.2f" % self.test_size))
 
+    def filter_train_session(self, df, limit_interactions):
+
+        df_account_buy = df.groupBy("account_id").agg(sum(df.buy).alias("count_buy")).cache()
+        df_account_buy = df_account_buy.filter(col('count_buy') >= limit_interactions)
+
+        df_merchant_visit = df.groupBy("merchant_id").count()
+        df_merchant_visit = df_merchant_visit.filter(col('count') >= limit_interactions)
+
+        df = df \
+            .join(df_account_buy, "account_id", how="inner")\
+            .join(df_merchant_visit, "merchant_id", how="inner")
+
+        return df
+
     def main(self, sc: SparkContext, *args):
-        spark = SparkSession(sc)
+        spark   = SparkSession(sc)
 
-        df = spark.read.parquet(self.input().path)
-        df = df.filter(df.account_id.isNotNull())
+        df      = spark.read.parquet(self.input().path)
+        df      = df.filter(df.account_id.isNotNull()).dropDuplicates()
 
-        count = df.count()
-        n_test = math.ceil(self.test_size * count)
+        count   = df.count()
+        n_test  = math.ceil(self.test_size * count)
 
-        train_df = df.sort("click_timestamp").limit(count - n_test)
-        test_df = df.sort("click_timestamp", ascending=False).limit(n_test)
+        train_df    = df.sort("click_timestamp").limit(count - n_test).cache()
+        test_df     = df.sort("click_timestamp", ascending=False).limit(n_test).cache()
+
+        count_before = train_df.count()
+
+        train_df = self.filter_train_session(train_df, self.limit_interactions)
+        count_after = train_df.count()
 
         train_df.write.parquet(self.output()[0].path)
         test_df.write.parquet(self.output()[1].path)
 
 
 class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.10)
 
     def requires(self):
         return ProcessRestaurantContentDataset(), SplitSessionDataset(test_size=self.test_size)
@@ -315,7 +335,7 @@ class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTas
 
 
 class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.10)
 
     def requires(self):
         return SplitSessionDataset(test_size=self.test_size), \
@@ -341,7 +361,7 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
 
 
 class CreateInteractionDataset(BasePySparkTask):
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.10)
 
     def requires(self):
         return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
@@ -373,7 +393,7 @@ class CreateInteractionDataset(BasePySparkTask):
 
 
 class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
-    session_test_size: float = luigi.FloatParameter(default=0.2)
+    session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
 
     def requires(self):
@@ -412,7 +432,7 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
 
 
 class PrepareIfoodInteractionsDataFrames(BasePrepareDataFrames):
-    session_test_size: float = luigi.FloatParameter(default=0.2)
+    session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
 
     def requires(self):
@@ -471,7 +491,7 @@ class PrepareIfoodVisitsBuysInteractionsDataFrames(PrepareIfoodInteractionsDataF
         return df
 
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
-    session_test_size: float = luigi.FloatParameter(default=0.2)
+    session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
     split_per_user: bool = luigi.BoolParameter(default=False)
 
@@ -540,7 +560,7 @@ class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodA
         return df
 
 class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.10)
 
     def requires(self):
         return SplitSessionDataset(test_size=self.test_size), \
@@ -585,7 +605,7 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
 
 
 class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.10)
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(), PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)

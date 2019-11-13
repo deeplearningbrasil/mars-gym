@@ -310,7 +310,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
 
 class SortMerchantListsRandomly(luigi.Task):
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.1)
 
     def requires(self):
         return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
@@ -391,7 +391,7 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
 
 class SortMerchantListsByMostPopular(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.1)
 
     def requires(self):
         return CreateInteractionDataset(test_size=self.test_size), \
@@ -451,7 +451,7 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 
 class SortMerchantListsByMostPopularPerUser(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.1)
     buy_importance: float = luigi.FloatParameter(default=1.0)
     visit_importance: float = luigi.FloatParameter(default=0.0)
 
@@ -635,7 +635,7 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
 class GenerateEmbeddings(BaseEvaluationTask):
     user_embeddings = luigi.BoolParameter(default=False)
     item_embeddings = luigi.BoolParameter(default=False)
-    test_size: float = luigi.FloatParameter(default=0.2)
+    test_size: float = luigi.FloatParameter(default=0.1)
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)

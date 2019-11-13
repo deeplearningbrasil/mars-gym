@@ -43,6 +43,10 @@ class MatrixFactorizationWithShiftTraining(UserAndItemEmbeddingTraining):
 
 class MatrixFactorizationWithShiftTimeTraining(UserAndItemEmbeddingTraining):
     loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce")
+    
+    dropout_prob: float = luigi.FloatParameter(default=None)
+    dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
+    binary: bool = luigi.BoolParameter(default=False)
 
     user_shift_combination: str = luigi.ChoiceParameter(choices=["sum", "multiply"], default="sum")
 
@@ -51,6 +55,9 @@ class MatrixFactorizationWithShiftTimeTraining(UserAndItemEmbeddingTraining):
             n_users=self.n_users,
             n_items=self.n_items,
             n_factors=self.n_factors,
+            binary=self.binary,
+            dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],
+            dropout_prob=dropout_prob,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
             user_shift_combination=self.user_shift_combination,
         )

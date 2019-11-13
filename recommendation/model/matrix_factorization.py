@@ -119,12 +119,22 @@ class MatrixFactorizationWithShiftTime(UserAndItemEmbedding):
 
     def __init__(self, n_users: int, n_items: int, n_factors: int, 
                     weight_init: Callable = lecun_normal_init,
+                    binary: bool = True, 
+                    dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout,
+                    dropout_prob: float = None,
                     user_shift_combination: str = "sum"):
+
         super().__init__(n_users, n_items, n_factors, weight_init)
         self.shift_embeddings        = nn.Embedding(10, n_factors)
         self.weekday_embeddings      = nn.Embedding(7, n_factors)
-
+        self.binary                  = binary
+        self.dropout_module          = dropout_module
+        self.dropout_prob            = dropout_prob
         self._user_shift_combination = user_shift_combination
+
+        if dropout_prob:
+            self.dropout: nn.Module = dropout_module(dropout_prob)
+
 
         hiddenSize = 100
         self.fc1  = nn.Linear(1, hiddenSize, bias=False)
@@ -195,4 +205,7 @@ class MatrixFactorizationWithShiftTime(UserAndItemEmbedding):
 
         #raise(Exception("{} {} {} {} {}".format(shift_idx_list.float(), shift_idx_list.float().shape, shift_out, user_embeddings.shape, output.shape)))
 
-        return torch.sigmoid(output)
+        if self.binary:
+            output = torch.sigmoid(output)
+
+        return output
