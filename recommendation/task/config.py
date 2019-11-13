@@ -101,6 +101,16 @@ PROJECTS: Dict[str, ProjectConfig] = {
         auxiliar_output_columns=[Column("buys", IOType.NUMBER), Column("visits", IOType.NUMBER)],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
+    "ifood_binary_buys_and_buys_and_visits_and_time_cf_with_random_negative": ProjectConfig(
+        base_dir=ifood.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
+        dataset_class=BinaryInteractionsWithOnlineRandomNegativeGenerationDataset,
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX),
+                        Column("mode_shift_idx", IOType.INDEX), Column("mode_day_of_week", IOType.INDEX)],
+        output_column=Column("binary_buys", IOType.NUMBER),
+        auxiliar_output_columns=[Column("buys", IOType.NUMBER), Column("visits", IOType.NUMBER)],
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),    
     "ifood_binary_buys_cf_with_shift_based_random_negative": ProjectConfig(
         base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodInteractionsDataFrames,
