@@ -82,6 +82,7 @@ class BaseModelTraining(luigi.Task):
     val_size: float = luigi.FloatParameter(default=0.2)
     n_splits: int = luigi.IntParameter(default=5)
     split_index: int = luigi.IntParameter(default=0)
+    negative_proportion: float = luigi.FloatParameter(default=1.0)
     data_frames_preparation_extra_params: dict = luigi.DictParameter(default={})
     sampling_strategy: str = luigi.ChoiceParameter(choices=["oversample", "undersample", "none"], default="none")
     balance_fields: List[str] = luigi.ListParameter(default=[])
