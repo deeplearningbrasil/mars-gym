@@ -189,7 +189,8 @@ class BaseModelTraining(luigi.Task):
             self._train_dataset = self.project_config.dataset_class(
                 self.train_data_frame, self.metadata_data_frame, self.project_config,
                 transformation=self.get_data_transformation(),
-                negative_indices_generator=self.negative_indices_generator, **self.project_config.dataset_extra_params)
+                negative_indices_generator=self.negative_indices_generator,
+                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
         return self._train_dataset
 
     @property
@@ -198,7 +199,8 @@ class BaseModelTraining(luigi.Task):
             self._val_dataset = self.project_config.dataset_class(
                 self.val_data_frame, self.metadata_data_frame, self.project_config,
                 transformation=self.get_data_transformation(),
-                negative_indices_generator=self.negative_indices_generator, **self.project_config.dataset_extra_params)
+                negative_indices_generator=self.negative_indices_generator,
+                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
         return self._val_dataset
 
     @property
@@ -206,7 +208,8 @@ class BaseModelTraining(luigi.Task):
         if not hasattr(self, "_test_dataset"):
             self._test_dataset = self.project_config.dataset_class(
                 self.test_data_frame, self.metadata_data_frame, self.project_config,
-                negative_indices_generator=self.negative_indices_generator, ** self.project_config.dataset_extra_params)
+                negative_indices_generator=self.negative_indices_generator,
+                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
         return self._test_dataset
 
     @property
