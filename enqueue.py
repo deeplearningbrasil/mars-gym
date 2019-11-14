@@ -227,7 +227,7 @@ class EnqueueEvaluateMatrixFactorization(luigi.WrapperTask):
             print(task_id)
             yield EvaluateIfoodModel(
                 model_module="recommendation.task.model.matrix_factorization",
-                model_cls="MatrixFactorization",
+                model_cls="MatrixFactorizationTraining",
                 model_task_id=task_id,
             )
 
