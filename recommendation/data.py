@@ -408,6 +408,62 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
         return (user_indices, positive_item_indices, negative_item_indices), []
 
 
+class IntraSessionTripletWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
+
+    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
+                 project_config: ProjectConfig, transformation: Union[Callable] = None,
+                 negative_indices_generator: NegativeIndicesGenerator = None,
+                 negative_proportion: float = 1.0) -> None:
+
+        data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index()
+        super().__init__(data_frame, metadata_data_frame, project_config, transformation)
+
+        self._negative_indices_generator = negative_indices_generator
+
+        self._items_df = self._metadata_data_frame[['merchant_idx'] + self._metadata_columns].set_index(
+            'merchant_idx',
+            drop=False).sort_index()
+
+        # self._users = self._data_frame[self._input_columns[0]].unique()
+        # self._items = self._data_frame[self._input_columns[1]].unique()
+
+        # self._n_users: int = self._users.shape[0]
+        # self._n_items: int = self._items.shape[0]
+        self._vocab_size: int = metadata_data_frame.iloc[0]["vocab_size"]
+        self._non_text_input_dim: int = metadata_data_frame.iloc[0]["non_textual_input_dim"]
+
+    def __len__(self) -> int:
+        return self._data_frame.shape[0]
+
+    def _get_items(self, item_indices: List[int]) -> Tuple[torch.Tensor, ...]:
+        res = []
+        df_items = self._items_df.loc[item_indices]
+        for column_name in self._metadata_columns:
+            c = df_items[column_name].values.tolist()
+            dtype = torch.float32 if column_name == "restaurant_complete_info" else torch.int64
+            res.append(torch.tensor(np.array(c), dtype=dtype))
+        return tuple(res)
+
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...],
+                                                                         Tuple[np.ndarray, ...]], list]:
+        if isinstance(indices, int):
+            indices = [indices]
+
+        rows: pd.Series = self._data_frame.iloc[indices]
+        item_indices          = rows[self._input_columns[0]].values
+        positive_item_indices = rows[self._input_columns[1]].values
+        negative_item_indices = np.array(
+            [self._negative_indices_generator.generate_negative_indices_given_positive([anch_index, item_index])[-1]
+             for anch_index, item_index in zip(item_indices, positive_item_indices)], dtype=np.int64).flatten()
+
+        items          = self._get_items(item_indices)
+        positive_items = self._get_items(positive_item_indices)
+        negative_items = self._get_items(negative_item_indices)
+
+        return (items, positive_items, negative_items), []
+
+
+
 class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],

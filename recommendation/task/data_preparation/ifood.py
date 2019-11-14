@@ -10,7 +10,7 @@ import luigi
 import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col
+from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count
 from pyspark.sql.functions import explode
 from pyspark.sql.types import IntegerType, StringType
 
@@ -20,6 +20,7 @@ from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncod
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
 from recommendation.utils import parallel_literal_eval
 from collections import Counter
+from pyspark.sql.functions import explode, posexplode
 
 BASE_DIR: str = os.path.join("output", "ifood")
 DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
@@ -360,6 +361,33 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
         train_df.write.parquet(self.output().path)
 
 
+class CreateIntraSessionInteractionDataset(BasePySparkTask):
+    test_size: float = luigi.FloatParameter(default=0.10)
+
+    def requires(self):
+        return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_intra_session_train_%.2f" % self.test_size))
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
+        spark    = SparkSession(sc)
+
+        train_df = spark.read.parquet(self.input().path)
+        
+        df = train_df.groupby("session_id").agg(collect_list("merchant_idx").alias("merchant_idxs"), count("merchant_idx"))
+        
+        df = df.withColumn("merchant_idx_A", explode(df.merchant_idxs))
+        df = df.withColumn("merchant_idx_B", explode(df.merchant_idxs))
+
+        df = df.select("session_id", "merchant_idx_A", "merchant_idx_B")\
+                .distinct()\
+                .filter(df.merchant_idx_A != df.merchant_idx_B)
+        print(df.show(2))
+        df.write.parquet(self.output().path)
+
 class CreateInteractionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
 
@@ -429,6 +457,48 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
         df["n_items"] = self.num_businesses
 
         return df
+
+class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
+    session_test_size: float = luigi.FloatParameter(default=0.10)
+    test_size: float = luigi.FloatParameter(default=0.0)
+
+    def requires(self):
+        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size), \
+               CreateIntraSessionInteractionDataset(test_size=self.session_test_size)
+
+    @property
+    def dataset_dir(self) -> str:
+        return DATASET_DIR
+
+    @property
+    def stratification_property(self) -> str:
+        return "binary_buys"
+
+    @property
+    def num_users(self):
+        if not hasattr(self, "_num_users"):
+            accounts_df = pd.read_csv(self.input()[0][0].path)
+            self._num_users = len(accounts_df)
+        return self._num_users
+
+    @property
+    def num_businesses(self):
+        if not hasattr(self, "_num_businesses"):
+            merchants_df = pd.read_csv(self.input()[0][1].path)
+            self._num_businesses = len(merchants_df)
+        return self._num_businesses
+
+    def read_data_frame(self) -> pd.DataFrame:
+        df = pd.read_parquet(self.input()[1].path)
+        df["binary_buys"] = 1.0
+        df["n_users"] = self.num_users
+        df["n_items"] = self.num_businesses
+        return df
+
+    @property
+    def metadata_data_frame_path(self) -> str:
+        return self.input()[0][1].path
+
 
 
 class PrepareIfoodInteractionsDataFrames(BasePrepareDataFrames):

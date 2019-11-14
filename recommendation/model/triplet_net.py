@@ -28,6 +28,94 @@ class TripletNet(UserAndItemEmbedding):
         return self.user_embeddings(user_ids), self.item_embeddings(positive_item_ids), \
                 self.item_embeddings(negative_item_ids), positive_visits, positive_buys
 
+class TripletNetItemSimpleContent(nn.Module):
+    def __init__(self, input_dim: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
+                 dropout_prob: int = 0.1, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128],
+                 activation_function: Callable = F.selu, n_factors: int = 128, weight_init: Callable = lecun_normal_init):
+        super(TripletNetItemSimpleContent, self).__init__()
+
+        self.binary = binary
+        self.word_embeddings = nn.Embedding(vocab_size, word_embeddings_size)
+
+        self.convs1  = nn.ModuleList(
+            [nn.Conv2d(1, num_filters, (K, word_embeddings_size)) for K in filter_sizes])
+        
+        self.activation_function = activation_function
+
+        # Dense Layer
+        num_dense = np.sum([K * num_filters for K in filter_sizes]) + input_dim
+        #self.bn1   = nn.BatchNorm1d(num_dense)
+        #self.dense = nn.Linear(num_dense, n_factors)
+        self.dense = nn.Sequential(
+            nn.Linear(num_dense, int(num_dense/2)),
+            nn.ReLU(),
+            nn.Linear(int(num_dense/2), n_factors)
+        )
+
+        if dropout_prob:
+            self.dropout: nn.Module = dropout_module(dropout_prob)
+
+        self.weight_init = weight_init
+
+        self.apply(self.init_weights)
+        weight_init(self.word_embeddings.weight)
+
+    def init_weights(self, module: nn.Module):
+        if type(module) == nn.Linear:
+            self.weight_init(module.weight)
+            module.bias.data.fill_(0.1)
+
+    def conv_block(self, x):
+		# conv_out.size() = (batch_size, out_channels, dim, 1)
+        x = x.unsqueeze(1)
+        x = [F.relu(conv(x)).squeeze(3) for conv in self.convs1]
+        x = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in x]
+        x = torch.cat(x, 1)
+
+        return x
+
+    def dense_block(self, x):
+        x = self.dense(x)
+
+        if self.binary:
+            x = torch.sigmoid(x)
+        
+        return x
+
+    def compute_item_embeddings(self, item_content):
+        name, description, category, info = item_content
+
+        emb_name, emb_description, emb_category = self.word_embeddings(name), \
+                                                    self.word_embeddings(description), \
+                                                        self.word_embeddings(category)
+
+        cnn_category    = self.conv_block(emb_category)
+        cnn_description = self.conv_block(emb_description)
+        cnn_name        = self.conv_block(emb_name)
+
+        x = torch.cat((cnn_category, cnn_description, cnn_name, info), dim=1)
+
+        if hasattr(self, "dropout"):
+            x = self.dropout(x)
+
+        out = self.dense_block(x)
+
+        return out
+
+    def forward(self, item_content: torch.Tensor, positive_item_content: torch.Tensor,
+                negative_item_content: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
+        positive_item_emb   = self.compute_item_embeddings(positive_item_content)
+        item_emb            = self.compute_item_embeddings(item_content)
+
+        if negative_item_content is None:
+            return torch.cosine_similarity(item_emb, positive_item_emb)
+
+        negative_item_emb = self.compute_item_embeddings(negative_item_content)
+
+        return item_emb, positive_item_emb, negative_item_emb
+
+
+
 class TripletNetSimpleContent(nn.Module):
     def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
                  dropout_prob: int = 0.1, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128],

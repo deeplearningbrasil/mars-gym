@@ -6,7 +6,7 @@ from typing import Callable, List, Type, Union
 
 from recommendation.task.model.base import BaseTorchModelTraining, TORCH_ACTIVATION_FUNCTIONS, TORCH_WEIGHT_INIT, \
     TORCH_DROPOUT_MODULES
-from recommendation.model.triplet_net import TripletNet, TripletNetContent, TripletNetSimpleContent
+from recommendation.model.triplet_net import TripletNet, TripletNetContent, TripletNetSimpleContent, TripletNetItemSimpleContent
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 from recommendation.task.model.embedding import UserAndItemEmbeddingTraining
 from recommendation.task.ifood import GenerateContentEmbeddings
@@ -144,4 +144,34 @@ class TripletNetSimpleContentTraining(TripletNetContentTraining):
     def _generate_content_embeddings(self):
         GenerateContentEmbeddings(model_module="recommendation.task.model.triplet_net", 
                                     model_cls="TripletNetSimpleContentTraining",
+                                        model_task_id=self.task_id).run()
+
+
+class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
+    num_filters: int = luigi.IntParameter(default=64)
+    filter_sizes: List[int] = luigi.ListParameter(default=[1, 3, 5])
+    binary: bool = luigi.BoolParameter(default=False)
+
+    def create_module(self) -> nn.Module:
+        input_dim: int = self.non_textual_input_dim
+        vocab_size: int = self.vocab_size
+
+        return TripletNetItemSimpleContent(
+            input_dim=input_dim,
+            vocab_size=vocab_size,
+            word_embeddings_size=self.word_embeddings_size,
+            num_filters=self.num_filters,
+            filter_sizes=self.filter_sizes,
+            dropout_prob=self.dropout_prob,
+            binary=self.binary,
+            dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],
+            activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
+            content_layers=self.content_layers,
+            n_factors=self.n_factors,
+            weight_init=TORCH_WEIGHT_INIT[self.weight_init],
+        )
+
+    def _generate_content_embeddings(self):
+        GenerateContentEmbeddings(model_module="recommendation.task.model.triplet_net", 
+                                    model_cls="TripletNetItemSimpleContentTraining",
                                         model_task_id=self.task_id).run()
