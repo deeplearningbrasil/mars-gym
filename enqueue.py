@@ -214,3 +214,20 @@ class EnqueueEvaluateTripletNetWeighted(luigi.WrapperTask):
                 model_cls="TripletNetContentTraining",
                 model_task_id=task_id,
             )
+
+#PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler 
+# --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorization 
+# --model-task-id=MatrixFactorizationTraining____500_False_2cd769a409
+
+class EnqueueEvaluateMatrixFactorization(luigi.WrapperTask):
+    task_ids: List[str] = luigi.ListParameter(default=["MatrixFactorizationTraining____500_False_0e90d85c8a","MatrixFactorizationTraining____500_False_19373e938e","MatrixFactorizationTraining____500_False_1c1a702367","MatrixFactorizationTraining____500_False_2c7f4a044d","MatrixFactorizationTraining____500_False_30c3f60cac","MatrixFactorizationTraining____500_False_3350e5e066","MatrixFactorizationTraining____500_False_42fc8f88ae","MatrixFactorizationTraining____500_False_5cd44ca6a6","MatrixFactorizationTraining____500_False_67c409f796","MatrixFactorizationTraining____500_False_67e286bf36","MatrixFactorizationTraining____500_False_9afe2dc6f4","MatrixFactorizationTraining____500_False_a0b1e2f55e","MatrixFactorizationTraining____500_False_a1edeaaee6","MatrixFactorizationTraining____500_False_b23b60f223","MatrixFactorizationTraining____500_False_bbdfa30eba","MatrixFactorizationTraining____500_False_bda5d53fe4","MatrixFactorizationTraining____500_False_c1b0046e5a","MatrixFactorizationTraining____500_False_c8527dae21","MatrixFactorizationTraining____500_False_ca80f02d5a","MatrixFactorizationTraining____500_False_d26c2268dd","MatrixFactorizationTraining____500_False_d6335a426b","MatrixFactorizationTraining____500_False_df691e531c","MatrixFactorizationTraining____500_False_f1f920fa09","MatrixFactorizationTraining____500_False_f321a762d2","MatrixFactorizationTraining____500_False_f87ffed511","MatrixFactorizationTraining____500_False_ffe99b994d"])
+
+    def requires(self):
+        for task_id in self.task_ids:
+            print(task_id)
+            yield EvaluateIfoodModel(
+                model_module="recommendation.task.model.matrix_factorization",
+                model_cls="MatrixFactorization",
+                model_task_id=task_id,
+            )
+
