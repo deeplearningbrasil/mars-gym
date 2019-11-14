@@ -297,9 +297,7 @@ class SplitSessionDataset(BasePySparkTask):
         train_df = df.sort("click_timestamp").limit(count - n_test).cache()
         test_df = df.sort("click_timestamp", ascending=False).limit(n_test).cache()
 
-        print("Before filtering by minimum interactions:", len(train_df))
         train_df = self.filter_train_session(train_df, self.minimum_interactions)
-        print("After filtering by minimum interactions:", len(train_df))
 
         train_df.write.parquet(self.output()[0].path)
         test_df.write.parquet(self.output()[1].path)
