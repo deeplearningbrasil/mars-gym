@@ -8,7 +8,7 @@ import numpy as np
 ## PYTHONPATH="." ./cuda_luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --workers 4
 # - Para uma única GPU:
 ## PYTHONPATH="." luigi --module enqueue_pneumonia EnqueuePneumonia --seed 42 --local-scheduler
-from recommendation.task.ifood import EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel, EvaluateIfoodTripletNetContentModel, EvaluateIfoodTripletNetWeightedModel
+from recommendation.task.ifood import EvaluateIfoodModel, EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel, EvaluateIfoodTripletNetContentModel, EvaluateIfoodTripletNetWeightedModel
 from recommendation.task.model.auto_encoder import UnconstrainedAutoEncoderTraining, AttentiveVariationalAutoEncoderTraining
 from recommendation.task.model.triplet_net import TripletNetContentTraining, TripletNetTraining
 from recommendation.task.model.matrix_factorization import MatrixFactorizationTraining
