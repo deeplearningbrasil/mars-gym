@@ -11,7 +11,7 @@ import numpy as np
 from recommendation.task.ifood import EvaluateIfoodCDAEModel, EvaluateIfoodAttCVAEModel, EvaluateIfoodTripletNetContentModel, EvaluateIfoodTripletNetWeightedModel
 from recommendation.task.model.auto_encoder import UnconstrainedAutoEncoderTraining, AttentiveVariationalAutoEncoderTraining
 from recommendation.task.model.triplet_net import TripletNetContentTraining, TripletNetTraining
-
+from recommendation.task.model.matrix_factorization import MatrixFactorizationTraining
 class EnqueueEvaluateCDAE(luigi.WrapperTask):
     task_ids: List[str] = luigi.ListParameter()
 
@@ -164,6 +164,44 @@ class EnqueueTripletNetTraining(luigi.WrapperTask):
             )
 
             yield training_model
+
+# PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationTraining 
+# --project ifood_binary_buys_and_buys_and_visits_cf_with_random_negative 
+# --n-factors 256 --binary --loss-function implicit_feedback_bce --loss-function-params '{"confidence_weights": [1.0, 0.0004]}' 
+# --metrics '["loss", "binary_accuracy", "precision", "recall", "f1_score"]' --negative-proportion 10 --epochs 100 
+# --local-scheduler --batch-size 500 --save-item-embedding-tsv --save-user-embedding-tsv
+class EnqueueMatrixFactorizationTraining(luigi.WrapperTask):
+    n_factors: list = luigi.ListParameter(default=[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240, 250])
+
+    def requires(self):
+
+        for n in self.n_factors:
+            training_model = MatrixFactorizationTraining(
+                project="ifood_binary_buys_and_buys_and_visits_cf_with_random_negative",
+                batch_size=500,
+                n_factors=n,
+                binary=True,
+                loss_function="implicit_feedback_bce",
+                loss_function_params={"confidence_weights": [1.0, 0.0004]},
+                lr_scheduler_params={"step_size": 5, "gamma": 0.8},
+                metrics=["loss", "binary_accuracy", "precision", "recall", "f1_score"],
+                negative_proportion=2,
+                epochs=100,
+            )
+
+            yield training_model            
+
+class EnqueueEvaluateTripletNetWeighted(luigi.WrapperTask):
+    task_ids: List[str] = luigi.ListParameter(default=["TripletNetTraining____512____2d71bdc6d8","TripletNetTraining____512____37524fd14f","TripletNetTraining____512____3d67f3440a","TripletNetTraining____512____5c9517a5f1","TripletNetTraining____512____696eb4448e","TripletNetTraining____512____931fd9ee9f","TripletNetTraining____512____c3b2fe06b7","TripletNetTraining____512____eb375b71c2","TripletNetTraining____512____fe99d4b203"])
+
+    def requires(self):
+        for task_id in self.task_ids:
+            print(task_id)
+            yield EvaluateIfoodTripletNetWeightedModel(
+                model_module="recommendation.task.model.triplet_net",
+                model_cls="TripletNetContentTraining",
+                model_task_id=task_id,
+            )
 
 class EnqueueEvaluateTripletNetWeighted(luigi.WrapperTask):
     task_ids: List[str] = luigi.ListParameter(default=["TripletNetTraining____512____2d71bdc6d8","TripletNetTraining____512____37524fd14f","TripletNetTraining____512____3d67f3440a","TripletNetTraining____512____5c9517a5f1","TripletNetTraining____512____696eb4448e","TripletNetTraining____512____931fd9ee9f","TripletNetTraining____512____c3b2fe06b7","TripletNetTraining____512____eb375b71c2","TripletNetTraining____512____fe99d4b203"])

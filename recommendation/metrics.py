@@ -31,11 +31,23 @@ def precision(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
         y_true = y_true.to_dense()
+   
     y_pred = (y_pred.float() > threshold).float()
     y_true = (y_true.float() > threshold).float()
 
-    true_positive = (y_pred * y_true).sum(dim=-1)
-    return true_positive.div(y_pred.sum(dim=-1).add(eps))
+    # true_positive = (y_pred * y_true).sum(dim=-1)
+    # return true_positive.div(y_pred.sum(dim=-1).add(eps))
+
+    tp = (y_true * y_pred).sum().to(torch.float32)
+    tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
+    fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
+    fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
+    
+    epsilon = 1e-7
+    
+    precision = tp / (tp + fp + epsilon)
+
+    return precision
 
 
 @metrics.default_for_key("recall")
@@ -50,9 +62,42 @@ def recall(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, e
     y_pred = (y_pred.float() > threshold).float()
     y_true = (y_true.float() > threshold).float()
 
-    true_positive = (y_pred * y_true).sum(dim=-1)
-    return true_positive.div(y_true.sum(dim=-1).add(eps))
+    tp = (y_true * y_pred).sum().to(torch.float32)
+    tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
+    fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
+    fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
+    
+    epsilon = 1e-7
+    
+    recall = tp / (tp + fn + epsilon)
 
+    return recall
+
+@metrics.default_for_key("f1_score")
+@running_mean
+@mean
+@metrics.lambda_metric("f1_score", on_epoch=False)
+def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+    if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
+        y_true = y_true[0]
+    if y_true.layout == torch.sparse_coo:
+        y_true = y_true.to_dense()
+    y_pred = (y_pred.float() > threshold).float()
+    y_true = (y_true.float() > threshold).float()
+
+    tp = (y_true * y_pred).sum().to(torch.float32)
+    tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
+    fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
+    fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
+    
+    epsilon = 1e-7
+    
+    precision = tp / (tp + fp + epsilon)
+    recall = tp / (tp + fn + epsilon)
+    
+    f1 = 2* (precision*recall) / (precision + recall + epsilon)
+
+    return f1
 
 @default_for_key('masked_zeroes_mse')
 @running_mean

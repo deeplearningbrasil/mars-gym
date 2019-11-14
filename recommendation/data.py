@@ -363,8 +363,8 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         positive_indices = [index for index in indices if index < n]
         num_of_negatives = len(indices) - len(positive_indices)
+        positive_batch   = super().__getitem__(positive_indices)
 
-        positive_batch = super().__getitem__(positive_indices)
         if num_of_negatives > 0:
             negative_output = np.zeros(num_of_negatives)
             if self._auxiliar_output_columns:
@@ -382,8 +382,10 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
             else:
                 output = np.append(positive_batch[1], negative_batch[1])
 
-            return tuple(np.append(positive_batch[0][i], negative_batch[0][i])
-                         for i, _ in enumerate(self._input_columns)), output
+            inputs = tuple(np.append(positive_batch[0][i], negative_batch[0][i])
+                        for i, _ in enumerate(self._input_columns))
+
+            return inputs, output
         else:
             return tuple(positive_batch[0][i] for i, _ in enumerate(self._input_columns)), positive_batch[1]
 
