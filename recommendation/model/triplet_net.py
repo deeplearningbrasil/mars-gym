@@ -30,11 +30,12 @@ class TripletNet(UserAndItemEmbedding):
 
 class TripletNetItemSimpleContent(nn.Module):
     def __init__(self, input_dim: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
-                 dropout_prob: int = 0.1, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128],
+                 dropout_prob: int = 0.1, use_normalize: bool = False, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128],
                  activation_function: Callable = F.selu, n_factors: int = 128, weight_init: Callable = lecun_normal_init):
         super(TripletNetItemSimpleContent, self).__init__()
 
         self.binary = binary
+        self.use_normalize = use_normalize
         self.word_embeddings = nn.Embedding(vocab_size, word_embeddings_size)
 
         self.convs1  = nn.ModuleList(
@@ -74,8 +75,15 @@ class TripletNetItemSimpleContent(nn.Module):
 
         return x
 
+    def normalize(self, x):
+        x = F.normalize(x, p=2, dim=1)    
+        return x            
+
     def dense_block(self, x):
         x = self.dense(x)
+
+        if self.use_normalize:
+            x = self.normalize(x)
 
         if self.binary:
             x = torch.sigmoid(x)
