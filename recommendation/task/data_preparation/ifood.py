@@ -456,8 +456,8 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
                 .filter(df.merchant_idx_A != df.merchant_idx_B).cache()
 
         # Filter duplicates
-        udf_join = F.udf(lambda x,y : "_".join(sorted([str(x),str(y)])) , StringType())
-        df = df.withColumn('key', udf_join('merchant_idx_A','merchant_idx_B'))
+        udf_join = F.udf(lambda s,x,y : "_".join(sorted([str(s), str(x),str(y)])) , StringType())
+        df = df.withColumn('key', udf_join('session_id', 'merchant_idx_A','merchant_idx_B'))
         df = df.dropDuplicates(["key"]).select('session_id', 'merchant_idx_A', 'pos_A', 'merchant_idx_B', 'pos_B', 'relative_pos')
 
         print(df.show(2))

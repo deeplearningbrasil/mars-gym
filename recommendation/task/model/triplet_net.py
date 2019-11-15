@@ -168,6 +168,8 @@ class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
             filter_sizes=self.filter_sizes,
             dropout_prob=self.dropout_prob,
             use_normalize=self.use_normalize,
+            content_layers=self.content_layers,
+
             menu_full_text_max_words=menu_full_text_max_words,
             recurrence_hidden_size=self.recurrence_hidden_size,
             binary=self.binary,
@@ -176,6 +178,10 @@ class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
             n_factors=self.n_factors,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
         )
+
+    def after_fit(self):
+        if self.save_item_embedding_tsv:
+            self._generate_content_embeddings()
 
     def _generate_content_embeddings(self):
         GenerateContentEmbeddings(model_module="recommendation.task.model.triplet_net", 

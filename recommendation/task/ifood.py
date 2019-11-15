@@ -610,12 +610,12 @@ class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
 
 from sklearn import manifold
 class GenerateContentEmbeddings(BaseEvaluationTask):
-    batch_size: int = luigi.IntParameter(default=100000)
+    batch_size: int = luigi.IntParameter(default=10000)
     export_tsne: bool = luigi.BoolParameter(default=False)
     tsne_column_plot: str = luigi.Parameter(default="dish_description")
 
-    # def requires(self):
-    #     return ProcessRestaurantContentDataset(), PrepareRestaurantContentDataset()
+    def requires(self):
+        return ProcessRestaurantContentDataset(), PrepareRestaurantContentDataset()
 
     def output(self):
         return luigi.LocalTarget(

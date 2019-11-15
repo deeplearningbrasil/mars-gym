@@ -31,7 +31,7 @@ class TripletNet(UserAndItemEmbedding):
 class TripletNetItemSimpleContent(nn.Module):
     def __init__(self, input_dim: int, vocab_size: int, word_embeddings_size: int, recurrence_hidden_size: int,  menu_full_text_max_words: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
                  dropout_prob: int = 0.1, use_normalize: bool = False, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, 
-                 activation_function: Callable = F.selu, n_factors: int = 128, weight_init: Callable = lecun_normal_init):
+                 activation_function: Callable = F.selu, n_factors: int = 128, content_layers: List[int] = [128],  weight_init: Callable = lecun_normal_init):
         super(TripletNetItemSimpleContent, self).__init__()
 
         self.binary              = binary
@@ -39,16 +39,23 @@ class TripletNetItemSimpleContent(nn.Module):
         self.word_embeddings     = nn.Embedding(vocab_size, word_embeddings_size)
         self.activation_function = activation_function
 
+        # RNN Emnedding
         self.lstm = nn.LSTM(word_embeddings_size, recurrence_hidden_size, bidirectional=True, batch_first=True)
         self.attention_menu_full_text = Attention(recurrence_hidden_size * 2, menu_full_text_max_words)
 
-        # Conv1
+        # Conv1 Embedding
         self.convs1  = nn.ModuleList(
             [nn.Conv2d(1, num_filters, (K, word_embeddings_size)) for K in filter_sizes])
 
+        # Content Information
+        self.content_network = nn.ModuleList(
+            [nn.Linear(
+                input_dim if i == 0 else content_layers[i - 1],
+                layer_size
+            ) for i, layer_size in enumerate(content_layers)])
 
         # Dense Layer
-        input_dense = (len(filter_sizes) * num_filters) * 4 + input_dim + recurrence_hidden_size * 2
+        input_dense = (len(filter_sizes) * num_filters) * 3 + content_layers[-1] + recurrence_hidden_size * 2
         self.dense  = nn.Sequential(
             nn.Linear(input_dense, int(input_dense/2)),
             nn.ReLU(),
@@ -103,21 +110,26 @@ class TripletNetItemSimpleContent(nn.Module):
         name, description, category, menu_full_text, info = item_content
         #print(name.size(), description.size(), category.size(), menu_full_text.size(), info.size())
         emb_name            = self.word_embeddings(name)
-        emb_description     = self.word_embeddings(description)
-        emb_category        = self.word_embeddings(description)
+        #emb_description     = self.word_embeddings(description)
+        emb_category        = self.word_embeddings(category)
         emb_menu_full_text  = self.word_embeddings(menu_full_text)
 
         cnn_name            = self.conv_block1(emb_name)
+        #cnn_description     = self.conv_block1(emb_description)
         cnn_category        = self.conv_block1(emb_category)
-        cnn_description     = self.conv_block1(emb_description)
         cnn_menu_full_text  = self.conv_block1(emb_menu_full_text)
 
 
         h_menu_full_text, _ = self.lstm(emb_menu_full_text)
         att_menu_full_text  = self.attention_menu_full_text(h_menu_full_text)
 
-        x = torch.cat((cnn_name, cnn_category, cnn_description, cnn_menu_full_text, att_menu_full_text, info), dim=1)
+        text_out = torch.cat((cnn_name, cnn_category, cnn_menu_full_text, att_menu_full_text), dim=1)
         #x = self.conv_block2(x)
+
+        for layer in self.content_network:
+            info = self.activation_function(layer(info.float()))
+        
+        x = torch.cat((text_out, info), dim=1)
 
         if hasattr(self, "dropout"):
             x = self.dropout(x)
