@@ -1,0 +1,23 @@
+PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetItemSimpleContentTraining --project ifood_session_triplet_with_random_negative --n-factors 50 --loss-function bpr_triplet --negative-proportion 1 --local-scheduler --batch-size 15 --epochs 15 --save-item-embedding-tsv --use-normalize --num-filters 68 --filter-sizes "[1,3,5]" --save-item-embedding-tsv --optimizer "radam"
+
+PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetInfoContentTraining --project ifood_buys_visits_triplet_info_with_random_negative --local-scheduler --batch-size=512 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' --learning-rate=0.0001 --epochs=100 --n-factors=100 --loss-function=weighted2_triplet --loss-function-params='{"balance_factor": 0.9}' --content-layers="[64,10]"
+
+PYTHONPATH="." luigi --module recommendation.task.ifood GenerateContentInfoEmbeddings --local-scheduler --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetInfoContentTraining --model-task-id=TripletNetInfoContentTraining_selu____512_8798583588
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateRandomIfoodModel --local-scheduler 
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateMostPopularIfoodModel --local-scheduler 
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateMostPopularPerUserIfoodModel --local-scheduler 
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCDAEModel --local-scheduler --model-module=recommendation.task.model.auto_encoder --model-cls=UnconstrainedAutoEncoderTraining --model-task-id=UnconstrainedAutoEncoderTraining_selu____200_0d227f11e0
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCVAEModel --local-scheduler --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-task-id=VariationalAutoEncoderTraining_selu____500_c8da29998f
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationWithShiftTraining --model-task-id=MatrixFactorizationWithShiftTraining____500____9c615263d4
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetWeightedInfoModel --local-scheduler --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetInfoContentTraining --model-task-id=TripletNetInfoContentTraining_selu____512_3d3142d5d6
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetWeightedInfoModel --local-scheduler --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetInfoContentTraining --model-task-id=TripletNetInfoContentTraining_selu____512_389f667747
+
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorization --model-task-id=MatrixFactorizationTraining____500_False_2cd769a409
