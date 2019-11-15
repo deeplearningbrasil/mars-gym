@@ -415,7 +415,7 @@ class IntraSessionTripletWithOnlineRandomNegativeGenerationDataset(InteractionsD
                  negative_indices_generator: NegativeIndicesGenerator = None,
                  negative_proportion: float = 1.0) -> None:
 
-        data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index() #
+        data_frame = data_frame[data_frame[project_config.output_column.name] > 0].sample(10000).reset_index() #
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
 
         self._negative_indices_generator = negative_indices_generator

@@ -42,7 +42,7 @@ from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
 from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, \
-    NoAutoCollationDataLoader
+    NoAutoCollationDataLoader, RAdam
 from recommendation.utils import lecun_normal_init, he_init
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -51,7 +51,7 @@ TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransforma
                                   masking_noise=MaskingNoiseCorruptionTransformation,
                                   salt_and_pepper_noise=SaltAndPepperNoiseCorruptionTransformation,
                                   none=None)
-TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax)
+TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax, radam=RAdam)
 TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss,
                             mlm=nn.MultiLabelMarginLoss,
                             focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
