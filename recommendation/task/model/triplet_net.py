@@ -148,14 +148,17 @@ class TripletNetSimpleContentTraining(TripletNetContentTraining):
 
 
 class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
-    num_filters: int = luigi.IntParameter(default=64)
+    loss_function:  str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet", "weighted_triplet"], default="triplet_margin")
+    num_filters:    int = luigi.IntParameter(default=64)
     filter_sizes: List[int] = luigi.ListParameter(default=[1, 3, 5])
     binary: bool = luigi.BoolParameter(default=False)
-    use_normalize: bool = luigi.BoolParameter(default=False)
+    use_normalize:  bool = luigi.BoolParameter(default=False)
+    recurrence_hidden_size: int = luigi.IntParameter(default=40)
 
     def create_module(self) -> nn.Module:
         input_dim: int = self.non_textual_input_dim
         vocab_size: int = self.vocab_size
+        menu_full_text_max_words: int = self.menu_full_text_max_words
 
         return TripletNetItemSimpleContent(
             input_dim=input_dim,
@@ -165,10 +168,11 @@ class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
             filter_sizes=self.filter_sizes,
             dropout_prob=self.dropout_prob,
             use_normalize=self.use_normalize,
+            menu_full_text_max_words=menu_full_text_max_words,
+            recurrence_hidden_size=self.recurrence_hidden_size,
             binary=self.binary,
             dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],
             activation_function=TORCH_ACTIVATION_FUNCTIONS[self.activation_function],
-            content_layers=self.content_layers,
             n_factors=self.n_factors,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
         )
@@ -176,4 +180,5 @@ class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
     def _generate_content_embeddings(self):
         GenerateContentEmbeddings(model_module="recommendation.task.model.triplet_net", 
                                     model_cls="TripletNetItemSimpleContentTraining",
-                                        model_task_id=self.task_id).run()
+                                    model_task_id=self.task_id,
+                                    export_tsne=True)

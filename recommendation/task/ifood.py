@@ -13,9 +13,9 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 import random
-
+from time import time
 from recommendation.data import literal_eval_array_columns
-from recommendation.plot import plot_histogram
+from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
@@ -584,9 +584,11 @@ class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
         return SortMerchantListsTripletWeightedModel(model_module=self.model_module, model_cls=self.model_cls,
                                                      model_task_id=self.model_task_id)
 
-
+from sklearn import manifold
 class GenerateContentEmbeddings(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
+    export_tsne: bool = luigi.BoolParameter(default=False)
+    tsne_column_plot: str = luigi.Parameter(default="dish_description")
 
     def requires(self):
         return ProcessRestaurantContentDataset(), PrepareRestaurantContentDataset()
@@ -628,8 +630,23 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
         del restaurant_df['item_imagesurl']
 
         print("Saving the output file...")
+
+        if self.export_tsne:
+            self.export_tsne_file(embeddings, restaurant_df)
+
         np.savetxt(os.path.join(self.output()[0].path), embeddings, delimiter="\t")
         restaurant_df.to_csv(os.path.join(self.output()[1].path), sep='\t', index=False)
+
+
+    def export_tsne_file(self, embs, metadata):
+        t0 = time()
+        tsne    = manifold.TSNE(n_components=2, init='random', random_state=0)
+        Y       = tsne.fit_transform(embs)
+        t1 = time()
+        print("circles in %.2g sec" % (t1 - t0))
+        
+        plot_tsne(Y[:, 0], Y[:, 1], metadata[self.tsne_column_plot].reset_index().index).savefig(
+            os.path.join(os.path.split(self.output()[0].path)[0], "tsne.jpg"))   
 
 
 class GenerateEmbeddings(BaseEvaluationTask):

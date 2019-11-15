@@ -10,17 +10,17 @@ import luigi
 import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count
-from pyspark.sql.functions import explode
+from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count, abs
+from pyspark.sql.functions import explode, posexplode
 from pyspark.sql.types import IntegerType, StringType
-
+from pyspark.sql import functions as F
 from torchnlp.encoders import LabelEncoder
 from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncoder, TextEncoder
 
-from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
+from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames, BaseDownloadDataset
 from recommendation.utils import parallel_literal_eval
 from collections import Counter
-from pyspark.sql.functions import explode, posexplode
+import requests
 
 BASE_DIR: str = os.path.join("output", "ifood")
 DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
@@ -170,13 +170,41 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
         restaurant_df.toPandas().to_csv(self.output().path, index=False)
 
 
-class ProcessRestaurantContentDataset(BasePySparkTask):
+
+
+
+# class DownloadStopWords(BaseDownloadDataset):
+#     @property
+#     def url(self) -> str:
+#         return "https://raw.githubusercontent.com/stopwords-iso/stopwords-pt/master/stopwords-pt.txt"
+    
+#     def output(self) -> luigi.LocalTarget:
+#         return luigi.LocalTarget(os.path.join(DATASET_DIR, "stopwords_pt.txt"))
+
+
+class DownloadStopWords(luigi.Task):
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "stopwords_pt.txt"))
+
+    def run(self):
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
+        url  = "https://raw.githubusercontent.com/stopwords-iso/stopwords-pt/master/stopwords-pt.txt"
+        file = requests.get(url)
+
+        with open(self.output().path, 'wb') as output:
+            output.write(file.content)
+
+        print(self.output().path)
+
+
+class ProcessRestaurantContentDataset(luigi.Task):
     menu_text_length: int = luigi.IntParameter(default=5000)
     description_text_length: int = luigi.IntParameter(default=200)
     category_text_length: int = luigi.IntParameter(default=250)
 
     def requires(self):
-        return PrepareRestaurantContentDataset()
+        return PrepareRestaurantContentDataset(), DownloadStopWords()
     
     def output(self):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurants_with_processed_contents.csv")), \
@@ -204,8 +232,13 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         text = re.sub(r'[?|!|\'|#]', r'', text)
         text = re.sub(r'[.|,|:|)|(|\|/]', r' ', text)
 
+        # Clean onde
         tokens = [t.strip() for t in text.split() if len(t) > 1]
         
+        # remove stopwords
+        stopwords = self.load_stopwords()
+        tokens    = [t for t in tokens if t not in stopwords]
+
         if len(tokens) == 0:
             tokens.append("<pad>")
         #print(tokens)
@@ -214,22 +247,30 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         #    print(tokens)
         return tokens
 
-    def main(self, sc: SparkContext, *args):
-        spark = SparkSession(sc)
+    def load_stopwords(self):
+        if not hasattr(self, "_stopwords"):
+            with open(self.input()[1].path, "r") as file_handler:
+                self._stopwords = [unidecode(line.strip()) for line in file_handler.readlines()]
 
-        context = pd.read_csv(self.input().path)
+        return self._stopwords
+
+    def run(self):
+        #spark = SparkSession(sc)
+        context = pd.read_csv(self.input()[0].path)
 
         del context['item_imagesurl']
         context['menu_full_text']   = context['menu_full_text'].str[:self.menu_text_length].replace(',', ' ')
         context['description']      = context['description'].str[:self.description_text_length].replace(',', ' ')
         context['category_names']   = context['category_names'].str[:self.category_text_length].replace(',', ' ')
-
+        
         for column in ['days_of_week', 'shifts']:
             context[column] = parallel_literal_eval(context[column].fillna('[]'))
-            elements = np.unique(context[column].sum())
-            for el in elements:
-                context[el] = context[column].apply(lambda x: ((el in x) * 1.0))
+            elements        = np.unique(context[column].sum())
 
+            for el in elements:
+               context[el] = context[column].apply(lambda x: ((el in x) * 1.0))
+
+        print(context.head())
         context['avg_score']      = context['avg_score'].fillna(-1)
         context['category_names'] = context['category_names'].fillna('NAN').str.replace('|', ' ')
 
@@ -246,13 +287,13 @@ class ProcessRestaurantContentDataset(BasePySparkTask):
         for text_column in ['trading_name', 'description', 'category_names', "menu_full_text"]:
             context[text_column] = tokenizer.batch_encode(context[text_column])[0].cpu().detach().numpy().tolist()
             context[text_column + '_max_words'] = len(context[text_column][0])
-
+        
         restaurant_features = ['dish_description', 'price_range', 'avg_score', \
-                                                      'latitude', 'longitude', 0, 1, 2, 3, 4, 5, 6, \
-                                                      'weekday breakfast', 'weekday dawn', 'weekday dinner', \
-                                                      'weekday lunch', 'weekday snack', 'weekend breakfast', \
-                                                      'weekend dawn', 'weekend dinner', 'weekend lunch', \
-                                                      'weekend snack']
+                                'latitude', 'longitude', 0, 1, 2, 3, 4, 5, 6, \
+                                'weekday breakfast', 'weekday dawn', 'weekday dinner', \
+                                'weekday lunch', 'weekday snack', 'weekend breakfast', \
+                                'weekend dawn', 'weekend dinner', 'weekend lunch', \
+                                'weekend snack']
         
         context['restaurant_complete_info'] = context[restaurant_features].values.tolist()
 
@@ -375,16 +416,45 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
 
         spark    = SparkSession(sc)
 
-        train_df = spark.read.parquet(self.input().path)
-        
-        df = train_df.groupby("session_id").agg(collect_list("merchant_idx").alias("merchant_idxs"), count("merchant_idx"))
-        
-        df = df.withColumn("merchant_idx_A", explode(df.merchant_idxs))
-        df = df.withColumn("merchant_idx_B", explode(df.merchant_idxs))
+        train_df = spark.read.parquet(self.input().path).orderBy(col('click_timestamp'))
 
-        df = df.select("session_id", "merchant_idx_A", "merchant_idx_B")\
+        df       = train_df.groupby("session_id").agg(
+                    collect_list("merchant_idx").alias("merchant_idxs"), 
+                    count("merchant_idx").alias("total"), 
+                    sum("buy").alias("buy"))
+
+        # Filter Interactions
+        df = df.filter(df.total > 1).filter(df.buy > 1).cache()
+
+        # Filter position in list
+        df_pos = df.select(col('session_id').alias('_session_id'), 
+                                    posexplode(df.merchant_idxs))
+
+        # Explode A
+        df = df.withColumn("merchant_idx_A", explode(df.merchant_idxs))
+        df = df.join(df_pos, 
+                    (df.session_id == df_pos._session_id) & (df.merchant_idx_A == df_pos.col))\
+                .select('session_id', 'merchant_idx_A', 'pos', 'merchant_idxs')\
+                .withColumnRenamed('pos', 'pos_A')
+
+        # Explode B
+        df = df.withColumn("merchant_idx_B", explode(df.merchant_idxs))
+        df = df.join(df_pos, 
+                    (df.session_id == df_pos._session_id) & (df.merchant_idx_B == df_pos.col))\
+                .withColumnRenamed('pos', 'pos_B')
+
+        df = df.withColumn("relative_pos", abs(df.pos_A - df.pos_B))
+
+        # Filter  distincts
+        df = df.select('session_id', 'merchant_idx_A', 'pos_A', 'merchant_idx_B', 'pos_B', 'relative_pos')\
                 .distinct()\
-                .filter(df.merchant_idx_A != df.merchant_idx_B)
+                .filter(df.merchant_idx_A != df.merchant_idx_B).cache()
+
+        # Filter duplicates
+        udf_join = F.udf(lambda x,y : "_".join(sorted([str(x),str(y)])) , StringType())
+        df = df.withColumn('key', udf_join('merchant_idx_A','merchant_idx_B'))
+        df = df.dropDuplicates(["key"]).select('session_id', 'merchant_idx_A', 'pos_A', 'merchant_idx_B', 'pos_B', 'relative_pos')
+
         print(df.show(2))
         df.write.parquet(self.output().path)
 

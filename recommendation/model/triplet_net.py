@@ -29,28 +29,30 @@ class TripletNet(UserAndItemEmbedding):
                 self.item_embeddings(negative_item_ids), positive_visits, positive_buys
 
 class TripletNetItemSimpleContent(nn.Module):
-    def __init__(self, input_dim: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
-                 dropout_prob: int = 0.1, use_normalize: bool = False, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128],
+    def __init__(self, input_dim: int, vocab_size: int, word_embeddings_size: int, recurrence_hidden_size: int,  menu_full_text_max_words: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
+                 dropout_prob: int = 0.1, use_normalize: bool = False, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, 
                  activation_function: Callable = F.selu, n_factors: int = 128, weight_init: Callable = lecun_normal_init):
         super(TripletNetItemSimpleContent, self).__init__()
 
-        self.binary = binary
-        self.use_normalize = use_normalize
-        self.word_embeddings = nn.Embedding(vocab_size, word_embeddings_size)
-
-        self.convs1  = nn.ModuleList(
-            [nn.Conv2d(1, num_filters, (K, word_embeddings_size)) for K in filter_sizes])
-        
+        self.binary              = binary
+        self.use_normalize       = use_normalize
+        self.word_embeddings     = nn.Embedding(vocab_size, word_embeddings_size)
         self.activation_function = activation_function
 
+        self.lstm = nn.LSTM(word_embeddings_size, recurrence_hidden_size, bidirectional=True, batch_first=True)
+        self.attention_menu_full_text = Attention(recurrence_hidden_size * 2, menu_full_text_max_words)
+
+        # Conv1
+        self.convs1  = nn.ModuleList(
+            [nn.Conv2d(1, num_filters, (K, word_embeddings_size)) for K in filter_sizes])
+
+
         # Dense Layer
-        num_dense = np.sum([K * num_filters for K in filter_sizes]) + input_dim
-        #self.bn1   = nn.BatchNorm1d(num_dense)
-        #self.dense = nn.Linear(num_dense, n_factors)
-        self.dense = nn.Sequential(
-            nn.Linear(num_dense, int(num_dense/2)),
+        input_dense = (len(filter_sizes) * num_filters) * 4 + input_dim + recurrence_hidden_size * 2
+        self.dense  = nn.Sequential(
+            nn.Linear(input_dense, int(input_dense/2)),
             nn.ReLU(),
-            nn.Linear(int(num_dense/2), n_factors)
+            nn.Linear(int(input_dense/2), n_factors)
         )
 
         if dropout_prob:
@@ -66,20 +68,27 @@ class TripletNetItemSimpleContent(nn.Module):
             self.weight_init(module.weight)
             module.bias.data.fill_(0.1)
 
-    def conv_block(self, x):
+    def conv_block1(self, x):
 		# conv_out.size() = (batch_size, out_channels, dim, 1)
-        x = x.unsqueeze(1)
-        x = [F.relu(conv(x)).squeeze(3) for conv in self.convs1]
-        x = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in x]
-        x = torch.cat(x, 1)
+        _x = x.unsqueeze(1)
+        _x = [F.relu(conv(_x)).squeeze(3) for conv in self.convs1]
+        _x = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in _x]
+        _x = torch.cat(_x, 1)
+
+        return _x
+
+    def conv_block2(self, x):
+        x = self.convs2(x)
 
         return x
 
     def normalize(self, x):
-        x = F.normalize(x, p=2, dim=1)    
+        x = F.normalize(x, p=2, dim=1)   
+
         return x            
 
     def dense_block(self, x):
+        #print("=====> ", x.size())
         x = self.dense(x)
 
         if self.use_normalize:
@@ -91,24 +100,31 @@ class TripletNetItemSimpleContent(nn.Module):
         return x
 
     def compute_item_embeddings(self, item_content):
-        name, description, category, info = item_content
+        name, description, category, menu_full_text, info = item_content
+        #print(name.size(), description.size(), category.size(), menu_full_text.size(), info.size())
+        emb_name            = self.word_embeddings(name)
+        emb_description     = self.word_embeddings(description)
+        emb_category        = self.word_embeddings(description)
+        emb_menu_full_text  = self.word_embeddings(menu_full_text)
 
-        emb_name, emb_description, emb_category = self.word_embeddings(name), \
-                                                    self.word_embeddings(description), \
-                                                        self.word_embeddings(category)
+        cnn_name            = self.conv_block1(emb_name)
+        cnn_category        = self.conv_block1(emb_category)
+        cnn_description     = self.conv_block1(emb_description)
+        cnn_menu_full_text  = self.conv_block1(emb_menu_full_text)
 
-        cnn_category    = self.conv_block(emb_category)
-        cnn_description = self.conv_block(emb_description)
-        cnn_name        = self.conv_block(emb_name)
 
-        x = torch.cat((cnn_category, cnn_description, cnn_name, info), dim=1)
+        h_menu_full_text, _ = self.lstm(emb_menu_full_text)
+        att_menu_full_text  = self.attention_menu_full_text(h_menu_full_text)
+
+        x = torch.cat((cnn_name, cnn_category, cnn_description, cnn_menu_full_text, att_menu_full_text, info), dim=1)
+        #x = self.conv_block2(x)
 
         if hasattr(self, "dropout"):
             x = self.dropout(x)
 
-        out = self.dense_block(x)
+        emb = self.dense_block(x)
 
-        return out
+        return emb
 
     def forward(self, item_content: torch.Tensor, positive_item_content: torch.Tensor,
                 negative_item_content: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
@@ -117,11 +133,9 @@ class TripletNetItemSimpleContent(nn.Module):
 
         if negative_item_content is None:
             return torch.cosine_similarity(item_emb, positive_item_emb)
-
-        negative_item_emb = self.compute_item_embeddings(negative_item_content)
-
-        return item_emb, positive_item_emb, negative_item_emb
-
+        else:
+            negative_item_emb = self.compute_item_embeddings(negative_item_content)
+            return item_emb, positive_item_emb, negative_item_emb
 
 
 class TripletNetSimpleContent(nn.Module):

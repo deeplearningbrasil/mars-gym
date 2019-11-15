@@ -142,7 +142,8 @@ PROJECTS: Dict[str, ProjectConfig] = {
         input_columns=[Column("merchant_idx_A", IOType.INDEX), Column("merchant_idx_B", IOType.INDEX)],
         output_column=Column("binary_buys", IOType.NUMBER),
         metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
-                          Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
+                          Column("category_names", IOType.ARRAY), Column("menu_full_text", IOType.ARRAY), 
+                          Column("restaurant_complete_info", IOType.ARRAY)],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),    
     "ifood_binary_buys_triplet_with_random_negative": ProjectConfig(
