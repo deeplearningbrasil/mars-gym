@@ -20,10 +20,8 @@ from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
     PrepareRestaurantContentDataset, \
-    CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset, \
-    IndexAccountsAndMerchantsOfSessionTrainDataset
+    CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset
 from recommendation.task.evaluation import BaseEvaluationTask
-from recommendation.task.model.base import SEED
 from recommendation.utils import chunks, parallel_literal_eval
 
 
@@ -36,7 +34,7 @@ def _sort_merchants_by_tuple_score(account_idx: int, merchant_idx_list: List[int
 def _sort_merchants_by_merchant_score(merchant_idx_list: List[int], scores_per_merchant: Dict[int, float]) -> List[int]:
     scores = list(map(lambda merchant_idx: scores_per_merchant[merchant_idx], merchant_idx_list))
     return [merchant_idx for _, merchant_idx in
-                                sorted(zip(scores, merchant_idx_list), reverse=True)]
+            sorted(zip(scores, merchant_idx_list), reverse=True)]
 
 
 def _create_relevance_list(sorted_merchant_idx_list: List[int], ordered_merchant_idx: int) -> List[int]:
@@ -71,8 +69,10 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
     def requires(self):
         test_size = self.model_training.requires().session_test_size
-        return PrepareIfoodIndexedOrdersTestData(test_size=test_size), \
-               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=test_size)
+        minimum_interactions = self.model_training.requires().minimum_interactions
+        return PrepareIfoodIndexedOrdersTestData(test_size=test_size, minimum_interactions=minimum_interactions), \
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=test_size,
+                                                                      minimum_interactions=minimum_interactions)
 
     def output(self):
         return luigi.LocalTarget(
@@ -141,7 +141,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         plot_histogram(scores_per_tuple.values()).savefig(
             os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(
+            self.output().path, index=False)
 
 
 class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
@@ -311,9 +312,11 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
 class SortMerchantListsRandomly(luigi.Task):
     test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=10)
 
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
+        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
+                                                 minimum_interactions=self.minimum_interactions)
 
     def output(self):
         return luigi.LocalTarget(
@@ -338,14 +341,14 @@ class SortMerchantListsRandomly(luigi.Task):
             map(self.random, orders_df["merchant_idx_list"]),
             total=len(orders_df)))
 
-
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
             starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(
+            self.output().path, index=False)
 
 
 class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
@@ -377,9 +380,13 @@ class EvaluateIfoodHybridCVAEModel(EvaluateIfoodModel):
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
+    test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=10)
 
     def requires(self):
-        return SortMerchantListsRandomly(), GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset()
+        return SortMerchantListsRandomly(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size,
+                                                                           minimum_interactions=self.minimum_interactions)
 
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
@@ -392,10 +399,12 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
 class SortMerchantListsByMostPopular(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=10)
 
     def requires(self):
-        return CreateInteractionDataset(test_size=self.test_size), \
-               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
+        return CreateInteractionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
+                                                 minimum_interactions=self.minimum_interactions)
 
     def output(self):
         return luigi.LocalTarget(
@@ -425,21 +434,25 @@ class SortMerchantListsByMostPopular(luigi.Task):
                     zip(orders_df["merchant_idx_list"])),
             total=len(orders_df)))
 
-
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
             starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(
+            self.output().path, index=False)
 
 
 class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
+    test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=10)
 
     def requires(self):
-        return SortMerchantListsByMostPopular(), GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset()
+        return SortMerchantListsByMostPopular(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                   test_size=self.test_size, minimum_interactions=self.minimum_interactions)
 
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
@@ -452,12 +465,14 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 class SortMerchantListsByMostPopularPerUser(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=10)
     buy_importance: float = luigi.FloatParameter(default=1.0)
     visit_importance: float = luigi.FloatParameter(default=0.0)
 
     def requires(self):
-        return CreateInteractionDataset(test_size=self.test_size), \
-               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size)
+        return CreateInteractionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
+                                                 minimum_interactions=self.minimum_interactions)
 
     def output(self):
         return luigi.LocalTarget(
@@ -498,18 +513,25 @@ class SortMerchantListsByMostPopularPerUser(luigi.Task):
             total=len(orders_df)))
 
         print("Saving the output file...")
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(self.output().path, index=False)
+        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(
+            self.output().path, index=False)
 
 
 class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
+    test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=10)
     buy_importance: float = luigi.FloatParameter(default=1.0)
     visit_importance: float = luigi.FloatParameter(default=0.0)
 
     def requires(self):
-        return SortMerchantListsByMostPopularPerUser(buy_importance=self.buy_importance,
-                                                     visit_importance=self.visit_importance),\
-               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset()
+        return SortMerchantListsByMostPopularPerUser(test_size=self.test_size,
+                                                     minimum_interactions=self.minimum_interactions,
+                                                     buy_importance=self.buy_importance,
+                                                     visit_importance=self.visit_importance), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                   test_size=self.test_size,
+                   minimum_interactions=self.minimum_interactions)
 
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
@@ -532,7 +554,9 @@ class SortMerchantListsTripletContentModel(SortMerchantListsForIfoodModel):
 
     def requires(self):
         test_size = self.model_training.requires().session_test_size
-        return super().requires() + (GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=test_size),)
+        minimum_interactions = self.model_training.requires().minimum_interactions
+        return super().requires() + (GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+            test_size=test_size, minimum_interactions=minimum_interactions),)
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
         print("Reading merchant data frame...")
@@ -590,8 +614,8 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
     export_tsne: bool = luigi.BoolParameter(default=False)
     tsne_column_plot: str = luigi.Parameter(default="dish_description")
 
-    def requires(self):
-        return ProcessRestaurantContentDataset(), PrepareRestaurantContentDataset()
+    # def requires(self):
+    #     return ProcessRestaurantContentDataset(), PrepareRestaurantContentDataset()
 
     def output(self):
         return luigi.LocalTarget(
@@ -654,8 +678,8 @@ class GenerateEmbeddings(BaseEvaluationTask):
     item_embeddings = luigi.BoolParameter(default=False)
     test_size: float = luigi.FloatParameter(default=0.1)
 
-    def requires(self):
-        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
+    # def requires(self):
+    #     return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
 
     def output(self):
         return luigi.LocalTarget(
