@@ -121,6 +121,31 @@ class BayesianPersonalizedRankingTripletLoss(_Loss):
         elif self.reduction == "none":
             return loss
 
+class RelativeTripletLoss(_Loss):
+    def __init__(self, p=2., eps=1e-6, swap=False, size_average=None,
+                 reduce=None, reduction="mean", triplet_loss="triplet_margin", balance_factor=1.0):
+        super().__init__(size_average, reduce, reduction)
+        self.p = p
+        self.eps = eps
+        self.swap = swap
+        self.balance_factor = balance_factor
+        if triplet_loss == "triplet_margin":
+            self.triplet_loss = nn.TripletMarginLoss(p = self.p, reduction="none")
+        elif triplet_loss == "bpr_triplet":
+            self.triplet_loss = BayesianPersonalizedRankingTripletLoss(p = self.p, reduction="none")
+        else:
+            raise NotImplementedError
+
+    def forward(self, anchor, positive, negative, relative_pos):
+        loss = self.triplet_loss(anchor, positive, negative)
+        #loss = (loss * (1.5 - F.sigmoid(relative_pos.float()))) 
+        loss = loss/(1+torch.log(relative_pos.float()))
+
+        if self.reduction == "mean":
+            return loss.mean()
+        else:
+            return loss.sum()
+
 class WeightedTripletLoss(_Loss):
     def __init__(self, p=2., eps=1e-6, swap=False, size_average=None,
                  reduce=None, reduction="mean", triplet_loss="triplet_margin", balance_factor=1.0):

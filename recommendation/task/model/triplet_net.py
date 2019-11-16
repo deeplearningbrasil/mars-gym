@@ -148,7 +148,7 @@ class TripletNetSimpleContentTraining(TripletNetContentTraining):
 
 
 class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
-    loss_function:  str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet", "weighted_triplet"], default="triplet_margin")
+    loss_function:  str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet", "relative_triplet"], default="triplet_margin")
     num_filters:    int = luigi.IntParameter(default=64)
     filter_sizes: List[int] = luigi.ListParameter(default=[1, 3, 5])
     binary: bool = luigi.BoolParameter(default=False)

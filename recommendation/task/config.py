@@ -145,6 +145,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
                           Column("category_names", IOType.ARRAY), Column("menu_full_text", IOType.ARRAY), 
                           Column("restaurant_complete_info", IOType.ARRAY)],
+        auxiliar_output_columns=[Column("relative_pos", IOType.NUMBER)],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),    
     "ifood_binary_buys_triplet_with_random_negative": ProjectConfig(

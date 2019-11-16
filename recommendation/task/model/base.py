@@ -36,7 +36,7 @@ from recommendation.data import SupportBasedCorruptionTransformation, \
 from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
 from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss, VAELoss, \
-    FocalVAELoss, AttentiveVAELoss, WeightedTripletLoss, ImplicitFeedbackBCELoss
+    FocalVAELoss, AttentiveVAELoss, WeightedTripletLoss, ImplicitFeedbackBCELoss, RelativeTripletLoss
 from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
@@ -53,7 +53,7 @@ TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransforma
                                   none=None)
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax, radam=RAdam)
 TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss,
-                            mlm=nn.MultiLabelMarginLoss,
+                            mlm=nn.MultiLabelMarginLoss, relative_triplet=RelativeTripletLoss,
                             focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
                             bpr_triplet=BayesianPersonalizedRankingTripletLoss, vae_loss=VAELoss,
                             focal_vae_loss=FocalVAELoss, attentive_vae_loss=AttentiveVAELoss,

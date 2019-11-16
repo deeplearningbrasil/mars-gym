@@ -139,15 +139,20 @@ class TripletNetItemSimpleContent(nn.Module):
         return emb
 
     def forward(self, item_content: torch.Tensor, positive_item_content: torch.Tensor,
-                negative_item_content: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
+                negative_item_content: torch.Tensor = None,
+                relative_pos: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         positive_item_emb   = self.compute_item_embeddings(positive_item_content)
         item_emb            = self.compute_item_embeddings(item_content)
 
         if negative_item_content is None:
             return torch.cosine_similarity(item_emb, positive_item_emb)
-        else:
+        
+        if relative_pos is None:
             negative_item_emb = self.compute_item_embeddings(negative_item_content)
             return item_emb, positive_item_emb, negative_item_emb
+
+        negative_item_emb = self.compute_item_embeddings(negative_item_content)
+        return item_emb, positive_item_emb, negative_item_emb, relative_pos
 
 
 class TripletNetSimpleContent(nn.Module):
