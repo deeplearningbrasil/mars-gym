@@ -101,12 +101,14 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCDAEModel \
 
 #### Train
 
+``` 
 PYTHONPATH="." luigi --module recommendation.task.model.auto_encoder VariationalAutoEncoderTraining \
 --project ifood_user_cdae --generator-workers=0 --local-scheduler --batch-size=500 --optimizer=adam \
 --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8}'  --activation-function=selu \
 --encoder-layers=[600,200] --decoder-layers=[600] --loss-function=vae_loss --loss-function-params='{"anneal": 0.01}'  \
 --data-transformation=support_based --data-frames-preparation-extra-params='{"split_per_user": "True"}' \
 --epochs=100 --learning-rate=0.001
+``` 
 
 #### Evaluate
 

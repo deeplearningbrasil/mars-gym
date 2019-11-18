@@ -906,6 +906,10 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
         print("")
 
         df = df.drop(columns=["sorted_merchant_idx_list", "relevance_list"])
+        df.to_csv(self.output()[0].path)
+        with open(self.output()[1].path, "w") as metrics_file:
+            json.dump(metrics, metrics_file, indent=4)
+            
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
 
