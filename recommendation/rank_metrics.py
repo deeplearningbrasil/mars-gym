@@ -262,15 +262,18 @@ def personalization(predicted: List[list]) -> float:
     # create matrix for recommendations
     predicted = np.array(predicted)
     rec_matrix_sparse = make_rec_matrix(predicted)
-
     # calculate similarity for every user's recommendation list
     similarity = cosine_similarity(X=rec_matrix_sparse, dense_output=False)
 
     del predicted, rec_matrix_sparse
-
-    # calculate average similarity
-    mean_similarity = np.mean(sp.triu(similarity, k=1).data)
-    return 1 - mean_similarity
+    
+    data = sp.triu(similarity, k=1).data
+    if len(data) > 0:
+        # calculate average similarity
+        mean_similarity = np.mean(data)
+        return 1 - mean_similarity
+    else:
+        return 1
 
 
 def _get_predicted_at_k(predicted: List[list], k: int) -> List[list]:

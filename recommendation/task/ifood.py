@@ -7,7 +7,7 @@ from itertools import starmap
 from multiprocessing.pool import Pool
 from typing import Dict, Tuple, List
 from sklearn import manifold
-
+import pprint
 import luigi
 import numpy as np
 import pandas as pd
@@ -257,7 +257,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         grouped_df = df.groupby(["shift_idx", "day_of_week"])
         personalization_per_shift: List[float] = []
         for _, group_df in grouped_df:
-            personalization_per_shift.append(personalization_at_k(group_df["sorted_merchant_idx_list"], k))
+            if len(group_df["sorted_merchant_idx_list"]) > 1:
+                personalization_per_shift.append(personalization_at_k(group_df["sorted_merchant_idx_list"], k))
         return np.mean(personalization_per_shift)
 
     def run(self):
@@ -305,7 +306,13 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             "personalization_at_50": self._mean_personalization(df, 50),
         }
 
-        print(metrics)
+        print("Metrics")
+        print("Metrics")
+        pprint.pprint(metrics)
+        print("")
+
+        print("")
+
         df = df.drop(columns=["sorted_merchant_idx_list", "relevance_list"])
         df.to_csv(self.output()[0].path)
         with open(self.output()[1].path, "w") as metrics_file:
@@ -894,7 +901,10 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
             "personalization_at_50": self._mean_personalization(df, 50),
         }
 
-        print(metrics)
+        print("Metrics")
+        pprint.pprint(metrics)
+        print("")
+
         df = df.drop(columns=["sorted_merchant_idx_list", "relevance_list"])
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
