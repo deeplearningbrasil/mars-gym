@@ -171,17 +171,6 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
 
 
 
-
-
-# class DownloadStopWords(BaseDownloadDataset):
-#     @property
-#     def url(self) -> str:
-#         return "https://raw.githubusercontent.com/stopwords-iso/stopwords-pt/master/stopwords-pt.txt"
-    
-#     def output(self) -> luigi.LocalTarget:
-#         return luigi.LocalTarget(os.path.join(DATASET_DIR, "stopwords_pt.txt"))
-
-
 class DownloadStopWords(luigi.Task):
     def output(self):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "stopwords_pt.txt"))
@@ -305,7 +294,7 @@ class ProcessRestaurantContentDataset(luigi.Task):
 
 class SplitSessionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return AddShiftAndWeekDayToSessionDataset()
@@ -316,8 +305,8 @@ class SplitSessionDataset(BasePySparkTask):
                luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_%.2f" % self.test_size))
 
     def filter_train_session(self, df: pd.DataFrame, minimum_interactions: int) -> pd.DataFrame:
-        df_account_buy = df.groupBy("account_id").agg(sum(df.buy).alias("count_buy")).cache()
-        df_account_buy = df_account_buy.filter(col('count_buy') >= minimum_interactions)
+        df_account_buy    = df.groupBy("account_id").agg(sum(df.buy).alias("count_buy")).cache()
+        df_account_buy    = df_account_buy.filter(col('count_buy') >= minimum_interactions)
 
         df_merchant_visit = df.groupBy("merchant_id").count()
         df_merchant_visit = df_merchant_visit.filter(col('count') >= minimum_interactions)
@@ -348,7 +337,7 @@ class SplitSessionDataset(BasePySparkTask):
 
 class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return ProcessRestaurantContentDataset(), \
@@ -379,7 +368,7 @@ class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTas
 
 class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
@@ -465,7 +454,7 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
 
 class CreateInteractionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size,
@@ -502,7 +491,7 @@ class CreateInteractionDataset(BasePySparkTask):
 class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
     session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
@@ -543,9 +532,10 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
 class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
     session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size), \
+        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size, minimum_interactions=self.minimum_interactions), \
                CreateIntraSessionInteractionDataset(test_size=self.session_test_size)
 
     @property
@@ -586,7 +576,7 @@ class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
 class PrepareIfoodInteractionsDataFrames(BasePrepareDataFrames):
     session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
@@ -649,7 +639,7 @@ class PrepareIfoodVisitsBuysInteractionsDataFrames(PrepareIfoodInteractionsDataF
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
     session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
     split_per_user: bool = luigi.BoolParameter(default=False)
 
     def requires(self):
@@ -720,7 +710,7 @@ class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodA
 
 class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
@@ -766,7 +756,7 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
 
 class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(

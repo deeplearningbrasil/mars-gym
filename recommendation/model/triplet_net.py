@@ -145,7 +145,7 @@ class TripletNetItemSimpleContent(nn.Module):
         item_emb            = self.compute_item_embeddings(item_content)
 
         if negative_item_content is None:
-            return torch.cosine_similarity(item_emb, positive_item_emb)
+            return self.similarity(item_emb, positive_item_emb)
         
         if relative_pos is None:
             negative_item_emb = self.compute_item_embeddings(negative_item_content)
@@ -154,6 +154,8 @@ class TripletNetItemSimpleContent(nn.Module):
         negative_item_emb = self.compute_item_embeddings(negative_item_content)
         return item_emb, positive_item_emb, negative_item_emb, relative_pos
 
+    def similarity(self, emb1, emb2):
+        return torch.cosine_similarity(emb1.float(), emb2.float())
 
 class TripletNetSimpleContent(nn.Module):
     def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],

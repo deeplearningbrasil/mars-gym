@@ -6,6 +6,7 @@ import os
 from itertools import starmap
 from multiprocessing.pool import Pool
 from typing import Dict, Tuple, List
+from sklearn import manifold
 
 import luigi
 import numpy as np
@@ -19,8 +20,9 @@ from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
-    PrepareRestaurantContentDataset, \
-    CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset
+    PrepareRestaurantContentDataset, CreateShiftIndices, \
+    CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset,\
+    IndexAccountsAndMerchantsOfSessionTrainDataset
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks, parallel_literal_eval
 
@@ -312,7 +314,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
 class SortMerchantListsRandomly(luigi.Task):
     test_size: float = luigi.FloatParameter(default=0.1)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
@@ -363,7 +365,6 @@ class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
                                                          model_task_id=self.model_task_id,
                                                          variational=True)
 
-
 class EvaluateIfoodAttCVAEModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
@@ -381,7 +382,7 @@ class EvaluateIfoodHybridCVAEModel(EvaluateIfoodModel):
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.1)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return SortMerchantListsRandomly(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
@@ -399,7 +400,7 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
 class SortMerchantListsByMostPopular(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.1)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return CreateInteractionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
@@ -447,7 +448,7 @@ class SortMerchantListsByMostPopular(luigi.Task):
 class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.1)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return SortMerchantListsByMostPopular(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
@@ -465,7 +466,7 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 class SortMerchantListsByMostPopularPerUser(luigi.Task):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.1)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
     buy_importance: float = luigi.FloatParameter(default=1.0)
     visit_importance: float = luigi.FloatParameter(default=0.0)
 
@@ -520,7 +521,7 @@ class SortMerchantListsByMostPopularPerUser(luigi.Task):
 class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.1)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
     buy_importance: float = luigi.FloatParameter(default=1.0)
     visit_importance: float = luigi.FloatParameter(default=0.0)
 
@@ -548,6 +549,223 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
         return luigi.LocalTarget(os.path.join(model_path, "orders_with_metrics.csv")), \
                luigi.LocalTarget(os.path.join(model_path, "metrics.json")),
 
+import pickle
+class GenerateUserEmbeddingsFromContentModel(BaseEvaluationTask):
+    test_size:              float  = luigi.FloatParameter(default=0.10)
+    minimum_interactions:   int    = luigi.FloatParameter(default=10)
+    group_last_k_merchants: int    = luigi.FloatParameter(default=20)
+    #use_visit_interactions: bool
+
+    def requires(self):
+        test_size            = self.model_training.requires().session_test_size
+        minimum_interactions = self.model_training.requires().minimum_interactions   
+        
+        return (GenerateContentEmbeddings(
+                    model_module=self.model_module, 
+                    model_cls=self.model_cls,
+                    model_task_id=self.model_task_id), 
+                IndexAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=test_size, 
+                    minimum_interactions=minimum_interactions),
+                ProcessRestaurantContentDataset(),
+                CreateShiftIndices())
+
+    def output(self):
+        return (luigi.LocalTarget(
+                    os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                         self.model_task_id, "user_embeddings_{}.tsv".format(self.group_last_k_merchants))), \
+               luigi.LocalTarget(
+                   os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                                self.model_task_id, "user_embeddings_by_shift_{}.pkl".format(self.group_last_k_merchants))))
+
+    def _generate_content_tensors(self, rows):
+        inputs = []
+
+        for input_column in self.model_training.project_config.metadata_columns:
+            dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
+            values = rows[input_column.name].values.tolist()
+            inputs.append(torch.tensor(values, dtype=dtype).to(self.model_training.torch_device))
+
+        return inputs
+
+    def run(self):
+        os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
+
+        processed_content_df = pd.read_csv(self.input()[2][0].path)#.set_index('merchant_idx')
+        shifts_df            = pd.read_csv(self.input()[3].path).set_index('shift')
+        #print(processed_content_df.head())
+        #print(processed_content_df.columns)
+
+        #d
+        literal_eval_array_columns(processed_content_df,
+                                   self.model_training.project_config.input_columns
+                                   + [self.model_training.project_config.output_column]
+                                   + self.model_training.project_config.metadata_columns)
+
+        print("Loading trained model...")
+        module = self.model_training.get_trained_module()
+
+        restaurant_embs = np.genfromtxt(self.input()[0][0].path, dtype='float')
+        restaurant_df   = pd.read_csv(self.input()[0][1].path, sep='\t').reset_index().set_index("merchant_id")
+        tuples_df       = pd.read_parquet(self.input()[1].path)
+        #print(restaurant_df.reset_index().set_index("merchant_id").columns)
+        #d
+        # filter only buy
+        tuples_df       = tuples_df[tuples_df.buy > 0].sort_values('click_timestamp', ascending=False)
+
+        print("Generating embeddings for each account...")
+        embeddings: List[float] = []
+
+        # Predict embeddings for merchants's user
+        #
+        embeddings = {}
+        i = 0
+        for name, group in tqdm(tuples_df.groupby(['account_idx', 'shift'])):
+            account_idx, shift = name
+            if account_idx not in embeddings:
+                embeddings[account_idx] = {}
+            
+            merchant_id      = group.head(int(self.group_last_k_merchants)).merchant_id.values
+            merchant_emb_idx = restaurant_df.loc[merchant_id]['index'].values
+            emb              = restaurant_embs[merchant_emb_idx]
+            #merchant_idx  = group.head(int(self.group_last_k_merchants)).merchant_idx.values
+            #rows          = processed_content_df.iloc[merchant_idx]
+
+            #inputs                         = self._generate_content_tensors(rows)
+            #batch_embeddings: torch.Tensor = module.compute_item_embeddings(inputs)
+            #emb                            = batch_embeddings.detach().cpu().numpy()
+            embeddings[account_idx][shift] = emb
+            # i = i + 1
+            # if i > 10:
+            #     break 
+        # Shape numpy embeddings
+        #
+        # (account, shift, features)
+        account_embeddings_by_shift = np.zeros((len(embeddings.keys()), len(shifts_df), emb.shape[1]))
+        
+        # (account, features)
+        account_embeddings_geral    = np.zeros((len(embeddings.keys()), emb.shape[1]))
+
+        for account_idx, shifts in embeddings.items():
+            account_geral_emb = []
+            
+            for shift, embeddings in shifts.items():
+                shift_emb = embeddings.mean(0)
+                shift_idx = shifts_df.loc[shift].shift_idx
+                account_embeddings_by_shift[account_idx][shift_idx] = shift_emb
+                account_geral_emb.append(shift_emb)
+            account_embeddings_geral[account_idx] = np.array(account_geral_emb).mean(0)
+
+        # fillzero to geral emb
+        for i in range(len(account_embeddings_geral)):
+            for s in range(len(shifts_df)):
+                if account_embeddings_by_shift[i][s].sum() == 0:
+                    account_embeddings_by_shift[i][s] = account_embeddings_geral[i]
+
+        np.savetxt(os.path.join(self.output()[0].path), account_embeddings_geral, delimiter="\t")
+        
+        with open(self.output()[1].path, 'wb') as output:
+            pickle.dump(account_embeddings_by_shift, output)
+        #np.savetxt(os.path.join(self.output()[1].path), account_embeddings_by_shift, delimiter="\t")
+
+class SortMerchantListsTripletNetInfoContent(SortMerchantListsForIfoodModel):
+    batch_size: int = luigi.IntParameter(default=10000)
+    group_last_k_merchants: int    = luigi.FloatParameter(default=20)
+
+    def requires(self):
+        test_size = self.model_training.requires().session_test_size
+        minimum_interactions = self.model_training.requires().minimum_interactions        
+        return super().requires() + \
+                (GenerateContentEmbeddings(
+                    model_module=self.model_module, 
+                    model_cls=self.model_cls,
+                    model_task_id=self.model_task_id,
+                    batch_size=self.batch_size),
+                IndexAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=test_size, minimum_interactions=minimum_interactions),
+                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=test_size, minimum_interactions=minimum_interactions),
+                GenerateUserEmbeddingsFromContentModel(
+                    group_last_k_merchants=self.group_last_k_merchants,
+                    model_module=self.model_module, 
+                    model_cls=self.model_cls,
+                    model_task_id=self.model_task_id))
+
+    def _generate_content_tensors(self, rows):
+        inputs = []
+
+        for input_column in self.model_training.project_config.metadata_columns:
+            dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
+            values = rows[input_column.name].values.tolist()
+            inputs.append(torch.tensor(values, dtype=dtype).to(self.model_training.torch_device))
+
+        return inputs
+
+    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
+        metadata_columns_name = [input_column.name for input_column in
+                                 self.model_training.project_config.metadata_columns]
+        # 'session_id', 'account_idx', 'merchant_idx', 'shift', 'shift_idx',
+        # 'mode_shift_idx', 'mode_day_of_week', 'day_of_week'
+
+        #assert metadata_columns_name == ['trading_name', 'description', 'category_names', 'restaurant_complete_info']
+
+        # account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
+        #     .to(self.model_training.torch_device)
+
+        # account_embeddings = []
+        # for k, row in rows.iterrows():
+        #     account_embeddings.append(self.account_embeddings_by_shift[row.account_idx][row.shift_idx])
+
+
+        #self.account_embeddings_geral    
+        # account_embeddings = torch.from_numpy(self.account_embeddings_geral[rows["account_idx"].values])\
+        #                        .to(self.model_training.torch_device)
+        
+        account_embeddings = self.account_embeddings_by_shift[rows["account_idx"].values, rows['shift_idx'].values]
+
+        account_embeddings = torch.from_numpy(np.array(account_embeddings)).to(self.model_training.torch_device)
+        merchant_rows      = self.merchant_df.loc[rows["merchant_idx"]]
+        inputs             = self._generate_content_tensors(merchant_rows)
+
+        return [account_embeddings, inputs]
+
+    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
+        print("Reading merchant data frame...")
+        self.merchant_df = pd.read_csv(self.input()[4][1].path).set_index('merchant_idx')
+
+        print("Reading account embeddings...")
+        self.account_embeddings_geral = np.loadtxt(self.input()[5][0].path, delimiter="\t")
+        with open(self.input()[5][1].path, 'rb') as file:
+            self.account_embeddings_by_shift = pickle.load(file, encoding="utf8")
+
+        literal_eval_array_columns(self.merchant_df,
+                                   self.model_training.project_config.input_columns
+                                   + [self.model_training.project_config.output_column]
+                                   + self.model_training.project_config.metadata_columns)
+
+        tuples_df        = pd.read_parquet(self.input()[1].path)
+
+        #assert self.model_training.project_config.input_columns[0].name == "account_idx"
+        #assert self.model_training.project_config.input_columns[1].name == "merchant_idx"
+        print("Loading trained model...")
+        module = self.model_training.get_trained_module()
+        scores: List[float] = []
+        print("Running the model for every account and merchant tuple...")
+        with Pool(os.cpu_count()) as pool:
+            for indices in tqdm(chunks(range(len(tuples_df)), self.batch_size),
+                                total=math.ceil(len(tuples_df) / self.batch_size)):
+                rows: pd.DataFrame = tuples_df.iloc[indices]
+                account_embeddings, inputs = self._generate_batch_tensors(rows, pool)
+
+                item_embeddings: torch.Tensor = module.compute_item_embeddings(inputs)
+                batch_scores:    torch.Tensor = module.similarity(account_embeddings, item_embeddings)
+                batch_scores = batch_scores.detach().cpu().numpy()
+
+                scores.extend(batch_scores)
+
+        print("Creating the dictionary of scores...")
+        return {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
+                in tqdm(zip(tuples_df["account_idx"], tuples_df["merchant_idx"], scores), total=len(scores))}
 
 class SortMerchantListsTripletContentModel(SortMerchantListsForIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
@@ -557,6 +775,19 @@ class SortMerchantListsTripletContentModel(SortMerchantListsForIfoodModel):
         minimum_interactions = self.model_training.requires().minimum_interactions
         return super().requires() + (GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
             test_size=test_size, minimum_interactions=minimum_interactions),)
+
+    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
+        print("Reading merchant data frame...")
+        self.merchant_df = pd.read_csv(self.input()[-1][1].path)
+
+        literal_eval_array_columns(self.merchant_df,
+                                   self.model_training.project_config.input_columns
+                                   + [self.model_training.project_config.output_column]
+                                   + self.model_training.project_config.metadata_columns)
+
+        self.merchant_df = self.merchant_df.set_index("merchant_idx")
+
+        return super()._evaluate_account_merchant_tuples()
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
         print("Reading merchant data frame...")
@@ -596,19 +827,88 @@ class SortMerchantListsTripletContentModel(SortMerchantListsForIfoodModel):
 
         return [account_idxs, inputs]
 
+class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
+    batch_size: int = luigi.IntParameter(default=10000)
+    model_task_id: str = luigi.Parameter(default="none")
+    test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+    group_last_k_merchants: int    = luigi.FloatParameter(default=20)
+
+    def requires(self):
+        return [SortMerchantListsTripletNetInfoContent(
+                    model_module=self.model_module, model_cls=self.model_cls,
+                    model_task_id=self.model_task_id, batch_size = self.batch_size,
+                    group_last_k_merchants=self.group_last_k_merchants),
+                ProcessRestaurantContentDataset(),
+                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                   test_size=self.test_size, 
+                   minimum_interactions=self.minimum_interactions)]
+
+    @property
+    def n_items(self):
+        return self.model_training.n_items
+
+    def run(self):
+        os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
+
+        df: pd.DataFrame = self.read_evaluation_data_frame()
+
+        with Pool(self.num_processes) as p:
+            df["sorted_merchant_idx_list"] = parallel_literal_eval(df["sorted_merchant_idx_list"], pool=p)
+            df["relevance_list"] = parallel_literal_eval(df["relevance_list"], pool=p)
+
+            df["average_precision"] = list(
+                tqdm(p.map(average_precision, df["relevance_list"]), total=len(df)))
+
+            df["ndcg_at_5"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=5), df["relevance_list"]), total=len(df)))
+            df["ndcg_at_10"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=10), df["relevance_list"]), total=len(df)))
+            df["ndcg_at_15"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=15), df["relevance_list"]), total=len(df)))
+            df["ndcg_at_20"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=20), df["relevance_list"]), total=len(df)))
+            df["ndcg_at_50"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=50), df["relevance_list"]), total=len(df)))
+
+        # TODO mudar hardcode
+        catalog = range(1664) 
+
+        metrics = {
+            "count": len(df),
+            "mean_average_precision": df["average_precision"].mean(),
+            "ndcg_at_5": df["ndcg_at_5"].mean(),
+            "ndcg_at_10": df["ndcg_at_10"].mean(),
+            "ndcg_at_15": df["ndcg_at_15"].mean(),
+            "ndcg_at_20": df["ndcg_at_20"].mean(),
+            "ndcg_at_50": df["ndcg_at_50"].mean(),
+            "coverage_at_5": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 5),
+            "coverage_at_10": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 10),
+            "coverage_at_15": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 15),
+            "coverage_at_20": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 20),
+            "coverage_at_50": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 50),
+            "personalization_at_5": self._mean_personalization(df, 5),
+            "personalization_at_10": self._mean_personalization(df, 10),
+            "personalization_at_15": self._mean_personalization(df, 15),
+            "personalization_at_20": self._mean_personalization(df, 20),
+            "personalization_at_50": self._mean_personalization(df, 50),
+        }
+
+        print(metrics)
+        df = df.drop(columns=["sorted_merchant_idx_list", "relevance_list"])
+    def read_evaluation_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.input()[0].path)
 
 class EvaluateIfoodTripletNetContentModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsTripletContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                     model_task_id=self.model_task_id)
 
-
 class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsTripletWeightedModel(model_module=self.model_module, model_cls=self.model_cls,
                                                      model_task_id=self.model_task_id)
 
-from sklearn import manifold
 class GenerateContentEmbeddings(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=10000)
     export_tsne: bool = luigi.BoolParameter(default=False)
@@ -671,7 +971,6 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
         
         plot_tsne(Y[:, 0], Y[:, 1], metadata[self.tsne_column_plot].reset_index().index).savefig(
             os.path.join(os.path.split(self.output()[0].path)[0], "tsne.jpg"))   
-
 
 class GenerateEmbeddings(BaseEvaluationTask):
     user_embeddings = luigi.BoolParameter(default=False)

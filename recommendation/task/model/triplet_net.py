@@ -23,8 +23,6 @@ class TripletNetTraining(UserAndItemEmbeddingTraining):
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
         )
 
-
-
 class TripletNetContentTraining(BaseTorchModelTraining):
     loss_function: str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet"], default="triplet_margin")
     n_factors: int = luigi.IntParameter(default=128)
@@ -146,7 +144,6 @@ class TripletNetSimpleContentTraining(TripletNetContentTraining):
                                     model_cls="TripletNetSimpleContentTraining",
                                         model_task_id=self.task_id).run()
 
-
 class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
     loss_function:  str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet", "relative_triplet"], default="triplet_margin")
     num_filters:    int = luigi.IntParameter(default=64)
@@ -169,7 +166,6 @@ class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
             dropout_prob=self.dropout_prob,
             use_normalize=self.use_normalize,
             content_layers=self.content_layers,
-
             menu_full_text_max_words=menu_full_text_max_words,
             recurrence_hidden_size=self.recurrence_hidden_size,
             binary=self.binary,
@@ -179,6 +175,13 @@ class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
         )
 
+    # @property
+    # def n_items(self):
+    #     print(self.train_data_frame.head())
+    #     if not hasattr(self, "_n_items"):
+    #         self._n_items = int(self.train_data_frame.iloc[0][self.project_config.n_items_column])
+    #     return self._n_items
+
     def after_fit(self):
         if self.save_item_embedding_tsv:
             self._generate_content_embeddings()
@@ -187,4 +190,5 @@ class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
         GenerateContentEmbeddings(model_module="recommendation.task.model.triplet_net", 
                                     model_cls="TripletNetItemSimpleContentTraining",
                                     model_task_id=self.task_id,
-                                    export_tsne=True)
+                                    export_tsne=True,
+                                    batch_size=self.batch_size).run()
