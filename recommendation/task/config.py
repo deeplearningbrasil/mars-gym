@@ -4,7 +4,8 @@ from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, 
     UserTripletContentWithOnlineRandomNegativeGenerationDataset, \
     UserTripletWithOnlineRandomNegativeGenerationDataset, \
     UserTripletWeightedWithOnlineRandomNegativeGenerationDataset,\
-    IntraSessionTripletWithOnlineRandomNegativeGenerationDataset
+    IntraSessionTripletWithOnlineRandomNegativeGenerationDataset, \
+    ContextualBanditsDataset
 from recommendation.task.data_preparation import yelp, ifood, criteo
 from recommendation.task.meta_config import *
 
@@ -199,6 +200,17 @@ PROJECTS: Dict[str, ProjectConfig] = {
         dataset_class=InteractionsAndContentDataset,
         input_columns=[Column("buys_per_merchant", IOType.ARRAY), Column("account_idx", IOType.INDEX)],
         output_column=Column("buys_per_merchant", IOType.ARRAY),
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),
+    "ifood_contextual_bandit": ProjectConfig(
+        base_dir=yelp.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodVisitsBuysInteractionsDataFrames,
+        dataset_class=ContextualBanditsDataset,
+        input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX),
+                        Column("visits", IOType.NUMBER), Column("buys", IOType.NUMBER)],
+        metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
+                          Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
+        output_column=Column("visits", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
 }

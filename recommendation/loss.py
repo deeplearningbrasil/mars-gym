@@ -246,3 +246,17 @@ class ImplicitFeedbackBCELoss(nn.Module):
             return loss.sum()
         else:
             return loss
+
+
+class CounterfactualRiskMinimization(_Loss):
+    def __init__(self, size_average=None, reduce=None, reduction="mean", balance_factor=1.0):
+        super().__init__(size_average, reduce, reduction)
+        self.balance_factor = balance_factor
+
+
+    def forward(self, prob, visits, buys):
+        binary_buys = (buys > 0).float()
+        weights = (buys + (visits/self.balance_factor))
+
+        return F.binary_cross_entropy(prob, binary_buys, weight=weights, reduction = self.reduction)
+        

@@ -36,7 +36,7 @@ from recommendation.data import SupportBasedCorruptionTransformation, \
 from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
 from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss, VAELoss, \
-    FocalVAELoss, AttentiveVAELoss, WeightedTripletLoss, ImplicitFeedbackBCELoss, RelativeTripletLoss
+    FocalVAELoss, AttentiveVAELoss, WeightedTripletLoss, ImplicitFeedbackBCELoss, RelativeTripletLoss, CounterfactualRiskMinimization
 from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
@@ -57,7 +57,7 @@ TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss,
                             focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
                             bpr_triplet=BayesianPersonalizedRankingTripletLoss, vae_loss=VAELoss,
                             focal_vae_loss=FocalVAELoss, attentive_vae_loss=AttentiveVAELoss,
-                            weighted_triplet=WeightedTripletLoss, implicit_feedback_bce=ImplicitFeedbackBCELoss)
+                            weighted_triplet=WeightedTripletLoss, implicit_feedback_bce=ImplicitFeedbackBCELoss, crm=CounterfactualRiskMinimization)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)
