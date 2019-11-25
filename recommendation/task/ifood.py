@@ -86,9 +86,16 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                     .to(self.model_training.torch_device)
                 for input_column in self.model_training.project_config.input_columns]
 
+    def _read_and_transform_tuples(self):
+        tuples_df = pd.read_parquet(self.input()[1].path)
+        return tuples_df
+
+    def _get_batch_score(self, batch_scores):
+        return batch_scores
+
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
         print("Reading tuples files...")
-        tuples_df = pd.read_parquet(self.input()[1].path)
+        tuples_df = self._read_and_transform_tuples()
 
         assert self.model_training.project_config.input_columns[0].name == "account_idx"
         assert self.model_training.project_config.input_columns[1].name == "merchant_idx"
@@ -102,7 +109,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                                 total=math.ceil(len(tuples_df) / self.batch_size)):
                 rows: pd.DataFrame = tuples_df.iloc[indices]
                 inputs = self._generate_batch_tensors(rows, pool)
-                batch_scores: torch.Tensor = module(*inputs)
+                batch_scores: torch.Tensor = self._get_batch_score(module(*inputs))
                 scores.extend(batch_scores.detach().cpu().numpy())
 
         print("Creating the dictionary of scores...")
@@ -774,18 +781,35 @@ class SortMerchantListsTripletNetInfoContent(SortMerchantListsForIfoodModel):
         return {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
                 in tqdm(zip(tuples_df["account_idx"], tuples_df["merchant_idx"], scores), total=len(scores))}
 
-class SortMerchantListsTripletContentModel(SortMerchantListsForIfoodModel):
+class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
 
     def requires(self):
         test_size = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
         return super().requires() + (GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-            test_size=test_size, minimum_interactions=minimum_interactions),)
+            test_size=test_size, minimum_interactions=minimum_interactions), \
+            CreateInteractionDataset(test_size=test_size))
+
+    def _read_and_transform_tuples(self):
+        tuples_df = pd.read_parquet(self.input()[1].path)
+
+        train_interactions_df = pd.read_parquet(self.input()[-1].path)[['account_idx', 'merchant_idx', 'visits', 'buys']]
+        train_interactions_df['buys'] = train_interactions_df['buys'].astype(float)
+        train_interactions_df['visits'] = train_interactions_df['visits'].astype(float)
+
+        tuples_df = tuples_df.merge(train_interactions_df, on=['account_idx', 'merchant_idx'], how='outer')
+        tuples_df.dropna(subset=['session_id'], how='all', inplace=True)
+        tuples_df.fillna(0.0)
+
+        return tuples_df
+
+    def _get_batch_score(self, batch_scores):
+        return batch_scores[0]
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
         print("Reading merchant data frame...")
-        self.merchant_df = pd.read_csv(self.input()[-1][1].path)
+        self.merchant_df = pd.read_csv(self.input()[-2][1].path)
 
         literal_eval_array_columns(self.merchant_df,
                                    self.model_training.project_config.input_columns
@@ -796,26 +820,21 @@ class SortMerchantListsTripletContentModel(SortMerchantListsForIfoodModel):
 
         return super()._evaluate_account_merchant_tuples()
 
-    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
-        print("Reading merchant data frame...")
-        self.merchant_df = pd.read_csv(self.input()[-1][1].path)
-
-        literal_eval_array_columns(self.merchant_df,
-                                   self.model_training.project_config.input_columns
-                                   + [self.model_training.project_config.output_column]
-                                   + self.model_training.project_config.metadata_columns)
-
-        self.merchant_df = self.merchant_df.set_index("merchant_idx")
-
-        return super()._evaluate_account_merchant_tuples()
-
-    def _generate_content_tensors(self, rows):
+    def _generate_content_tensors(self, rows, interaction_rows):
         inputs = []
 
+        inputs.append(torch.tensor(rows.index.values, dtype=torch.int64).to(self.model_training.torch_device))
+
+        visits = interaction_rows['visits'].fillna(0).values
+        buys = interaction_rows['buys'].fillna(0).values
+        
         for input_column in self.model_training.project_config.metadata_columns:
             dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
             values = rows[input_column.name].values.tolist()
             inputs.append(torch.tensor(values, dtype=dtype).to(self.model_training.torch_device))
+
+        inputs.append(torch.tensor(visits, dtype=torch.float32).to(self.model_training.torch_device))
+        inputs.append(torch.tensor(buys, dtype=torch.float32).to(self.model_training.torch_device))
 
         return inputs
 
@@ -830,7 +849,7 @@ class SortMerchantListsTripletContentModel(SortMerchantListsForIfoodModel):
 
         merchant_rows = self.merchant_df.loc[rows["merchant_idx"]]
 
-        inputs = self._generate_content_tensors(merchant_rows)
+        inputs = self._generate_content_tensors(merchant_rows, rows)
 
         return [account_idxs, inputs]
 
@@ -913,9 +932,9 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
 
-class EvaluateIfoodTripletNetContentModel(EvaluateIfoodModel):
+class EvaluateIfoodFullContentModel(EvaluateIfoodModel):
     def requires(self):
-        return SortMerchantListsTripletContentModel(model_module=self.model_module, model_cls=self.model_cls,
+        return SortMerchantListsFullContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                     model_task_id=self.model_task_id)
 
 class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
