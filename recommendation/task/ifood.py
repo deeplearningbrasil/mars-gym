@@ -66,6 +66,7 @@ def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, mer
 
 class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
+    plot_histogram: bool = luigi.BoolParameter(default=False)
 
     # num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
@@ -148,8 +149,10 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         print("Saving the output file...")
 
-        plot_histogram(scores_per_tuple.values()).savefig(
-            os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
+        if self.plot_histogram:
+            plot_histogram(scores_per_tuple.values()).savefig(
+                os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
+                
         orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(
             self.output().path, index=False)
 
