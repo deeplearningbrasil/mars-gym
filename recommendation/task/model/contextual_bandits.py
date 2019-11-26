@@ -20,7 +20,7 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
     user_embeddings: bool = luigi.BoolParameter(default=False)
     item_embeddings: bool = luigi.BoolParameter(default=False)
     context_embeddings: bool = luigi.BoolParameter(default=False)
-    use_categorical_content: bool = luigi.BoolParameter(default=False)
+    use_numerical_content: bool = luigi.BoolParameter(default=False)
     use_textual_content: bool = luigi.BoolParameter(default=False)
     use_normalize: bool = luigi.BoolParameter(default=False)
     binary: bool = luigi.BoolParameter(default=False)
@@ -74,7 +74,7 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
             user_embeddings=self.user_embeddings,
             item_embeddings=self.item_embeddings,
             context_embeddings=self.context_embeddings,
-            use_categorical_content=self.use_categorical_content,
+            use_numerical_content=self.use_numerical_content,
             numerical_content_dim=self.non_textual_input_dim,
             use_textual_content=self.use_textual_content,
             use_normalize=self.use_normalize,

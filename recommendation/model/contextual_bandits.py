@@ -22,15 +22,25 @@ class LogisticRegression(nn.Module):
             self.weight_init(module.weight)
             module.bias.data.fill_(0.1)
 
+    def none_tensor(self, x):
+        return type(x) == type(None)
+
     def predict(self, item_representation, user_representation, context_representation):
-        return torch.sigmoid(self.linear(context_representation))
+        x: torch.Tensor = context_representation
+        
+        if not self.none_tensor(user_representation):
+            x = user_representation if self.none_tensor(x) else torch.cat((x, user_representation), dim=1)
+        if not self.none_tensor(item_representation):
+            x = item_representation if self.none_tensor(x) else torch.cat((x, item_representation), dim=1)
+
+        return torch.sigmoid(self.linear(x))
 
 
 class ContextualBandit(nn.Module):
 
     def __init__(self, n_users: int, n_items: int, n_factors: int, weight_init: Callable = lecun_normal_init, 
                 use_buys_visits: bool = False, user_embeddings: bool = False, item_embeddings: bool = False, use_numerical_content: bool = False,
-                numerical_content_dim: int = None, use_categorical_content: bool = False, context_embeddings: bool = False,
+                numerical_content_dim: int = None, context_embeddings: bool = False,
                 use_textual_content: bool = False, use_normalize: bool = False, content_layers=[1], binary: bool = False,
                 activation_function: Callable = F.selu, predictor: str = "logistic_regression"):
         super(ContextualBandit, self).__init__()
@@ -42,19 +52,21 @@ class ContextualBandit(nn.Module):
         self.context_embeddings = context_embeddings
         self.use_numerical_content = use_numerical_content
         self.use_textual_content = use_textual_content
-        self.use_categorical_content = use_categorical_content
         self.use_normalize = use_normalize
         self.use_buys_visits = use_buys_visits
         self.activation_function = activation_function
         self.predictor = predictor
 
+        num_dense = 0
 
         if self.user_embeddings:
             self.user_embeddings = nn.Embedding(n_users, n_factors)
+            num_dense += n_factors
             weight_init(self.user_embeddings.weight)
 
         if self.item_embeddings:
             self.item_embeddings = nn.Embedding(n_items, n_factors)
+            num_dense += n_factors
             weight_init(self.item_embeddings.weight)
 
             # if self.use_textual_content:
@@ -63,9 +75,9 @@ class ContextualBandit(nn.Module):
             #     self.convs1  = nn.ModuleList(
             #     [nn.Conv2d(1, num_filters, (K, word_embeddings_size)) for K in filter_sizes])
             #     num_dense += np.sum([K * num_filters for K in filter_sizes]) 
-            weight_init(self.word_embeddings.weight)
+            # weight_init(self.word_embeddings.weight)
 
-        num_dense = 0
+        
         if self.context_embeddings:
             if self.use_buys_visits:
                 num_dense += 2
@@ -106,10 +118,13 @@ class ContextualBandit(nn.Module):
         x = torch.cat(x, 1)
         return x
 
+    def none_tensor(self, x):
+        return type(x) == type(None)
+
     def normalize(self, x):
-        if type(x) != type(None):
-            x = F.normalize(x, p=2, dim=1)    
-        return x 
+        if self.none_tensor(x):
+            return x
+        return F.normalize(x, p=2, dim=1)    
 
     def compute_item_embeddings(self, item_ids, name, description, category):
 
@@ -128,7 +143,7 @@ class ContextualBandit(nn.Module):
 
         if self.item_embeddings:
             item_embs = self.item_embeddings(item_ids)
-            x = item_embs if x == None else torch.cat((x, item_embs), dim=1)
+            x = item_embs if self.none_tensor(x) else torch.cat((x, item_embs), dim=1)
 
         if self.use_normalize:
             x = self.normalize(x)
@@ -138,11 +153,11 @@ class ContextualBandit(nn.Module):
     def compute_context_embeddings(self, info, visits, buys):
         x : torch.Tensor = None
 
-        if self.use_categorical_content:
-            x = info if x == None else torch.cat((x, info), dim=1)
+        if self.use_numerical_content:
+            x = info if self.none_tensor(x) else torch.cat((x, info), dim=1)
 
         if self.use_buys_visits:
-            x = torch.cat((visits.unsqueeze(1), buys.unsqueeze(1)), dim=1) if x == None else torch.cat((x, visits.unsqueeze(1), buys.unsqueeze(1)), dim=1)
+            x = torch.cat((visits.unsqueeze(1), buys.unsqueeze(1)), dim=1) if self.none_tensor(x) else torch.cat((x, visits.unsqueeze(1), buys.unsqueeze(1)), dim=1)
         
         if self.use_normalize:
             x = self.normalize(x)
@@ -165,7 +180,7 @@ class ContextualBandit(nn.Module):
 
         context_representation = self.compute_context_embeddings(info, visits, buys)
         item_representation = self.compute_item_embeddings(item_ids, name, description, category)
-        user_representation = self.user_embeddings(user_ids) if self.user_embeddings else None
+        user_representation = self.compute_user_embeddings(user_ids) if self.user_embeddings else None
 
         prob = self.predictor.predict(item_representation, user_representation, context_representation)
         
