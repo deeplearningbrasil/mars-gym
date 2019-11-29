@@ -152,7 +152,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         if self.plot_histogram:
             plot_histogram(scores_per_tuple.values()).savefig(
                 os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
-                
+
         orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(
             self.output().path, index=False)
 
@@ -826,7 +826,7 @@ class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
     def _generate_content_tensors(self, rows, interaction_rows):
         inputs = []
 
-        inputs.append(torch.tensor(rows.index.values, dtype=torch.int64).to(self.model_training.torch_device))
+        inputs.append(torch.tensor(interaction_rows["merchant_idx"].values, dtype=torch.int64).to(self.model_training.torch_device))
 
         visits = interaction_rows['visits'].fillna(0).values
         buys = interaction_rows['buys'].fillna(0).values

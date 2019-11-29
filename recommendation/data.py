@@ -574,7 +574,7 @@ class ContextualBanditsDataset(InteractionsDataset):
     def _get_items(self, item_indices: List[int], visits: List[int], buys: List[int]) -> Tuple[torch.Tensor, ...]:
         res = []
 
-        res.append(item_indices)
+        res.append(torch.tensor(np.array(item_indices), dtype=torch.int64))
         df_items = self._items_df.loc[item_indices]
         for column_name in self._metadata_columns:
             c = df_items[column_name].values.tolist()
