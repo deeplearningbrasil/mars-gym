@@ -24,7 +24,7 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
     use_textual_content: bool = luigi.BoolParameter(default=False)
     use_normalize: bool = luigi.BoolParameter(default=False)
     binary: bool = luigi.BoolParameter(default=False)
-    predictor: str = luigi.ChoiceParameter(choices=["logistic_regression"], default="logistic_regression")
+    predictor: str = luigi.ChoiceParameter(choices=["logistic_regression", "factorization_machine"], default="logistic_regression")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     word_embeddings_size: int = luigi.IntParameter(default=128)

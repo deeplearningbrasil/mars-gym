@@ -53,6 +53,7 @@ class DeepFactorizationMachine(nn.Module):
             self.user = nn.Linear(user_input_dim, n_factors)
             input_dnn += n_factors
 
+        self.linear = nn.Linear(context_input_dim + item_input_dim + user_input_dim, 1)
         self.weight_init = weight_init
         self.deep = deep
         self.hidden_layers= nn.ModuleList(
@@ -60,6 +61,7 @@ class DeepFactorizationMachine(nn.Module):
                 input_dnn if i == 0 else hidden_layers[i - 1],
                 layer_size
             ) for i, layer_size in enumerate(hidden_layers)])
+        self.deep_linear_out = nn.Linear(hidden_layers[-1], 1)
         self.order = order
         self.apply(self.init_weights)
 
@@ -89,22 +91,25 @@ class DeepFactorizationMachine(nn.Module):
 
         x = self.linear(x)
 
-        #latent vectors
-        for v in latent_vectors:
-            x = v if self.none_tensor(x) else torch.cat((x, v), dim=1)
+        
 
         #higher order interactions
-        for k in range(2, self.order):
+        for k in range(2, self.order + 1):
             for a, b in combinations(latent_vectors, k):
-                dot = torch.mm(a, b)
+                dot = torch.bmm(a.unsqueeze(1), b.unsqueeze(2)).squeeze(1)
                 x = dot if self.none_tensor(x) else torch.cat((x, dot), dim=1)
+
+        
 
         #deep model
         if self.deep:   
             v = torch.cat(latent_vectors, dim=1)
             for layer in self.hidden_layers:
-                v = nn.relu(layer(v))
+                v = F.relu(layer(v))
+            v = self.deep_linear_out(v)
             x = torch.cat((x, v), dim=1)
+
+        x = torch.sum(x, dim=1)
 
         return torch.sigmoid(x)
 
