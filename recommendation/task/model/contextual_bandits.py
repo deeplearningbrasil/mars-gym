@@ -27,6 +27,10 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
     predictor: str = luigi.ChoiceParameter(choices=["logistic_regression"], default="logistic_regression")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
+    word_embeddings_size: int = luigi.IntParameter(default=128)
+    fm_order: int = luigi.IntParameter(default=1)
+    fm_hidden_layers: List[int] = luigi.ListParameter(default=[64,32])
+    fm_deep: bool = luigi.BoolParameter(default=False)
 
 
     @property
@@ -77,10 +81,15 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
             use_numerical_content=self.use_numerical_content,
             numerical_content_dim=self.non_textual_input_dim,
             use_textual_content=self.use_textual_content,
+            vocab_size=self.vocab_size,
+            word_embeddings_size=self.word_embeddings_size,
             use_normalize=self.use_normalize,
             content_layers=self.content_layers,
             binary=self.binary,
             activation_function=self.activation_function,
             predictor=self.predictor,
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],
+            fm_deep=self.fm_deep,
+            fm_order=self.fm_order,
+            fm_hidden_layers=self.fm_hidden_layers,
         )
