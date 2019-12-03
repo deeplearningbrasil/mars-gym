@@ -3,6 +3,8 @@ import os
 import re
 from collections import Counter
 from datetime import datetime
+from collections import defaultdict
+from tqdm import tqdm
 
 import luigi
 import numpy as np
@@ -28,13 +30,13 @@ DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
 
 class CheckDataset(luigi.Task):
     def output(self):
-        return luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_availability")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_delivery_time")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_items")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_menu")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_restaurant")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_review")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_session"))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_availability")), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_delivery_time")), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_items")), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_menu")), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_restaurant")), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_review")), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_session"))
 
     def run(self):
         raise AssertionError(
@@ -335,6 +337,60 @@ class SplitSessionDataset(BasePySparkTask):
         test_df.write.parquet(self.output()[1].path)
 
 
+class AddVisitsBuysForInteractionDataset(luigi.Task):
+    test_size: float = luigi.FloatParameter(default=0.10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+
+    def requires(self):
+        return SplitSessionDataset()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_buys_visits_%.2f_k=%d" % (self.test_size,
+                                                                                        self.minimum_interactions)))
+
+    def add_visits_buys(self, df):
+        user_total_buys = []
+        user_total_visits = []
+        hist_buys = []
+        hist_visits = []
+
+        user_buys_dict = defaultdict(int)
+        user_visits_dict = defaultdict(int)
+
+        hist_buys_dict = defaultdict(int)
+        hist_visits_dict = defaultdict(int)
+
+        for _, row in tqdm(df.iterrows(), total=df.shape[0]):
+            merchant, account = row['merchant_id'], row['account_id']
+            hist_tup = tuple([merchant, account])
+            
+            user_total_buys.append(user_buys_dict[account])
+            user_total_visits.append(user_visits_dict[account])
+            hist_buys.append(hist_buys_dict[hist_tup])
+            hist_visits.append(hist_visits_dict[hist_tup])
+            
+            user_buys_dict[account] += row['buy']
+            user_visits_dict[account] += 1
+            hist_buys_dict[hist_tup] += row['buy']
+            hist_visits_dict[hist_tup] += 1
+            
+        df['user_total_buys'] = user_total_buys
+        df['user_total_visits'] = user_total_visits
+        df['hist_buys'] = hist_buys
+        df['hist_visits'] = hist_visits    
+
+        return df                                                                                
+
+    def run(self):
+        #spark = SparkSession(sc)
+
+        df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
+        #df = df.filter(df.account_id.isNotNull()).dropDuplicates()
+
+        df = self.add_visits_buys(df)
+
+        df.to_parquet(self.output().path)
+
 class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
     minimum_interactions: int = luigi.FloatParameter(default=5)
@@ -371,7 +427,7 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+        return AddVisitsBuysForInteractionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                    test_size=self.test_size,
                    minimum_interactions=self.minimum_interactions)
@@ -385,7 +441,7 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
 
         spark = SparkSession(sc)
 
-        train_df = spark.read.parquet(self.input()[0][0].path)
+        train_df = spark.read.parquet(self.input()[0].path)
         account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
             .select("merchant_idx", "merchant_id")
@@ -523,11 +579,18 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
 
     def read_data_frame(self) -> pd.DataFrame:
         df = pd.read_parquet(self.input()[1].path)
-        df["buy"] = df["buy"].astype(float)
+        for c in ["buy", "user_total_buys", "user_total_visits", "hist_buys", "hist_visits"]:
+            df[c] = df[c].astype(float)
+        df["buy_prob"] = df["hist_buys"].divide(df["user_total_buys"]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+        df["visit_prob"] = df["hist_visits"].divide(df["user_total_visits"]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
         df["n_users"] = self.num_users
         df["n_items"] = self.num_businesses
 
         return df
+
+    @property
+    def metadata_data_frame_path(self) -> str:
+        return self.input()[0][1].path
 
 class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
     session_test_size: float = luigi.FloatParameter(default=0.10)
