@@ -346,6 +346,8 @@ class AddVisitsBuysForInteractionDataset(luigi.Task):
 
     def output(self):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_buys_visits_%.2f_k=%d" % (self.test_size,
+                                                                                        self.minimum_interactions))), \
+                luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_buys_visits_%.2f_k=%d" % (self.test_size,
                                                                                         self.minimum_interactions)))
 
     def add_visits_buys(self, df):
@@ -384,12 +386,15 @@ class AddVisitsBuysForInteractionDataset(luigi.Task):
     def run(self):
         #spark = SparkSession(sc)
 
-        df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
+        train_df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
+        test_df = pd.read_parquet(self.input()[1].path).sort_values("click_timestamp")
         #df = df.filter(df.account_id.isNotNull()).dropDuplicates()
 
-        df = self.add_visits_buys(df)
+        train_df = self.add_visits_buys(train_df)
+        test_df = self.add_visits_buys(test_df)
 
-        df.to_parquet(self.output().path)
+        train_df.to_parquet(self.output()[0].path)
+        test_df.to_parquet(self.output()[1].path)
 
 class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
@@ -441,7 +446,7 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
 
         spark = SparkSession(sc)
 
-        train_df = spark.read.parquet(self.input()[0].path)
+        train_df = spark.read.parquet(self.input()[0][0].path)
         account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
             .select("merchant_idx", "merchant_id")
@@ -534,12 +539,24 @@ class CreateInteractionDataset(BasePySparkTask):
 
         #
         train_df = spark.read.parquet(self.input().path)
-        train_df = train_df.withColumn("visit", lit(1)) \
+        train_df_grouped_users = train_df.withColumn("user_total_buys", col("buy")) \
+            .withColumn("user_total_visits", lit(1)) \
+            .groupBy("account_id") \
+            .agg(sum("user_total_buys").alias("user_total_buys"), sum("user_total_visits").alias("user_total_visits")) 
+            
+            
+        train_df_grouped = train_df.withColumn("visit", lit(1)) \
             .groupBy("account_id", "account_idx",
                      "merchant_id", "merchant_idx") \
             .agg(sum("visit").alias("visits"), sum("buy").alias("buys"),
                  mode_value_udf(collect_list("shift_idx")).alias("mode_shift_idx"),
                  mode_value_udf(collect_list("day_of_week")).alias("mode_day_of_week"))
+
+        train_df = train_df_grouped_users \
+            .join(train_df_grouped, "account_id", how="inner") 
+
+        train_df = train_df.withColumn("buy_prob", col("buys") / col("user_total_buys")).na.fill(0.0)
+        train_df = train_df.withColumn("visit_prob", col("visits") / col("user_total_visits")).na.fill(0.0)
 
         train_df.write.parquet(self.output().path)
 

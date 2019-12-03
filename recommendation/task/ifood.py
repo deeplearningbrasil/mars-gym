@@ -797,9 +797,9 @@ class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
     def _read_and_transform_tuples(self):
         tuples_df = pd.read_parquet(self.input()[1].path)
 
-        train_interactions_df = pd.read_parquet(self.input()[-1].path)[['account_idx', 'merchant_idx', 'visits', 'buys']]
-        train_interactions_df['buys'] = train_interactions_df['buys'].astype(float)
-        train_interactions_df['visits'] = train_interactions_df['visits'].astype(float)
+        train_interactions_df = pd.read_parquet(self.input()[-1].path)[['account_idx', 'merchant_idx', 'visit_prob', 'buy_prob']]
+        train_interactions_df['buy_prob'] = train_interactions_df['buy_prob'].astype(float)
+        train_interactions_df['visit_prob'] = train_interactions_df['visit_prob'].astype(float)
 
         tuples_df = tuples_df.merge(train_interactions_df, on=['account_idx', 'merchant_idx'], how='outer')
         tuples_df.dropna(subset=['session_id'], how='all', inplace=True)
@@ -828,8 +828,8 @@ class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
 
         inputs.append(torch.tensor(interaction_rows["merchant_idx"].values, dtype=torch.int64).to(self.model_training.torch_device))
 
-        visits = interaction_rows['visits'].fillna(0).values
-        buys = interaction_rows['buys'].fillna(0).values
+        visits = interaction_rows['visit_prob'].fillna(0).values
+        buys = interaction_rows['buy_prob'].fillna(0).values
         
         for input_column in self.model_training.project_config.metadata_columns:
             dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
