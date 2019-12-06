@@ -207,7 +207,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         prepare_data_frames_task=ifood.PrepareIfoodSessionsDataFrames,
         dataset_class=ContextualBanditsDataset,
         input_columns=[Column("account_idx", IOType.INDEX), Column("merchant_idx", IOType.INDEX),
-                        Column("visit_prob", IOType.NUMBER), Column("buy_prob", IOType.NUMBER)],
+                        Column("hist_visits", IOType.NUMBER), Column("hist_buys", IOType.NUMBER)],
         metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
                           Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
         output_column=Column("buy", IOType.NUMBER),

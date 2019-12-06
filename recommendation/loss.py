@@ -255,10 +255,7 @@ class CounterfactualRiskMinimization(_Loss):
 
 
     def forward(self, prob, visits, buys):
-        binary_buys = (buys > 0).float()
-        if self.balance_factor > 0:
-            weights = (buys + (visits/self.balance_factor))
-            return F.binary_cross_entropy(prob, binary_buys, weight=weights, reduction = self.reduction)
-            
-        return F.binary_cross_entropy(prob, binary_buys, reduction = self.reduction)
+        weights = 1.0 / (visits + 1.0)
+        bce = F.binary_cross_entropy(prob, buys, weight=weights, reduction = None)
+        return (weights * bce).mean()
         
