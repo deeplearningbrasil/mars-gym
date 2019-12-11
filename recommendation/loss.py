@@ -1,10 +1,10 @@
+from typing import List
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import BCELoss
 from torch.nn.modules.loss import _Loss
-from typing import List
-import numpy as np
+
 
 class FocalLoss(nn.Module):
     """Focal loss for multi-classification
@@ -98,6 +98,7 @@ class BayesianPersonalizedRankingTripletLoss(_Loss):
     .. _Learning shallow convolutional feature descriptors with triplet losses:
         http://www.iis.ee.ic.ac.uk/%7Evbalnt/shallow_descr/TFeat_paper.pdf
     """
+
     def __init__(self, p=2., eps=1e-6, swap=False, size_average=None,
                  reduce=None, reduction="mean"):
         super().__init__(size_average, reduce, reduction)
@@ -121,6 +122,7 @@ class BayesianPersonalizedRankingTripletLoss(_Loss):
         elif self.reduction == "none":
             return loss
 
+
 class RelativeTripletLoss(_Loss):
     def __init__(self, p=2., eps=1e-6, swap=False, size_average=None,
                  reduce=None, reduction="mean", triplet_loss="triplet_margin", balance_factor=1.0):
@@ -130,21 +132,22 @@ class RelativeTripletLoss(_Loss):
         self.swap = swap
         self.balance_factor = balance_factor
         if triplet_loss == "triplet_margin":
-            self.triplet_loss = nn.TripletMarginLoss(p = self.p, reduction="none")
+            self.triplet_loss = nn.TripletMarginLoss(p=self.p, reduction="none")
         elif triplet_loss == "bpr_triplet":
-            self.triplet_loss = BayesianPersonalizedRankingTripletLoss(p = self.p, reduction="none")
+            self.triplet_loss = BayesianPersonalizedRankingTripletLoss(p=self.p, reduction="none")
         else:
             raise NotImplementedError
 
     def forward(self, anchor, positive, negative, relative_pos):
         loss = self.triplet_loss(anchor, positive, negative)
-        #loss = (loss * (1.5 - F.sigmoid(relative_pos.float()))) 
-        loss = loss/(1+torch.log(relative_pos.float()))
+        # loss = (loss * (1.5 - F.sigmoid(relative_pos.float())))
+        loss = loss / (1 + torch.log(relative_pos.float()))
 
         if self.reduction == "mean":
             return loss.mean()
         else:
             return loss.sum()
+
 
 class WeightedTripletLoss(_Loss):
     def __init__(self, p=2., eps=1e-6, swap=False, size_average=None,
@@ -155,20 +158,21 @@ class WeightedTripletLoss(_Loss):
         self.swap = swap
         self.balance_factor = balance_factor
         if triplet_loss == "triplet_margin":
-            self.triplet_loss = nn.TripletMarginLoss(p = self.p, reduction="none")
+            self.triplet_loss = nn.TripletMarginLoss(p=self.p, reduction="none")
         elif triplet_loss == "bpr_triplet":
-            self.triplet_loss = BayesianPersonalizedRankingTripletLoss(p = self.p, reduction="none")
+            self.triplet_loss = BayesianPersonalizedRankingTripletLoss(p=self.p, reduction="none")
         else:
             raise NotImplementedError
 
     def forward(self, anchor, positive, negative, visits, buys):
         loss = self.triplet_loss(anchor, positive, negative)
-        loss *= (buys + (visits/self.balance_factor))
+        loss *= (buys + (visits / self.balance_factor))
 
         if self.reduction == "mean":
             return loss.mean()
         else:
             return loss.sum()
+
 
 class VAELoss(nn.Module):
     def __init__(self, anneal=1.0):
@@ -181,12 +185,13 @@ class VAELoss(nn.Module):
 
     def forward(self, recon_x, mu, logvar, targets):
         targets = targets.to_dense()
-        
+
         recon_error = self.compute_reconstruction_error(recon_x, mu, logvar, targets)
         KLD = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
 
         loss = recon_error + self.anneal * KLD
         return loss
+
 
 class AttentiveVAELoss(nn.Module):
     def __init__(self, anneal=1.0, anneal_att=1.0):
@@ -200,7 +205,7 @@ class AttentiveVAELoss(nn.Module):
 
     def forward(self, recon_x, mu, logvar, att_mu, att_logvar, targets):
         targets = targets.to_dense()
-        
+
         recon_error = self.compute_reconstruction_error(recon_x, mu, logvar, targets)
         KLD = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
         KLD_att = -0.5 * torch.mean(torch.sum(1 + att_logvar - att_mu.pow(2) - att_logvar.exp(), dim=1))
@@ -210,6 +215,7 @@ class AttentiveVAELoss(nn.Module):
         print(KLD_att)
         loss = recon_error + self.anneal * KLD + self.anneal_att * KLD_att
         return loss
+
 
 class FocalVAELoss(VAELoss):
     def __init__(self, anneal: float = 1.0, gamma: float = 2.0, alpha: float = 4.0):
@@ -222,7 +228,7 @@ class FocalVAELoss(VAELoss):
         BCE_loss = -torch.sum(F.log_softmax(recon_x, 1) * targets, -1)
 
         pt = torch.exp(-BCE_loss)
-        F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
+        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
 
         return F_loss.mean()
 
@@ -254,26 +260,18 @@ class CounterfactualRiskMinimization(_Loss):
         self.balance_factor = balance_factor
         self.reduction = reduction
 
+    def forward(self, prob, target, user_item_visits, user_item_buys, user_visits, item_visits):
+        pi = (user_item_visits + 1) / (user_visits + 1)
+        weights = 1.0 / pi
 
-    def forward(self, prob, user_item_visits, user_item_buys, user_visits, item_visits, target):
-        
-        pi      = (user_item_visits + 1)/(user_visits + 1)
-        weights = 1.0 /pi
+        # weights = (visits+1.0)/(user_visits+1.0)
+        bce = F.binary_cross_entropy(prob.view(-1), target, weight=weights, reduction='none')
 
-        # print(user_item_visits)
-        # print(user_visits)
-        # print(pi)
-        # print(weights)
-        # print("====")
-
-        #weights = (visits+1.0)/(user_visits+1.0)
-        bce     = F.binary_cross_entropy(prob.view(-1), target, weight=weights, reduction = 'none')
-
-        loss    = (weights * bce)
+        loss = (weights * bce)
 
         if self.reduction == "mean":
             return loss.mean()
         elif self.reduction == "sum":
             return loss.sum()
         else:
-            return loss        
+            return loss

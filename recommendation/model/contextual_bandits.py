@@ -248,10 +248,7 @@ class ContextualBandit(nn.Module):
         
         return out
 
-    def forward(self, user_ids: torch.Tensor, item_content: torch.Tensor, 
-                user_item_visits: torch.Tensor = None, user_item_buys: torch.Tensor = None, 
-                user_visits: torch.Tensor = None, item_visits: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
-
+    def forward(self, user_ids: torch.Tensor, item_content: Tuple[torch.Tensor, ...]) -> torch.Tensor:
         item_ids, name, description, category, info, visits, buys = item_content
 
         context_representation = self.compute_context_embeddings(info, visits, buys)
@@ -260,4 +257,4 @@ class ContextualBandit(nn.Module):
 
         prob = self.predictor.predict(item_representation, user_representation, context_representation)
         
-        return prob, user_item_visits, user_item_buys, user_visits, item_visits
+        return prob

@@ -586,7 +586,7 @@ class ContextualBanditsDataset(InteractionsDataset):
         return tuple(res)
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...],
-                                                                         Tuple[np.ndarray, ...]], list]:
+                                                                         Tuple[np.ndarray, ...]]]:
         if isinstance(indices, int):
             indices = [indices]
 
@@ -602,7 +602,7 @@ class ContextualBanditsDataset(InteractionsDataset):
 
         output          = rows[self._output_column].values
 
-        return (user_indices, positive_items, user_item_visits, user_item_buys, user_visits, item_visits), [output]
+        return (user_indices, positive_items), (output, user_item_visits, user_item_buys, user_visits, item_visits)
 
         # return tuple(rows[input_column].values for input_column in self._input_columns), \
         #        output
