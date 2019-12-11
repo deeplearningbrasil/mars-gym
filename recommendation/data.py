@@ -585,20 +585,26 @@ class ContextualBanditsDataset(InteractionsDataset):
         res.append(torch.tensor(np.array(buys), dtype=torch.float32))
         return tuple(res)
 
-        
-        
-
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...],
                                                                          Tuple[np.ndarray, ...]], list]:
         if isinstance(indices, int):
             indices = [indices]
 
-        rows: pd.Series = self._data_frame.iloc[indices]
-        user_indices = rows[self._input_columns[0]].values
-        item_indices = rows[self._input_columns[1]].values
-        item_visits = rows[self._input_columns[2]].values
-        item_buys = rows[self._input_columns[3]].values
+        rows: pd.Series  = self._data_frame.iloc[indices]
+        user_indices     = rows[self._input_columns[0]].values
+        item_indices     = rows[self._input_columns[1]].values
+        user_item_visits = rows[self._input_columns[2]].values
+        user_visits      = rows[self._input_columns[3]].values
+        item_visits      = rows[self._input_columns[4]].values
+        user_item_buys   = rows[self._input_columns[5]].values
 
-        positive_items = self._get_items(item_indices, item_visits, item_buys)
+        positive_items  = self._get_items(item_indices, user_item_visits, user_item_buys)
 
-        return (user_indices, positive_items, item_visits, item_buys), []
+        output          = rows[self._output_column].values
+
+        return (user_indices, positive_items, user_item_visits, user_item_buys, user_visits, item_visits), [output]
+
+        # return tuple(rows[input_column].values for input_column in self._input_columns), \
+        #        output
+
+        #return tuple([user_indices, positive_items, item_visits, item_buys]), rows[self._output_column].values

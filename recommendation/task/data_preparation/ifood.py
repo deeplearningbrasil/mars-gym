@@ -351,16 +351,21 @@ class AddVisitsBuysForInteractionDataset(luigi.Task):
                                                                                         self.minimum_interactions)))
 
     def add_visits_buys(self, df):
-        user_total_buys = []
-        user_total_visits = []
-        hist_buys = []
-        hist_visits = []
+        user_total_buys     = []
+        user_total_visits   = []
+        item_total_buys     = []
+        item_total_visits   = []        
+        hist_buys           = []
+        hist_visits         = []
 
-        user_buys_dict = defaultdict(int)
-        user_visits_dict = defaultdict(int)
+        user_buys_dict      = defaultdict(int)
+        user_visits_dict    = defaultdict(int)
 
-        hist_buys_dict = defaultdict(int)
-        hist_visits_dict = defaultdict(int)
+        item_buys_dict      = defaultdict(int)
+        item_visits_dict    = defaultdict(int)
+
+        hist_buys_dict      = defaultdict(int)
+        hist_visits_dict    = defaultdict(int)
 
         for _, row in tqdm(df.iterrows(), total=df.shape[0]):
             merchant, account = row['merchant_id'], row['account_id']
@@ -368,18 +373,24 @@ class AddVisitsBuysForInteractionDataset(luigi.Task):
             
             user_total_buys.append(user_buys_dict[account])
             user_total_visits.append(user_visits_dict[account])
+            item_total_buys.append(item_buys_dict[merchant])
+            item_total_visits.append(item_visits_dict[merchant])
             hist_buys.append(hist_buys_dict[hist_tup])
             hist_visits.append(hist_visits_dict[hist_tup])
             
-            user_buys_dict[account] += row['buy']
-            user_visits_dict[account] += 1
-            hist_buys_dict[hist_tup] += row['buy']
-            hist_visits_dict[hist_tup] += 1
+            user_buys_dict[account]     += row['buy']
+            user_visits_dict[account]   += 1
+            item_buys_dict[merchant]    += row['buy']
+            item_visits_dict[merchant]  += 1            
+            hist_buys_dict[hist_tup]    += row['buy']
+            hist_visits_dict[hist_tup]  += 1
             
-        df['user_total_buys'] = user_total_buys
+        df['user_total_buys']   = user_total_buys
         df['user_total_visits'] = user_total_visits
-        df['hist_buys'] = hist_buys
-        df['hist_visits'] = hist_visits    
+        df['item_total_buys']   = item_total_buys
+        df['item_total_visits'] = item_total_visits        
+        df['hist_buys']         = hist_buys
+        df['hist_visits']       = hist_visits    
 
         return df                                                                                
 
@@ -387,11 +398,11 @@ class AddVisitsBuysForInteractionDataset(luigi.Task):
         #spark = SparkSession(sc)
 
         train_df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
-        test_df = pd.read_parquet(self.input()[1].path).sort_values("click_timestamp")
+        test_df  = pd.read_parquet(self.input()[1].path).sort_values("click_timestamp")
         #df = df.filter(df.account_id.isNotNull()).dropDuplicates()
 
         train_df = self.add_visits_buys(train_df)
-        test_df = self.add_visits_buys(test_df)
+        test_df  = self.add_visits_buys(test_df)
 
         train_df.to_parquet(self.output()[0].path)
         test_df.to_parquet(self.output()[1].path)
@@ -787,6 +798,44 @@ class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodA
 
         return df
 
+
+class PrepareIfoodIndexedSessionTestData(BasePySparkTask):
+    test_size: float = luigi.FloatParameter(default=0.10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+
+    def requires(self):
+        return SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size,
+                                                                           minimum_interactions=self.minimum_interactions)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR,
+                                              "indexed_session_test_data_%.2f_k=%d.parquet" % (self.test_size,
+                                                                                              self.minimum_interactions)))
+
+    def main(self, sc: SparkContext, *args):
+        spark = SparkSession(sc)
+
+        session_df = spark.read.parquet(self.input()[0][1].path)
+
+        session_df = session_df.withColumn("mode_shift_idx", session_df.shift_idx)
+        session_df = session_df.withColumn("mode_day_of_week", session_df.day_of_week)
+        session_df = session_df.withColumn("visit", lit(1))
+
+        account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+        merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
+            .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
+
+        session_df = session_df \
+            .join(account_df, "account_id", how="inner") \
+            .join(merchant_df, "merchant_id", how="inner") \
+            .select("session_id", "click_timestamp",
+                    "account_idx", "merchant_idx",
+                    "shift_idx", "mode_shift_idx", 
+                    "day_of_week", "mode_day_of_week",
+                    "visit", 'buy').sort("click_timestamp")
+
+        session_df.write.parquet(self.output().path)
 
 class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)

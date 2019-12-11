@@ -176,3 +176,18 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetI
 --model-task-id=TripletNetItemSimpleContentTraining_selu____200_6516668ddb --batch-size 600 \
 --group-last-k-merchants 2 --local-scheduler
 ```
+
+### Contextual Bandits
+
+#### Train
+
+
+```
+PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits ContextualBanditsTraining --project ifood_contextual_bandit --local-scheduler --batch-size=512 --optimizer=radam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.801}' --learning-rate=0.001 --epochs=500 --loss-function=crm --loss-function-params='{"balance_factor": 10.0}' --use-normalize --use-buys-visits  --content-layers=[256,128,64]  --binary --predictor=logistic_regression --context-embeddings --use-numerical-content --user-embeddings --n-factors=20 --epochs 206
+```
+
+#### Evaluate
+
+```
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler  --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-task-id=ContextualBanditsTraining_selu____512_1741ef11c6
+```

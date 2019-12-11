@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.nn import BCELoss
 from torch.nn.modules.loss import _Loss
 from typing import List
-
+import numpy as np
 
 class FocalLoss(nn.Module):
     """Focal loss for multi-classification
@@ -252,10 +252,28 @@ class CounterfactualRiskMinimization(_Loss):
     def __init__(self, size_average=None, reduce=None, reduction="mean", balance_factor=1.0):
         super().__init__(size_average, reduce, reduction)
         self.balance_factor = balance_factor
+        self.reduction = reduction
 
 
-    def forward(self, prob, visits, buys):
-        weights = 1.0 / (visits + 1.0)
-        bce = F.binary_cross_entropy(prob, buys, weight=weights, reduction = None)
-        return (weights * bce).mean()
+    def forward(self, prob, user_item_visits, user_item_buys, user_visits, item_visits, target):
         
+        pi      = (user_item_visits + 1)/(user_visits + 1)
+        weights = 1.0 /pi
+
+        # print(user_item_visits)
+        # print(user_visits)
+        # print(pi)
+        # print(weights)
+        # print("====")
+
+        #weights = (visits+1.0)/(user_visits+1.0)
+        bce     = F.binary_cross_entropy(prob.view(-1), target, weight=weights, reduction = 'none')
+
+        loss    = (weights * bce)
+
+        if self.reduction == "mean":
+            return loss.mean()
+        elif self.reduction == "sum":
+            return loss.sum()
+        else:
+            return loss        
