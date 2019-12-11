@@ -30,13 +30,13 @@ DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
 
 class CheckDataset(luigi.Task):
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_availability")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_delivery_time")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_items")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_menu")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_restaurant")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_review")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "ufg_dataset_all", "info_session"))
+        return luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_availability")), \
+               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_delivery_time")), \
+               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_items")), \
+               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_menu")), \
+               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_restaurant")), \
+               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_review")), \
+               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_session"))
 
     def run(self):
         raise AssertionError(
