@@ -12,6 +12,10 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     model_task_id: str = luigi.Parameter()
 
     @property
+    def task_name(self):
+        return self.model_task_id + "_" + self.task_id.split("_")[-1]
+
+    @property
     def model_training(self) -> BaseTorchModelTraining:
         if not hasattr(self, "_model_training"):
             module = importlib.import_module(self.model_module)
