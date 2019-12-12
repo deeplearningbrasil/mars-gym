@@ -33,12 +33,13 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         assert len(arm_ids) == len(arm_scores)
 
         ranked_arms = []
+        arm_ids = arm_ids[:]
+        arm_scores = arm_scores[:]
         for _ in range(len(arm_ids)):
             idx = self.select_idx(arm_ids, arm_scores=arm_scores)
             ranked_arms.append(arm_ids[idx])
-
-            arm_ids = arm_ids[:idx] + arm_ids[idx + 1:]
-            arm_scores = arm_scores[:idx] + arm_scores[idx + 1:]
+            arm_ids.pop(idx)
+            arm_scores.pop(idx)
 
         return ranked_arms
 
