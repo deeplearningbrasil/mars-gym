@@ -668,13 +668,17 @@ class SortMerchantListsRandomly(luigi.Task):
 class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                         model_task_id=self.model_task_id)
+                                                         model_task_id=self.model_task_id,
+                                                         bandit_policy=self.bandit_policy,
+                                                         bandit_policy_params=self.bandit_policy_params)
 
 
 class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                                          model_task_id=self.model_task_id,
+                                                         bandit_policy=self.bandit_policy,
+                                                         bandit_policy_params=self.bandit_policy_params,
                                                          variational=True)
 
 
@@ -682,13 +686,17 @@ class EvaluateIfoodAttCVAEModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                                          model_task_id=self.model_task_id,
+                                                         bandit_policy=self.bandit_policy,
+                                                         bandit_policy_params=self.bandit_policy_params,
                                                          attentive=True)
 
 
 class EvaluateIfoodHybridCVAEModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                         model_task_id=self.model_task_id, context=True,
+                                                         model_task_id=self.model_task_id,
+                                                         bandit_policy=self.bandit_policy,
+                                                         bandit_policy_params=self.bandit_policy_params, context=True,
                                                          variational=True)
 
 
@@ -1168,7 +1176,8 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
     def requires(self):
         return [SortMerchantListsTripletNetInfoContent(
             model_module=self.model_module, model_cls=self.model_cls,
-            model_task_id=self.model_task_id, batch_size=self.batch_size,
+            model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
+            bandit_policy_params=self.bandit_policy_params, batch_size=self.batch_size,
             group_last_k_merchants=self.group_last_k_merchants),
             ProcessRestaurantContentDataset(),
             GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
@@ -1241,13 +1250,15 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
 class EvaluateIfoodFullContentModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsFullContentModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                 model_task_id=self.model_task_id)
+                                                 model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
+                                                 bandit_policy_params=self.bandit_policy_params)
 
 
 class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsTripletWeightedModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                     model_task_id=self.model_task_id)
+                                                     model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
+                                                     bandit_policy_params=self.bandit_policy_params)
 
 
 class GenerateContentEmbeddings(BaseEvaluationTask):
