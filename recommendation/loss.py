@@ -261,7 +261,7 @@ class CounterfactualRiskMinimization(_Loss):
         self.reduction = reduction
 
     def forward(self, prob, target, user_item_visits, user_item_buys, user_visits, item_visits):
-        pi = (user_item_visits + 1) / (user_visits + 1)
+        pi      = (user_item_visits + 1.0)/(user_visits + 1.0)
         weights = 1.0 / pi
 
         # weights = (visits+1.0)/(user_visits+1.0)
