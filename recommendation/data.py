@@ -595,7 +595,7 @@ class ContextualBanditsDataset(InteractionsDataset):
         item_indices     = rows[self._input_columns[1]].values
         user_item_visits = rows[self._input_columns[2]].values
         user_visits      = rows[self._input_columns[3]].values
-        item_visits      = rows[self._input_columns[4]].values
+        item_visits      = rows[self._input_columns[4]].values.astype(float)
         user_item_buys   = rows[self._input_columns[5]].values
 
         positive_items  = self._get_items(item_indices, user_item_visits, user_item_buys)
