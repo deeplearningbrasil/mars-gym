@@ -19,7 +19,7 @@ from sklearn import manifold
 from tqdm import tqdm
 
 from recommendation.data import literal_eval_array_columns
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB
 from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
@@ -31,7 +31,7 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.utils import chunks, parallel_literal_eval
 
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, none=None)
+_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, none=None)
 
 
 def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],
@@ -418,6 +418,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             sort_function = _sort_merchants_by_tuple_score
         else:
             bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
+            bandit_policy.fit(self.model_training.train_dataset)
             sort_function = functools.partial(_sort_merchants_by_tuple_score_with_bandit_policy,
                                               bandit_policy=bandit_policy)
 
