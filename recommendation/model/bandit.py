@@ -1,5 +1,5 @@
 import abc
-from typing import List, Any, Union, Tuple
+from typing import List, Any, Union, Tuple, Dict
 
 import numpy as np
 import torch
@@ -17,7 +17,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def _select_idx(self, arm_ids: List[Union[str, int]], arm_contexts: Tuple[np.ndarray, ...],
+    def _select_idx(self, arm_ids: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float]) -> int:
         pass
 
@@ -26,31 +26,31 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         scores: torch.Tensor = self._reward_model(*inputs)
         return scores.detach().cpu().numpy().tolist()
 
-    def select_idx(self, arm_ids: List[Union[str, int]], arm_contexts: Tuple[np.ndarray, ...] = None,
+    def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None) -> int:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
-        return self._select_idx(arm_ids, arm_contexts, arm_scores)
+        return self._select_idx(arm_indices, arm_contexts, arm_scores)
 
-    def select(self, arm_ids: List[Union[str, int]], arm_contexts: Tuple[np.ndarray, ...] = None,
+    def select(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                arm_scores: List[float] = None) -> Union[str, int]:
-        return arm_ids[self.select_idx(arm_ids, arm_contexts, arm_scores)]
+        return arm_indices[self.select_idx(arm_indices, arm_contexts, arm_scores)]
 
-    def rank(self, arm_ids: List[Union[str, int]], arm_contexts: Tuple[np.ndarray, ...] = None,
-             arm_scores: List[float] = None) -> List[Union[str, int]]:
+    def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+             arm_scores: List[float] = None) -> List[int]:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
-        assert len(arm_ids) == len(arm_scores)
+        assert len(arm_indices) == len(arm_scores)
 
         ranked_arms = []
-        arm_ids = list(arm_ids)
+        arm_indices = list(arm_indices)
         arm_scores = list(arm_scores)
-        for _ in range(len(arm_ids)):
-            idx = self.select_idx(arm_ids, arm_scores=arm_scores)
-            ranked_arms.append(arm_ids[idx])
-            arm_ids.pop(idx)
+        for _ in range(len(arm_indices)):
+            idx = self.select_idx(arm_indices, arm_scores=arm_scores)
+            ranked_arms.append(arm_indices[idx])
+            arm_indices.pop(idx)
             arm_scores.pop(idx)
 
         return ranked_arms
@@ -62,10 +62,10 @@ class EpsilonGreedy(BanditPolicy):
         self._epsilon = epsilon
         self._rng = RandomState(seed)
 
-    def _select_idx(self, arm_ids: List[Union[str, int]], arm_contexts: Tuple[np.ndarray, ...],
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float]) -> int:
         if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
-            n_arms = len(arm_ids)
+            n_arms = len(arm_indices)
             arm_probas = np.ones(n_arms)
             arm_probas = arm_probas / np.sum(arm_probas)
 
@@ -75,51 +75,56 @@ class EpsilonGreedy(BanditPolicy):
 
 
 class LinUCB(BanditPolicy):
-    def __init__(self, reward_model: nn.Module, alpha: float) -> None:
+    def __init__(self, reward_model: nn.Module, alpha: float, arm_index: int = 1) -> None:
         super().__init__(reward_model)
         self._alpha = alpha
+        self._arm_index = arm_index
+        self._Ainv_per_arm: Dict[int, np.ndarray] = {}
 
-    def _sherman_morrison_update(self, x: np.ndarray) -> None:
+    def _sherman_morrison_update(self, Ainv: np.ndarray, x: np.ndarray) -> None:
         ## x should have shape (n, 1)
-        self._Ainv -= np.linalg.multi_dot([self._Ainv, x, x.T, self._Ainv]) / (
-                    1.0 + np.linalg.multi_dot([x.T, self._Ainv, x]))
+        Ainv -= np.linalg.multi_dot([Ainv, x, x.T, Ainv]) / (1.0 + np.linalg.multi_dot([x.T, Ainv, x]))
 
-    def _flatten_input(self, input_: Tuple[np.ndarray, ...]) -> np.ndarray:
-        return np.concatenate([el.reshape(1, -1) for el in input_], axis=1)[0]
+    def _flatten_input_and_extract_arm(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, int]:
+        flattened_input = np.concatenate([el.reshape(1, -1) for el in input_], axis=1)[0]
+
+        return np.delete(flattened_input, self._arm_index), int(flattened_input[self._arm_index])
 
     def fit(self, dataset: Dataset) -> None:
         n = len(dataset)
 
         for i in range(n):
             input_: Tuple[np.ndarray, ...] = dataset[i][0]
-            x: np.ndarray = self._flatten_input(input_)
+            x, arm = self._flatten_input_and_extract_arm(input_)
 
-            if not hasattr(self, "_Ainv"):
-                self._Ainv: np.ndarray = np.eye(x.shape[0])
+            if arm not in self._Ainv_per_arm:
+                self._Ainv_per_arm[arm] = np.eye(x.shape[0])
 
             x = x.reshape((-1, 1))
-            self._sherman_morrison_update(x)
+            self._sherman_morrison_update(self._Ainv_per_arm[arm], x)
 
     def _calculate_confidence_bound(self, arm_context: Tuple[np.ndarray]):
-        x = self._flatten_input(arm_context)
-        return self._alpha * np.sqrt(np.linalg.multi_dot([x.T, self._Ainv, x]))
+        x, arm = self._flatten_input_and_extract_arm(arm_context)
+        return self._alpha * np.sqrt(np.linalg.multi_dot([x.T, self._Ainv_per_arm[arm], x]))
 
-    def _select_idx(self, arm_ids: List[Union[str, int]], arm_contexts: Tuple[np.ndarray, ...],
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float]) -> int:
-        arm_contexts: List[Tuple[np.ndarray, ...]] = [tuple(el[i] for el in arm_contexts) for i in range(len(arm_ids))]
+        arm_contexts: List[Tuple[np.ndarray, ...]] = [tuple(el[i] for el in arm_contexts)
+                                                      for i in range(len(arm_indices))]
         arm_scores_with_cb = [arm_score + self._calculate_confidence_bound(arm_context)
                               for arm_context, arm_score in zip(arm_contexts, arm_scores)]
         return int(np.argmax(arm_scores_with_cb))
 
-    def rank(self, arm_ids: List[Union[str, int]], arm_contexts: Tuple[np.ndarray, ...] = None,
-             arm_scores: List[float] = None) -> List[Union[str, int]]:
+    def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+             arm_scores: List[float] = None) -> List[int]:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
-        assert len(arm_ids) == len(arm_scores)
+        assert len(arm_indices) == len(arm_scores)
 
-        arm_contexts: List[Tuple[np.ndarray, ...]] = [tuple(el[i] for el in arm_contexts) for i in range(len(arm_ids))]
+        arm_contexts: List[Tuple[np.ndarray, ...]] = [tuple(el[i] for el in arm_contexts)
+                                                      for i in range(len(arm_indices))]
         arm_scores_with_cb = [arm_score + self._calculate_confidence_bound(arm_context)
                               for arm_context, arm_score in zip(arm_contexts, arm_scores)]
 
-        return [arm_id for _, arm_id in sorted(zip(arm_scores_with_cb, arm_ids), reverse=True)]
+        return [arm_id for _, arm_id in sorted(zip(arm_scores_with_cb, arm_indices), reverse=True)]
