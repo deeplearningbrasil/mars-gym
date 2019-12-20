@@ -1164,7 +1164,7 @@ class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
 
         inputs = self._generate_content_tensors(merchant_rows, rows)
 
-        return [account_idxs, inputs]
+        return [account_idxs, *inputs]
 
 
 class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):

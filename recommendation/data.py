@@ -602,7 +602,7 @@ class ContextualBanditsDataset(InteractionsDataset):
 
         output          = rows[self._output_column].values
 
-        return (user_indices, positive_items), (output, user_item_visits, user_item_buys, user_visits, item_visits)
+        return (user_indices, *positive_items), (output, user_item_visits, user_item_buys, user_visits, item_visits)
 
         # return tuple(rows[input_column].values for input_column in self._input_columns), \
         #        output

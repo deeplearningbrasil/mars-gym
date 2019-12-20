@@ -248,9 +248,8 @@ class ContextualBandit(nn.Module):
         
         return out
 
-    def forward(self, user_ids: torch.Tensor, item_content: Tuple[torch.Tensor, ...]) -> torch.Tensor:
-        item_ids, name, description, category, info, visits, buys = item_content
-
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, name: torch.Tensor, description: torch.Tensor,
+                category: torch.Tensor, info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor) -> torch.Tensor:
         context_representation = self.compute_context_embeddings(info, visits, buys)
         item_representation = self.compute_item_embeddings(item_ids, name, description, category)
         user_representation = self.compute_user_embeddings(user_ids) if self.user_embeddings else None
