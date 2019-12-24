@@ -559,7 +559,7 @@ class ContextualBanditsDataset(InteractionsDataset):
         self._items_df = self._metadata_data_frame[[self._input_columns[1]] + self._metadata_columns].set_index(
             self._input_columns[1],
             drop=False).sort_index()
-
+    
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
 
