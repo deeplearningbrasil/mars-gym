@@ -164,8 +164,8 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetC
 PYTHONPATH="."  luigi --module recommendation.task.model.triplet_net TripletNetItemSimpleContentTraining \
 --project ifood_session_triplet_with_random_negative --n-factors 100 --loss-function relative_triplet \
 --negative-proportion 1 --batch-size 500 --save-item-embedding-tsv --use-normalize --num-filters 64 \
---filter-sizes "[1,3,5]" --save-item-embedding-tsv --optimizer "radam" --epochs 50 \
---content-layers "[64]" --dropout-prob 0.4 --local-scheduler 
+--filter-sizes "[1,3,5]" --save-item-embedding-tsv --optimizer "radam"  \
+--content-layers "[64]" --dropout-prob 0.4 --epochs 50 --local-scheduler 
 ```
 
 #### Evaluate
@@ -173,7 +173,7 @@ PYTHONPATH="."  luigi --module recommendation.task.model.triplet_net TripletNetI
 ```
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetInfoContent \
 --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetItemSimpleContentTraining \
---model-task-id=TripletNetItemSimpleContentTraining_selu____200_6516668ddb --batch-size 600 \
+--model-task-id=TripletNetItemSimpleContentTraining_selu____300_833e64754d --batch-size 600 \
 --group-last-k-merchants 2 --local-scheduler
 ```
 

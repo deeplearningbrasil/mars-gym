@@ -1278,7 +1278,7 @@ class GenerateContentEmbeddings(BaseEvaluationTask):
                                 self.task_name, "restaurant_metadata.tsv"))
 
     def _generate_content_tensors(self, rows):
-        return SortMerchantListsTripletContentModel._generate_content_tensors(self, rows)
+        return SortMerchantListsTripletNetInfoContent._generate_content_tensors(self, rows)
 
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)

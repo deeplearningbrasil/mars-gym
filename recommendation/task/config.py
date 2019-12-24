@@ -5,6 +5,7 @@ from recommendation.data import InteractionsMatrixDataset, InteractionsDataset, 
     UserTripletWithOnlineRandomNegativeGenerationDataset, \
     UserTripletWeightedWithOnlineRandomNegativeGenerationDataset,\
     IntraSessionTripletWithOnlineRandomNegativeGenerationDataset, \
+    IntraSessionTripletWithOnlineProbNegativeGenerationDataset,\
     ContextualBanditsDataset
 from recommendation.task.data_preparation import yelp, ifood, criteo
 from recommendation.task.meta_config import *
@@ -147,8 +148,24 @@ PROJECTS: Dict[str, ProjectConfig] = {
         base_dir=ifood.BASE_DIR,
         prepare_data_frames_task=ifood.PrepareIfoodIntraSessionInteractionsDataFrames,
         dataset_class=IntraSessionTripletWithOnlineRandomNegativeGenerationDataset,
-        input_columns=[Column("merchant_idx_A", IOType.INDEX),
-                        Column("merchant_idx_B", IOType.INDEX)],
+        input_columns=[Column("merchant_idx_A", IOType.INDEX), Column("merchant_idx_B", IOType.INDEX), Column("merchant_idx", IOType.INDEX)],
+        output_column=Column("binary_buys", IOType.NUMBER),
+        # possible_negative_indices_columns={
+        #     "merchant_idx": ["weekday breakfast", "weekday dawn", "weekday dinner", "weekday lunch",
+        #                      "weekday snack", "weekend breakfast", "weekend dawn", "weekend dinner",
+        #                      "weekend lunch", "weekend snack"]
+        # },
+        metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
+                          Column("category_names", IOType.ARRAY), Column("menu_full_text", IOType.ARRAY), 
+                          Column("restaurant_complete_info", IOType.ARRAY)],
+        auxiliar_output_columns=[Column("relative_pos", IOType.NUMBER), Column("prob", IOType.NUMBER)],
+        recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+    ),     
+    "ifood_session_triplet_with_search_negative": ProjectConfig(
+        base_dir=ifood.BASE_DIR,
+        prepare_data_frames_task=ifood.PrepareIfoodIntraSessionInteractionsDataFrames,
+        dataset_class=IntraSessionTripletWithOnlineProbNegativeGenerationDataset,
+        input_columns=[Column("merchant_idx_A", IOType.INDEX), Column("merchant_idx_B", IOType.INDEX)],
         output_column=Column("binary_buys", IOType.NUMBER),
         possible_negative_indices_columns={},
         metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
