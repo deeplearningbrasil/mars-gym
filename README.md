@@ -164,8 +164,8 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetC
 PYTHONPATH="."  luigi --module recommendation.task.model.triplet_net TripletNetItemSimpleContentTraining \
 --project ifood_session_triplet_with_random_negative --n-factors 100 --loss-function relative_triplet \
 --negative-proportion 1 --batch-size 500 --save-item-embedding-tsv --use-normalize --num-filters 64 \
---filter-sizes "[1,3,5]" --save-item-embedding-tsv --optimizer "radam" --epochs 50 \
---content-layers "[64]" --dropout-prob 0.4 --local-scheduler 
+--filter-sizes "[1,3,5]" --save-item-embedding-tsv --optimizer "radam"  \
+--content-layers "[64]" --dropout-prob 0.4 --epochs 50 --local-scheduler 
 ```
 
 #### Evaluate
@@ -173,6 +173,21 @@ PYTHONPATH="."  luigi --module recommendation.task.model.triplet_net TripletNetI
 ```
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetInfoContent \
 --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetItemSimpleContentTraining \
---model-task-id=TripletNetItemSimpleContentTraining_selu____200_6516668ddb --batch-size 600 \
+--model-task-id=TripletNetItemSimpleContentTraining_selu____300_833e64754d --batch-size 600 \
 --group-last-k-merchants 2 --local-scheduler
+```
+
+### Contextual Bandits
+
+#### Train
+
+
+```
+PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits ContextualBanditsTraining --project ifood_contextual_bandit --local-scheduler --batch-size=512 --optimizer=radam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.801}' --learning-rate=0.001 --epochs=500 --loss-function=crm --loss-function-params='{"balance_factor": 10.0}' --use-normalize --use-buys-visits  --content-layers=[256,128,64]  --binary --predictor=logistic_regression --context-embeddings --use-numerical-content --user-embeddings --n-factors=20 --epochs 206
+```
+
+#### Evaluate
+
+```
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler  --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-task-id=ContextualBanditsTraining_selu____512_1741ef11c6
 ```

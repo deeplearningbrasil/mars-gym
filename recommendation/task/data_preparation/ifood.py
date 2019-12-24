@@ -3,6 +3,8 @@ import os
 import re
 from collections import Counter
 from datetime import datetime
+from collections import defaultdict
+from tqdm import tqdm
 
 import luigi
 import numpy as np
@@ -24,7 +26,7 @@ import requests
 
 BASE_DIR: str = os.path.join("output", "ifood")
 DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
-
+EMBEDDING_DIR: str = os.path.join("output", "embeddings")
 
 class CheckDataset(luigi.Task):
     def output(self):
@@ -186,7 +188,6 @@ class DownloadStopWords(luigi.Task):
 
         print(self.output().path)
 
-
 class ProcessRestaurantContentDataset(luigi.Task):
     menu_text_length: int = luigi.IntParameter(default=5000)
     description_text_length: int = luigi.IntParameter(default=200)
@@ -292,6 +293,59 @@ class ProcessRestaurantContentDataset(luigi.Task):
         pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
 
 
+
+class BuildEmbeddingVocabulary(luigi.Task):
+    menu_text_length: int = luigi.IntParameter(default=5000)
+    description_text_length: int = luigi.IntParameter(default=200)
+    category_text_length: int = luigi.IntParameter(default=250)
+    filename: str = luigi.ChoiceParameter(choices=["cc.pt.300.vec"], default="cc.pt.300.vec")
+
+    def requires(self):
+        return ProcessRestaurantContentDataset(menu_text_length=self.menu_text_length, 
+                                                description_text_length=self.description_text_length, 
+                                                category_text_length=self.category_text_length)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurant_text_vocabulary_vec.npy"))
+
+    def load_embvec(self):
+        word2vec    = {}
+        words_count = 0
+
+        with open(f'{EMBEDDING_DIR}/{self.filename}', 'rb') as f:
+            for l in f:
+                line = l.decode().split()
+                word = line[0]
+                vect = np.array(line[1:]).astype(np.float)
+
+                word2vec[word] = vect
+                words_count += 1
+
+                #if words_count > 100:
+                #    break
+
+        return word2vec
+
+    def run(self):
+        df_vocab        = pd.read_csv(self.input()[1].path)
+        word2vec        = self.load_embvec()
+        emb_dim         = 300
+
+        matrix_len      = len(df_vocab)
+        weights_matrix  = np.zeros((matrix_len, emb_dim))
+        words_found     = 0
+
+        for i, row in df_vocab.iterrows():
+            try: 
+                weights_matrix[i] = word2vec[row.vocabulary]
+                words_found += 1
+            except KeyError:
+                weights_matrix[i] = np.random.normal(scale=0.6, size=(emb_dim, ))
+                        
+        print("Words found in Embedding: ", (words_found/matrix_len)*100)
+
+        np.save(self.output().path, weights_matrix)
+
 class SplitSessionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
     minimum_interactions: int = luigi.FloatParameter(default=5)
@@ -335,6 +389,76 @@ class SplitSessionDataset(BasePySparkTask):
         test_df.write.parquet(self.output()[1].path)
 
 
+class AddVisitsBuysForInteractionDataset(luigi.Task):
+    test_size: float = luigi.FloatParameter(default=0.10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+
+    def requires(self):
+        return SplitSessionDataset()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_buys_visits_%.2f_k=%d" % (self.test_size,
+                                                                                        self.minimum_interactions))), \
+                luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_buys_visits_%.2f_k=%d" % (self.test_size,
+                                                                                        self.minimum_interactions)))
+
+    def add_visits_buys(self, df):
+        user_total_buys     = []
+        user_total_visits   = []
+        item_total_buys     = []
+        item_total_visits   = []        
+        hist_buys           = []
+        hist_visits         = []
+
+        user_buys_dict      = defaultdict(int)
+        user_visits_dict    = defaultdict(int)
+
+        item_buys_dict      = defaultdict(int)
+        item_visits_dict    = defaultdict(int)
+
+        hist_buys_dict      = defaultdict(int)
+        hist_visits_dict    = defaultdict(int)
+
+        for _, row in tqdm(df.iterrows(), total=df.shape[0]):
+            merchant, account = row['merchant_id'], row['account_id']
+            hist_tup = tuple([merchant, account])
+            
+            user_total_buys.append(user_buys_dict[account])
+            user_total_visits.append(user_visits_dict[account])
+            item_total_buys.append(item_buys_dict[merchant])
+            item_total_visits.append(item_visits_dict[merchant])
+            hist_buys.append(hist_buys_dict[hist_tup])
+            hist_visits.append(hist_visits_dict[hist_tup])
+            
+            user_buys_dict[account]     += row['buy']
+            user_visits_dict[account]   += 1
+            item_buys_dict[merchant]    += row['buy']
+            item_visits_dict[merchant]  += 1            
+            hist_buys_dict[hist_tup]    += row['buy']
+            hist_visits_dict[hist_tup]  += 1
+            
+        df['user_total_buys']   = user_total_buys
+        df['user_total_visits'] = user_total_visits
+        df['item_total_buys']   = item_total_buys
+        df['item_total_visits'] = item_total_visits        
+        df['hist_buys']         = hist_buys
+        df['hist_visits']       = hist_visits    
+
+        return df                                                                                
+
+    def run(self):
+        #spark = SparkSession(sc)
+
+        train_df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
+        test_df  = pd.read_parquet(self.input()[1].path).sort_values("click_timestamp")
+        #df = df.filter(df.account_id.isNotNull()).dropDuplicates()
+
+        train_df = self.add_visits_buys(train_df)
+        test_df  = self.add_visits_buys(test_df)
+
+        train_df.to_parquet(self.output()[0].path)
+        test_df.to_parquet(self.output()[1].path)
+
 class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
     minimum_interactions: int = luigi.FloatParameter(default=5)
@@ -371,7 +495,7 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+        return AddVisitsBuysForInteractionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                    test_size=self.test_size,
                    minimum_interactions=self.minimum_interactions)
@@ -405,8 +529,30 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
     def output(self):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_intra_session_train_%.2f" % self.test_size))
 
+
+    def get_df_tuple_probs(self, df):
+
+        df_tuple_count  = df.groupby("merchant_idx_A","merchant_idx_B").count()
+        df_count        = df.groupby("merchant_idx_A").count()\
+                            .withColumnRenamed("count", "total").withColumnRenamed("merchant_idx_A", "_merchant_idx_A")
+
+        df_join         = df_tuple_count.join(df_count, df_tuple_count.merchant_idx_A == df_count._merchant_idx_A).cache()
+        df_join         = df_join.withColumn("prob", col("count")/col("total"))
+
+        df_join  = df_join.select("merchant_idx_A", 'merchant_idx_B', 'total', 'prob')\
+                    .withColumnRenamed("merchant_idx_A", "_merchant_idx_A")\
+                    .withColumnRenamed("merchant_idx_B", "_merchant_idx_B")\
+                    .withColumnRenamed("total", "total_ocr").cache()
+        
+        return df_join
+
     def main(self, sc: SparkContext, *args):
         os.makedirs(DATASET_DIR, exist_ok=True)
+        
+        #parans
+        total_itens_per_session  = 3
+        total_itens_interactions = 30
+
 
         spark    = SparkSession(sc)
 
@@ -418,7 +564,7 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
                     sum("buy").alias("buy"))
 
         # Filter Interactions
-        df = df.filter(df.total > 1).filter(df.buy > 1).cache()
+        df = df.filter(df.total >= total_itens_per_session).filter(df.buy > 1).cache()
 
         # Filter position in list
         df_pos = df.select(col('session_id').alias('_session_id'), 
@@ -447,9 +593,19 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
         # Filter duplicates
         udf_join = F.udf(lambda s,x,y : "_".join(sorted([str(s), str(x),str(y)])) , StringType())
         df = df.withColumn('key', udf_join('session_id', 'merchant_idx_A','merchant_idx_B'))
-        df = df.dropDuplicates(["key"]).select('session_id', 'merchant_idx_A', 'pos_A', 'merchant_idx_B', 'pos_B', 'relative_pos')
 
-        print(df.show(2))
+        df = df.dropDuplicates(["key"])
+
+        # Calculate and filter probs ocorrence
+        df_probs = self.get_df_tuple_probs(df)
+
+        df = df.join(df_probs, (df.merchant_idx_A == df_probs._merchant_idx_A) & (df.merchant_idx_B == df_probs._merchant_idx_B))
+        df = df.filter(col("total_ocr") >= total_itens_interactions)
+
+        # Save
+        df = df.select('session_id',  'merchant_idx_A', 'pos_A', 
+                        'merchant_idx_B', 'pos_B', 'relative_pos', 'prob')
+
         df.write.parquet(self.output().path)
 
 class CreateInteractionDataset(BasePySparkTask):
@@ -478,12 +634,24 @@ class CreateInteractionDataset(BasePySparkTask):
 
         #
         train_df = spark.read.parquet(self.input().path)
-        train_df = train_df.withColumn("visit", lit(1)) \
+        train_df_grouped_users = train_df.withColumn("user_total_buys", col("buy")) \
+            .withColumn("user_total_visits", lit(1)) \
+            .groupBy("account_id") \
+            .agg(sum("user_total_buys").alias("user_total_buys"), sum("user_total_visits").alias("user_total_visits")) 
+            
+            
+        train_df_grouped = train_df.withColumn("visit", lit(1)) \
             .groupBy("account_id", "account_idx",
                      "merchant_id", "merchant_idx") \
             .agg(sum("visit").alias("visits"), sum("buy").alias("buys"),
                  mode_value_udf(collect_list("shift_idx")).alias("mode_shift_idx"),
                  mode_value_udf(collect_list("day_of_week")).alias("mode_day_of_week"))
+
+        train_df = train_df_grouped_users \
+            .join(train_df_grouped, "account_id", how="inner") 
+
+        train_df = train_df.withColumn("buy_prob", col("buys") / col("user_total_buys")).na.fill(0.0)
+        train_df = train_df.withColumn("visit_prob", col("visits") / col("user_total_visits")).na.fill(0.0)
 
         train_df.write.parquet(self.output().path)
 
@@ -523,11 +691,18 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
 
     def read_data_frame(self) -> pd.DataFrame:
         df = pd.read_parquet(self.input()[1].path)
-        df["buy"] = df["buy"].astype(float)
+        for c in ["buy", "user_total_buys", "user_total_visits", "hist_buys", "hist_visits"]:
+            df[c] = df[c].astype(float)
+        df["buy_prob"] = df["hist_buys"].divide(df["user_total_buys"]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+        df["visit_prob"] = df["hist_visits"].divide(df["user_total_visits"]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
         df["n_users"] = self.num_users
         df["n_items"] = self.num_businesses
 
         return df
+
+    @property
+    def metadata_data_frame_path(self) -> str:
+        return self.input()[0][1].path
 
 class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
     session_test_size: float = luigi.FloatParameter(default=0.10)
@@ -562,9 +737,11 @@ class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
 
     def read_data_frame(self) -> pd.DataFrame:
         df = pd.read_parquet(self.input()[1].path)
-        df["binary_buys"] = 1.0
-        df["n_users"] = self.num_users
-        df["n_items"] = self.num_businesses
+        df["merchant_idx"]  = df.merchant_idx_A
+        df["binary_buys"]   = 1.0
+        df["n_users"]       = self.num_users
+        df["n_items"]       = self.num_businesses
+
         return df
 
     @property
@@ -707,6 +884,44 @@ class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodA
 
         return df
 
+
+class PrepareIfoodIndexedSessionTestData(BasePySparkTask):
+    test_size: float = luigi.FloatParameter(default=0.10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+
+    def requires(self):
+        return SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size,
+                                                                           minimum_interactions=self.minimum_interactions)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR,
+                                              "indexed_session_test_data_%.2f_k=%d.parquet" % (self.test_size,
+                                                                                              self.minimum_interactions)))
+
+    def main(self, sc: SparkContext, *args):
+        spark = SparkSession(sc)
+
+        session_df = spark.read.parquet(self.input()[0][1].path)
+
+        session_df = session_df.withColumn("mode_shift_idx", session_df.shift_idx)
+        session_df = session_df.withColumn("mode_day_of_week", session_df.day_of_week)
+        session_df = session_df.withColumn("visit", lit(1))
+
+        account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+        merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
+            .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
+
+        session_df = session_df \
+            .join(account_df, "account_id", how="inner") \
+            .join(merchant_df, "merchant_id", how="inner") \
+            .select("session_id", "click_timestamp",
+                    "account_idx", "merchant_idx",
+                    "shift_idx", "mode_shift_idx", 
+                    "day_of_week", "mode_day_of_week",
+                    "visit", 'buy').sort("click_timestamp")
+
+        session_df.write.parquet(self.output().path)
 
 class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
