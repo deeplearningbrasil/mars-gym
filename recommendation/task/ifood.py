@@ -8,7 +8,7 @@ import pprint
 from itertools import starmap
 from multiprocessing.pool import Pool
 from time import time
-from typing import Dict, Tuple, List, Any, Type
+from typing import Dict, Tuple, List, Any, Type, Union
 
 import luigi
 import numpy as np
@@ -16,6 +16,7 @@ import pandas as pd
 import scipy
 import torch
 from sklearn import manifold
+from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.data import literal_eval_array_columns
@@ -29,6 +30,7 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
     CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset, \
     IndexAccountsAndMerchantsOfSessionTrainDataset
 from recommendation.task.evaluation import BaseEvaluationTask
+from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import chunks, parallel_literal_eval
 
 _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, none=None)
@@ -367,40 +369,53 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
                          self.task_name, "orders_with_sorted_merchants.csv"))
 
-    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
-        return [torch.tensor(rows[input_column.name].values, dtype=torch.int64)
-                    .to(self.model_training.torch_device)
-                for input_column in self.model_training.project_config.input_columns]
-
-    def _read_and_transform_tuples(self):
+    def _read_test_data_frame(self) -> pd.DataFrame:
         tuples_df = pd.read_parquet(self.input()[1].path)
         return tuples_df
 
-    def _get_batch_score(self, batch_scores):
-        return batch_scores
+    def _transform_scores(self, scores: np.ndarray) -> np.ndarray:
+        return scores
+
+    @property
+    def dataset(self):
+        if not hasattr(self, "_dataset"):
+            print("Reading tuples files...")
+            df = self._read_test_data_frame()
+            if self.model_training.project_config.output_column.name not in df.columns:
+                df[self.model_training.project_config.output_column.name] = 1
+            for auxiliar_output_column in self.model_training.project_config.auxiliar_output_columns:
+                if auxiliar_output_column.name not in df.columns:
+                    df[auxiliar_output_column.name] = 0
+
+            self._dataset = self.model_training.project_config.dataset_class(df,
+                                                                             self.model_training.metadata_data_frame,
+                                                                             self.model_training.project_config,
+                                                                             negative_proportion=0.0)
+        return self._dataset
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
-        print("Reading tuples files...")
-        tuples_df = self._read_and_transform_tuples()
-
-        assert self.model_training.project_config.input_columns[0].name == "account_idx"
-        assert self.model_training.project_config.input_columns[1].name == "merchant_idx"
+        generator = NoAutoCollationDataLoader(self.dataset, batch_size=self.batch_size, shuffle=False,
+                                              num_workers=self.model_training.generator_workers,
+                                              pin_memory=True if self.model_training.device == "cuda" else False)
 
         print("Loading trained model...")
         module = self.model_training.get_trained_module()
-        scores: List[float] = []
-        print("Running the model for every account and merchant tuple...")
-        with Pool(os.cpu_count()) as pool:
-            for indices in tqdm(chunks(range(len(tuples_df)), self.batch_size),
-                                total=math.ceil(len(tuples_df) / self.batch_size)):
-                rows: pd.DataFrame = tuples_df.iloc[indices]
-                inputs = self._generate_batch_tensors(rows, pool)
-                batch_scores: torch.Tensor = self._get_batch_score(module(*inputs))
-                scores.extend(batch_scores.detach().cpu().numpy())
 
+        trial = Trial(module,
+                      criterion=lambda *args:
+                      torch.zeros(1, device=self.model_training.torch_device, requires_grad=True)) \
+            .with_test_generator(generator).to(self.model_training.torch_device)
+        model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=2)
+        scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0]
+        scores: np.ndarray = scores_tensor.detach().cpu().numpy()
+        scores = self._transform_scores(scores)
+
+        return self._create_dictionary_of_scores(scores, df)
+
+    def _create_dictionary_of_scores(self, scores: np.ndarray, df: pd.DataFrame) -> Dict[Tuple[int, int], float]:
         print("Creating the dictionary of scores...")
         return {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
-                in tqdm(zip(tuples_df["account_idx"], tuples_df["merchant_idx"], scores), total=len(scores))}
+                in tqdm(zip(df["account_idx"], df["merchant_idx"], scores), total=len(scores))}
 
     def run(self):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
@@ -451,28 +466,9 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
 
 class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
-    variational = luigi.BoolParameter(default=False)
-    attentive = luigi.BoolParameter(default=False)
-    context = luigi.BoolParameter(default=False)
-
     batch_size: int = luigi.IntParameter(default=500)
 
-    def _eval_buys_per_merchant_column(self, df: pd.DataFrame):
-        if len(df) > 0 and type(df.iloc[0]["buys_per_merchant"]) is str:
-            df["buys_per_merchant"] = parallel_literal_eval(df["buys_per_merchant"])
-        return df
-
-    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
-        assert self.model_training.project_config.input_columns[0].name == "buys_per_merchant"
-        assert self.model_training.project_config.output_column.name == "buys_per_merchant"
-
-        print("Reading tuples files...")
-        tuples_df = pd.read_parquet(self.input()[1].path)
-
-        print("Grouping by account index...")
-        merchant_indices_per_account_idx: pd.Series = tuples_df.groupby('account_idx')['merchant_idx'].apply(list)
-        del tuples_df
-
+    def _read_test_data_frame(self) -> pd.DataFrame:
         print("Reading train, val and test DataFrames...")
         train_df = self._eval_buys_per_merchant_column(pd.read_csv(self.model_training.input()[0].path))
         val_df = self._eval_buys_per_merchant_column(pd.read_csv(self.model_training.input()[1].path))
@@ -480,60 +476,31 @@ class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
         df: pd.DataFrame = pd.concat((train_df, val_df, test_df))
 
         # Needed if split_per_user=False
-        df = df.groupby("account_idx")["buys_per_merchant"] \
+        df = df.groupby(["account_idx", "n_users", "n_items"])["buys_per_merchant"] \
             .apply(lambda lists: [inner for outer in lists for inner in outer]).reset_index()
 
-        print("Loading trained model...")
-        module = self.model_training.get_trained_module()
+        return df
+
+    def _eval_buys_per_merchant_column(self, df: pd.DataFrame):
+        if len(df) > 0 and type(df.iloc[0]["buys_per_merchant"]) is str:
+            df["buys_per_merchant"] = parallel_literal_eval(df["buys_per_merchant"])
+        return df
+
+    def _create_dictionary_of_scores(self, scores: np.ndarray, df: pd.DataFrame) -> Dict[Tuple[int, int], float]:
+        tuples_df = pd.read_parquet(self.input()[1].path)
+        print("Grouping by account index...")
+        merchant_indices_per_account_idx: pd.Series = tuples_df.groupby('account_idx')['merchant_idx'].apply(list)
 
         scores_per_tuple: List[Tuple[Tuple[int, int], float]] = []
 
-        print("Running the model for every account and merchant tuple...")
-        for indices in tqdm(chunks(range(len(df)), self.batch_size),
-                            total=math.ceil(len(df) / self.batch_size)):
-            rows: pd.DataFrame = df.iloc[indices]
-
-            i, j, data = zip(
-                *((index, int(t[0]), t[1]) for index, row in enumerate(rows["buys_per_merchant"])
-                  for t in row))
-            batch_tensor = torch.sparse_coo_tensor(
-                indices=torch.tensor([i, j]),
-                values=torch.tensor(data),
-                size=[len(rows), self.model_training.n_items]).to(self.model_training.torch_device)
-
-            batch_output_tensor = None
-            if self.context:
-                batch_context = torch.tensor(rows['account_idx'].values).to(self.model_training.torch_device)
-                batch_output_tensor = module(batch_tensor, batch_context)
-            else:
-                batch_output_tensor = module(batch_tensor)
-
-            if self.attentive:
-                batch_output_tensor, _, _, _, _ = batch_output_tensor
-            elif self.variational:
-                batch_output_tensor, _, _ = batch_output_tensor
-
-            batch_output: np.ndarray = batch_output_tensor.detach().cpu().numpy()
-
-            for account_idx, row in zip(rows["account_idx"], batch_output):
-                if account_idx in merchant_indices_per_account_idx:
-                    merchant_indices = merchant_indices_per_account_idx[account_idx]
-                    scores_per_tuple.extend([((account_idx, merchant_idx), row[merchant_idx])
-                                             for merchant_idx in merchant_indices])
+        for account_idx, score in zip(df["account_idx"], scores):
+            if account_idx in merchant_indices_per_account_idx:
+                merchant_indices = merchant_indices_per_account_idx[account_idx]
+                scores_per_tuple.extend([((account_idx, merchant_idx), score[merchant_idx])
+                                         for merchant_idx in merchant_indices])
 
         print("Creating the dictionary of scores...")
         return dict(scores_per_tuple)
-
-
-class SortMerchantListsTripletWeightedModel(SortMerchantListsForIfoodModel):
-
-    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
-        assert self.model_training.project_config.input_columns[0].name == 'account_idx'
-        assert self.model_training.project_config.input_columns[1].name == 'merchant_idx'
-
-        return [torch.tensor(rows[column].values, dtype=torch.int64)
-                    .to(self.model_training.torch_device)
-                for column in ['account_idx', 'merchant_idx']]
 
 
 class EvaluateIfoodModel(BaseEvaluationTask):
@@ -666,39 +633,12 @@ class SortMerchantListsRandomly(luigi.Task):
             self.output().path, index=False)
 
 
-class EvaluateIfoodCDAEModel(EvaluateIfoodModel):
+class EvaluateAutoEncoderIfoodModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                                          model_task_id=self.model_task_id,
                                                          bandit_policy=self.bandit_policy,
                                                          bandit_policy_params=self.bandit_policy_params)
-
-
-class EvaluateIfoodCVAEModel(EvaluateIfoodModel):
-    def requires(self):
-        return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                         model_task_id=self.model_task_id,
-                                                         bandit_policy=self.bandit_policy,
-                                                         bandit_policy_params=self.bandit_policy_params,
-                                                         variational=True)
-
-
-class EvaluateIfoodAttCVAEModel(EvaluateIfoodModel):
-    def requires(self):
-        return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                         model_task_id=self.model_task_id,
-                                                         bandit_policy=self.bandit_policy,
-                                                         bandit_policy_params=self.bandit_policy_params,
-                                                         attentive=True)
-
-
-class EvaluateIfoodHybridCVAEModel(EvaluateIfoodModel):
-    def requires(self):
-        return SortMerchantListsForAutoEncoderIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                         model_task_id=self.model_task_id,
-                                                         bandit_policy=self.bandit_policy,
-                                                         bandit_policy_params=self.bandit_policy_params, context=True,
-                                                         variational=True)
 
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
@@ -1102,7 +1042,7 @@ class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
             test_size=test_size, minimum_interactions=minimum_interactions), \
                                      CreateInteractionDataset(test_size=test_size))
 
-    def _read_and_transform_tuples(self):
+    def _read_test_data_frame(self) -> pd.DataFrame:
         tuples_df = pd.read_parquet(self.input()[1].path)
 
         train_interactions_df = pd.read_parquet(self.input()[-1].path)[
@@ -1112,59 +1052,10 @@ class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
 
         tuples_df = tuples_df.merge(train_interactions_df, on=['account_idx', 'merchant_idx'], how='outer')
         tuples_df.dropna(subset=['session_id'], how='all', inplace=True)
-        tuples_df.fillna(0.0)
+        tuples_df.fillna(0.0, inplace=True)
+        tuples_df.rename(columns={"buys": "hist_buys", "visits": "hist_visits"}, inplace=True)
 
         return tuples_df
-
-    def _get_batch_score(self, batch_scores):
-        return batch_scores[0]
-
-    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
-        print("Reading merchant data frame...")
-        self.merchant_df = pd.read_csv(self.input()[-2][1].path)
-
-        literal_eval_array_columns(self.merchant_df,
-                                   self.model_training.project_config.input_columns
-                                   + [self.model_training.project_config.output_column]
-                                   + self.model_training.project_config.metadata_columns)
-
-        self.merchant_df = self.merchant_df.set_index("merchant_idx")
-
-        return super()._evaluate_account_merchant_tuples()
-
-    def _generate_content_tensors(self, rows, interaction_rows):
-        inputs = []
-
-        inputs.append(torch.tensor(interaction_rows["merchant_idx"].values, dtype=torch.int64).to(
-            self.model_training.torch_device))
-
-        visits = interaction_rows['visits'].fillna(0).values
-        buys = interaction_rows['buys'].fillna(0).values
-
-        for input_column in self.model_training.project_config.metadata_columns:
-            dtype = torch.float32 if input_column.name == "restaurant_complete_info" else torch.int64
-            values = rows[input_column.name].values.tolist()
-            inputs.append(torch.tensor(values, dtype=dtype).to(self.model_training.torch_device))
-
-        inputs.append(torch.tensor(visits, dtype=torch.float32).to(self.model_training.torch_device))
-        inputs.append(torch.tensor(buys, dtype=torch.float32).to(self.model_training.torch_device))
-
-        return inputs
-
-    def _generate_batch_tensors(self, rows: pd.DataFrame, pool: Pool) -> List[torch.Tensor]:
-        metadata_columns_name = [input_column.name for input_column in
-                                 self.model_training.project_config.metadata_columns]
-
-        assert metadata_columns_name == ['trading_name', 'description', 'category_names', 'restaurant_complete_info']
-
-        account_idxs = torch.tensor(rows["account_idx"].values, dtype=torch.int64) \
-            .to(self.model_training.torch_device)
-
-        merchant_rows = self.merchant_df.loc[rows["merchant_idx"]]
-
-        inputs = self._generate_content_tensors(merchant_rows, rows)
-
-        return [account_idxs, *inputs]
 
 
 class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
@@ -1253,13 +1144,6 @@ class EvaluateIfoodFullContentModel(EvaluateIfoodModel):
         return SortMerchantListsFullContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                  model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
                                                  bandit_policy_params=self.bandit_policy_params)
-
-
-class EvaluateIfoodTripletNetWeightedModel(EvaluateIfoodModel):
-    def requires(self):
-        return SortMerchantListsTripletWeightedModel(model_module=self.model_module, model_cls=self.model_cls,
-                                                     model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
-                                                     bandit_policy_params=self.bandit_policy_params)
 
 
 class GenerateContentEmbeddings(BaseEvaluationTask):

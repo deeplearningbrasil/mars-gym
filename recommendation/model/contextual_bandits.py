@@ -206,9 +206,9 @@ class ContextualBandit(nn.Module):
         x : torch.Tensor = None
 
         if self.use_textual_content:
-            emb_name, emb_description, emb_category = self.word_embeddings(name), \
-                                                        self.word_embeddings(description), \
-                                                            self.word_embeddings(category)
+            emb_name, emb_description, emb_category = self.word_embeddings(name.long()), \
+                                                        self.word_embeddings(description.long()), \
+                                                            self.word_embeddings(category.long())
 
             cnn_category    = self.conv_block(emb_category)
             cnn_description = self.conv_block(emb_description)
@@ -217,7 +217,7 @@ class ContextualBandit(nn.Module):
             x = torch.cat((cnn_category, cnn_description, cnn_name), dim=1)
 
         if self.item_embeddings:
-            item_embs = self.item_embeddings(item_ids)
+            item_embs = self.item_embeddings(item_ids.long())
             x = item_embs if self.none_tensor(x) else torch.cat((x, item_embs), dim=1)
 
         if self.use_normalize:
@@ -241,7 +241,7 @@ class ContextualBandit(nn.Module):
 
 
     def compute_user_embeddings(self, user_ids):
-        user_emb = self.user_embeddings(user_ids)
+        user_emb = self.user_embeddings(user_ids.long())
 
         if self.use_normalize:
             out = self.normalize(user_emb)

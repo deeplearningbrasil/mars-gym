@@ -16,8 +16,7 @@ class MatrixFactorization(UserAndItemEmbedding):
         self.binary = binary
 
     def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor) -> torch.Tensor:
-
-        output = (self.user_embeddings(user_ids) * self.item_embeddings(item_ids)).sum(1)
+        output = (self.user_embeddings(user_ids.long()) * self.item_embeddings(item_ids.long())).sum(1)
         if self.binary:
             return torch.sigmoid(output)
         return output

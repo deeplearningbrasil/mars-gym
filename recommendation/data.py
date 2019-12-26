@@ -339,7 +339,6 @@ class NegativeIndicesGenerator(object):
                 return indices
 
 
-
 class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
@@ -364,7 +363,7 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
 
         positive_indices = [index for index in indices if index < n]
         num_of_negatives = len(indices) - len(positive_indices)
-        positive_batch   = super().__getitem__(positive_indices)
+        positive_batch = super().__getitem__(positive_indices)
 
         if num_of_negatives > 0:
             negative_output = np.zeros(num_of_negatives)
@@ -384,7 +383,7 @@ class BinaryInteractionsWithOnlineRandomNegativeGenerationDataset(InteractionsDa
                 output = np.append(positive_batch[1], negative_batch[1])
 
             inputs = tuple(np.append(positive_batch[0][i], negative_batch[0][i])
-                        for i, _ in enumerate(self._input_columns))
+                           for i, _ in enumerate(self._input_columns))
 
             return inputs, output
         else:
@@ -451,23 +450,22 @@ class IntraSessionTripletWithOnlineRandomNegativeGenerationDataset(InteractionsD
             indices = [indices]
 
         rows: pd.Series = self._data_frame.iloc[indices]
-        item_indices          = rows[self._input_columns[0]].values
+        item_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
         negative_item_indices = np.array(
             [self._negative_indices_generator.generate_negative_indices_given_positive([anch_index, item_index])[-1]
              for anch_index, item_index in zip(item_indices, positive_item_indices)], dtype=np.int64).flatten()
 
-        items          = self._get_items(item_indices)
+        items = self._get_items(item_indices)
         positive_items = self._get_items(positive_item_indices)
         negative_items = self._get_items(negative_item_indices)
 
         output = (items, positive_items, negative_items)
         if self._auxiliar_output_columns:
             output = output + tuple(rows[auxiliar_output_column].values
-                                             for auxiliar_output_column in self._auxiliar_output_columns)
+                                    for auxiliar_output_column in self._auxiliar_output_columns)
 
         return output, []
-
 
 
 class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
@@ -547,6 +545,7 @@ class UserTripletWeightedWithOnlineRandomNegativeGenerationDataset(
         return (user_indices, positive_item_indices, negative_item_indices, \
                 positive_item_visits, positive_item_buys), []
 
+
 class ContextualBanditsDataset(InteractionsDataset):
 
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
@@ -590,21 +589,22 @@ class ContextualBanditsDataset(InteractionsDataset):
         if isinstance(indices, int):
             indices = [indices]
 
-        rows: pd.Series  = self._data_frame.iloc[indices]
-        user_indices     = rows[self._input_columns[0]].values
-        item_indices     = rows[self._input_columns[1]].values
+        rows: pd.Series = self._data_frame.iloc[indices]
+        user_indices = rows[self._input_columns[0]].values
+        item_indices = rows[self._input_columns[1]].values
         user_item_visits = rows[self._input_columns[2]].values
-        user_visits      = rows[self._input_columns[3]].values
-        item_visits      = rows[self._input_columns[4]].values.astype(float)
-        user_item_buys   = rows[self._input_columns[5]].values
+        user_item_buys = rows[self._input_columns[3]].values
 
-        positive_items  = self._get_items(item_indices, user_item_visits, user_item_buys)
+        user_visits = rows[self._auxiliar_output_columns[0]].values
+        item_visits = rows[self._auxiliar_output_columns[1]].values.astype(float)
 
-        output          = rows[self._output_column].values
+        positive_items = self._get_items(item_indices, user_item_visits, user_item_buys)
+
+        output = rows[self._output_column].values
 
         return (user_indices, *positive_items), (output, user_item_visits, user_item_buys, user_visits, item_visits)
 
         # return tuple(rows[input_column].values for input_column in self._input_columns), \
         #        output
 
-        #return tuple([user_indices, positive_items, item_visits, item_buys]), rows[self._output_column].values
+        # return tuple([user_indices, positive_items, item_visits, item_buys]), rows[self._output_column].values
