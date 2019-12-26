@@ -377,17 +377,23 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         return scores
 
     @property
+    def test_data_frame(self):
+        if not hasattr(self, "_test_data_frame"):
+            print("Reading tuples files...")
+            self._test_data_frame = self._read_test_data_frame()
+        return self._test_data_frame
+
+    @property
     def dataset(self):
         if not hasattr(self, "_dataset"):
             print("Reading tuples files...")
-            df = self._read_test_data_frame()
-            if self.model_training.project_config.output_column.name not in df.columns:
-                df[self.model_training.project_config.output_column.name] = 1
+            if self.model_training.project_config.output_column.name not in self.test_data_frame.columns:
+                self.test_data_frame[self.model_training.project_config.output_column.name] = 1
             for auxiliar_output_column in self.model_training.project_config.auxiliar_output_columns:
-                if auxiliar_output_column.name not in df.columns:
-                    df[auxiliar_output_column.name] = 0
+                if auxiliar_output_column.name not in self.test_data_frame.columns:
+                    self.test_data_frame[auxiliar_output_column.name] = 0
 
-            self._dataset = self.model_training.project_config.dataset_class(df,
+            self._dataset = self.model_training.project_config.dataset_class(self.test_data_frame,
                                                                              self.model_training.metadata_data_frame,
                                                                              self.model_training.project_config,
                                                                              negative_proportion=0.0)
@@ -410,7 +416,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         scores: np.ndarray = scores_tensor.detach().cpu().numpy()
         scores = self._transform_scores(scores)
 
-        return self._create_dictionary_of_scores(scores, df)
+        return self._create_dictionary_of_scores(scores, self.test_data_frame)
 
     def _create_dictionary_of_scores(self, scores: np.ndarray, df: pd.DataFrame) -> Dict[Tuple[int, int], float]:
         print("Creating the dictionary of scores...")
