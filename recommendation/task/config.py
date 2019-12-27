@@ -219,8 +219,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         metadata_columns=[Column("trading_name", IOType.ARRAY), Column("description", IOType.ARRAY),
                           Column("category_names", IOType.ARRAY), Column("restaurant_complete_info", IOType.ARRAY)],
         output_column=Column("buy", IOType.NUMBER),
-        auxiliar_output_columns=[Column("user_total_visits", IOType.NUMBER),
-                                 Column("item_total_visits", IOType.NUMBER)],
+        auxiliar_output_columns=[Column("ps", IOType.NUMBER)],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
 }

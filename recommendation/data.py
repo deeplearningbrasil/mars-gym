@@ -567,6 +567,7 @@ class ContextualBanditsDataset(InteractionsDataset):
         self._vocab_size: int = metadata_data_frame.iloc[0]["vocab_size"]
         self._non_text_input_dim: int = metadata_data_frame.iloc[0]["non_textual_input_dim"]
 
+
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
@@ -590,19 +591,17 @@ class ContextualBanditsDataset(InteractionsDataset):
             indices = [indices]
 
         rows: pd.Series = self._data_frame.iloc[indices]
-        user_indices = rows[self._input_columns[0]].values
-        item_indices = rows[self._input_columns[1]].values
+        user_indices    = rows[self._input_columns[0]].values
+        item_indices    = rows[self._input_columns[1]].values
         user_item_visits = rows[self._input_columns[2]].values
-        user_item_buys = rows[self._input_columns[3]].values
+        user_item_buys  = rows[self._input_columns[3]].values
 
-        user_visits = rows[self._auxiliar_output_columns[0]].values
-        item_visits = rows[self._auxiliar_output_columns[1]].values.astype(float)
-
+        # Propensity Score - Probability
         positive_items = self._get_items(item_indices, user_item_visits, user_item_buys)
+        ps             = rows[self._auxiliar_output_columns[0]].values.astype(float)
+        output         = rows[self._output_column].values
 
-        output = rows[self._output_column].values
-
-        return (user_indices, *positive_items), (output, user_item_visits, user_item_buys, user_visits, item_visits)
+        return (user_indices, *positive_items), (output, ps)
 
         # return tuple(rows[input_column].values for input_column in self._input_columns), \
         #        output
