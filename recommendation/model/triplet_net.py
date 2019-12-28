@@ -16,18 +16,14 @@ class TripletNet(UserAndItemEmbedding):
         super().__init__(n_users, n_items, n_factors, weight_init)
 
     def forward(self, user_ids: torch.Tensor, positive_item_ids: torch.Tensor,
-                negative_item_ids: torch.Tensor = None, positive_visits: torch.Tensor = None,
-                positive_buys: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
-        if negative_item_ids is None:
-            return torch.cosine_similarity(self.user_embeddings(user_ids), self.item_embeddings(positive_item_ids))
+                        negative_item_ids: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         
-        if positive_visits is None:
-            return self.user_embeddings(user_ids.long()), self.item_embeddings(positive_item_ids.long()), \
+        if negative_item_ids is None:
+            return torch.cosine_similarity(self.user_embeddings(user_ids.long()), self.item_embeddings(positive_item_ids.long()))
+        
+        return self.user_embeddings(user_ids.long()), self.item_embeddings(positive_item_ids.long()), \
                 self.item_embeddings(negative_item_ids.long())
                 
-        return self.user_embeddings(user_ids.long()), self.item_embeddings(positive_item_ids.long()), \
-                self.item_embeddings(negative_item_ids.long()), positive_visits, positive_buys
-
 class TripletNetItemSimpleContent(nn.Module):
     def __init__(self, input_dim: int, vocab_size: int, word_embeddings_size: int, recurrence_hidden_size: int,  menu_full_text_max_words: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],
                  dropout_prob: int = 0.1, use_normalize: bool = False, binary: bool = False, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, 
@@ -235,7 +231,7 @@ class TripletNetSimpleContent(nn.Module):
     def forward(self, user_ids: torch.Tensor, positive_item_content: torch.Tensor,
                 negative_item_content: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         positive_item_emb = self.compute_item_embeddings(positive_item_content)
-        user_emb          = self.user_embeddings(user_ids)
+        user_emb          = self.user_embeddings(user_ids.long())
 
         if negative_item_content is None:
             return torch.cosine_similarity(user_emb, positive_item_emb)

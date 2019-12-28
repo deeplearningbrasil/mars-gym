@@ -161,6 +161,8 @@ class InteractionsDataset(Dataset):
         if self._auxiliar_output_columns:
             output = tuple([output]) + tuple(rows[auxiliar_output_column].values
                                              for auxiliar_output_column in self._auxiliar_output_columns)
+        
+        #raise(Exception(tuple(rows[input_column].values for input_column in self._input_columns)))
         return tuple(rows[input_column].values for input_column in self._input_columns), \
                output
 
@@ -402,11 +404,22 @@ class UserTripletWithOnlineRandomNegativeGenerationDataset(BinaryInteractionsWit
         rows: pd.Series = self._data_frame.iloc[indices]
         user_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
-        negative_item_indices = np.array(
-            [self._negative_indices_generator.generate_negative_indices_given_positive([user_index, item_index])[-1]
-             for user_index, item_index in zip(user_indices, positive_item_indices)], dtype=np.int64).flatten()
-        return (user_indices, positive_item_indices, negative_item_indices), []
+        
+        #output = rows[self._output_column].values
+        if self._auxiliar_output_columns:
+            output = tuple(rows[auxiliar_output_column].values
+                                            for auxiliar_output_column in self._auxiliar_output_columns)
+        
 
+        if self._negative_proportion > 0:
+            negative_item_indices = np.array(
+                [self._negative_indices_generator.generate_negative_indices_given_positive([user_index, item_index])[-1]
+                for user_index, item_index in zip(user_indices, positive_item_indices)], dtype=np.int64).flatten()
+
+  
+            return (user_indices, positive_item_indices, negative_item_indices), output
+        else:
+            return (user_indices, positive_item_indices), output
 
 class IntraSessionTripletWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 
@@ -479,7 +492,7 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         super().__init__(data_frame, metadata_data_frame, project_config, transformation)
 
         self._negative_indices_generator = negative_indices_generator
-
+        self._negative_proportion = negative_proportion
         self._items_df = self._metadata_data_frame[self._input_columns[1:] + self._metadata_columns].set_index(
             self._input_columns[1],
             drop=False).sort_index()
@@ -512,17 +525,24 @@ class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDa
         rows: pd.Series = self._data_frame.iloc[indices]
         user_indices = rows[self._input_columns[0]].values
         positive_item_indices = rows[self._input_columns[1]].values
-        negative_item_indices = np.array(
-            [self._negative_indices_generator.generate_negative_indices_given_positive([user_index, item_index])[-1]
-             for user_index, item_index in zip(user_indices, positive_item_indices)], dtype=np.int64).flatten()
-
-        # raise Exception("indices: {} | {}".format(
-        #    positive_item_indices, negative_item_indices))
-
         positive_items = self._get_items(positive_item_indices)
-        negative_items = self._get_items(negative_item_indices)
 
-        return (user_indices, positive_items, negative_items), []
+        if self._auxiliar_output_columns:
+            output = tuple(rows[auxiliar_output_column].values
+                                             for auxiliar_output_column in self._auxiliar_output_columns)
+        
+        if self._negative_proportion > 0:
+            negative_item_indices = np.array(
+                [self._negative_indices_generator.generate_negative_indices_given_positive([user_index, item_index])[-1]
+                for user_index, item_index in zip(user_indices, positive_item_indices)], dtype=np.int64).flatten()
+
+            #output = rows[self._output_column].values
+
+            negative_items = self._get_items(negative_item_indices)
+
+            return (user_indices, positive_items, negative_items), output
+        else:
+            return (user_indices, positive_items), output
 
 
 class UserTripletWeightedWithOnlineRandomNegativeGenerationDataset(

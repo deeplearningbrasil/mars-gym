@@ -16,6 +16,7 @@ class MatrixFactorization(UserAndItemEmbedding):
         self.binary = binary
 
     def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor) -> torch.Tensor:
+
         output = (self.user_embeddings(user_ids.long()) * self.item_embeddings(item_ids.long())).sum(1)
         if self.binary:
             return torch.sigmoid(output)
@@ -72,6 +73,7 @@ class DeepMatrixFactorization(UserAndItemEmbedding):
         self.binary = binary
 
     def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor) -> torch.Tensor:
+
         user_embedding = self.user_embeddings(user_ids)
         item_embedding = self.item_embeddings(item_ids)
 
@@ -102,8 +104,8 @@ class MatrixFactorizationWithShift(UserAndItemEmbedding):
         self._user_shift_combination = user_shift_combination
 
     def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, shift_idx_list: torch.Tensor) -> torch.Tensor:
-        user_embeddings = self.user_embeddings(user_ids)
-        shift_embeddings = self.shift_embeddings(shift_idx_list)
+        user_embeddings  = self.user_embeddings(user_ids.long())
+        shift_embeddings = self.shift_embeddings(shift_idx_list.long())
 
         if self._user_shift_combination == "sum":
             user_shift_embeddings = user_embeddings + shift_embeddings
@@ -112,7 +114,7 @@ class MatrixFactorizationWithShift(UserAndItemEmbedding):
         else:
             raise ValueError("Unknown user_shift_combination")
 
-        output = (user_shift_embeddings * self.item_embeddings(item_ids)).sum(1)
+        output = (user_shift_embeddings * self.item_embeddings(item_ids.long())).sum(1)
         return torch.sigmoid(output)
 
 class MatrixFactorizationWithShiftTime(UserAndItemEmbedding):

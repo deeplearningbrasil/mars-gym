@@ -24,7 +24,7 @@ class TripletNetTraining(UserAndItemEmbeddingTraining):
         )
 
 class TripletNetContentTraining(BaseTorchModelTraining):
-    loss_function: str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet"], default="triplet_margin")
+    loss_function: str = luigi.ChoiceParameter(choices=["triplet_margin", "bpr_triplet", "weighted_triplet"], default="triplet_margin")
     n_factors: int = luigi.IntParameter(default=128)
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     save_user_embedding_tsv: bool = luigi.BoolParameter(default=False)

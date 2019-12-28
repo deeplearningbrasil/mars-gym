@@ -129,6 +129,7 @@ class VariationalAutoEncoder(nn.Module):
             x = x.to_dense()
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
+        
         return self.decode(z), mu, logvar
     
     def reparameterize(self, mu, logvar):

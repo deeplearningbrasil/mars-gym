@@ -45,15 +45,41 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         assert len(arm_indices) == len(arm_scores)
 
         ranked_arms = []
+        ps_arms     = []
         arm_indices = list(arm_indices)
-        arm_scores = list(arm_scores)
+        arm_scores  = list(arm_scores)
+        
         for _ in range(len(arm_indices)):
-            idx = self.select_idx(arm_indices, arm_scores=arm_scores)
+            selected = self.select_idx(arm_indices, arm_scores=arm_scores)
+
+            idx = selected['idx']
+            ps  = selected['ps']
+
             ranked_arms.append(arm_indices[idx])
+            ps_arms.append(ps)
             arm_indices.pop(idx)
             arm_scores.pop(idx)
 
-        return ranked_arms
+        return zip(ranked_arms, ps_arms)
+
+class RandomPolicy(BanditPolicy):
+    def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._rng = RandomState(seed)
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float]) -> dict:
+        
+        n_arms      = len(arm_indices)
+        arm_probas  = np.ones(n_arms)
+        arm_probas  = arm_probas / np.sum(arm_probas)
+
+        action = self._rng.choice(n_arms, p=arm_probas)
+        return {
+            'idx':  action,
+            'ps':   arm_probas[action],
+            'ps-a': arm_probas,
+        }  
 
 
 class EpsilonGreedy(BanditPolicy):
@@ -63,15 +89,26 @@ class EpsilonGreedy(BanditPolicy):
         self._rng = RandomState(seed)
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float]) -> int:
-        if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
-            n_arms = len(arm_indices)
-            arm_probas = np.ones(n_arms)
-            arm_probas = arm_probas / np.sum(arm_probas)
+                    arm_scores: List[float]) -> dict: 
+        
+        n_arms      = len(arm_indices)
+        arm_probas  = np.ones(n_arms)
+        arm_probas  = arm_probas / np.sum(arm_probas)
 
-            return self._rng.choice(n_arms, p=arm_probas)
+        if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
+            action = self._rng.choice(n_arms, p=arm_probas)
+            return {
+                'idx':  action,
+                'ps':   self._epsilon/arm_probas[action],
+                'ps-a': self._epsilon/arm_probas,
+            }                
         else:
-            return int(np.argmax(arm_scores))
+            action = int(np.argmax(arm_scores))    
+            return {
+                'idx':  action,
+                'ps':   (1.0 - self._epsilon) + (self._epsilon/arm_probas[action]),
+                'ps-a': (1.0 - self._epsilon) + (self._epsilon/arm_probas),
+            }            
 
 
 class LinUCB(BanditPolicy):
@@ -108,12 +145,19 @@ class LinUCB(BanditPolicy):
         return self._alpha * np.sqrt(np.linalg.multi_dot([x.T, self._Ainv_per_arm[arm], x]))
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float]) -> int:
+                    arm_scores: List[float]) -> dict:
         arm_contexts: List[Tuple[np.ndarray, ...]] = [tuple(el[i] for el in arm_contexts)
                                                       for i in range(len(arm_indices))]
         arm_scores_with_cb = [arm_score + self._calculate_confidence_bound(arm_context)
                               for arm_context, arm_score in zip(arm_contexts, arm_scores)]
-        return int(np.argmax(arm_scores_with_cb))
+
+        action = int(np.argmax(arm_scores_with_cb))
+
+        return {
+                'idx':  action,
+                'ps':   1,
+                'ps-a': np.ones(len(arm_scores_with_cb)),
+            }    
 
     def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
              arm_scores: List[float] = None) -> List[int]:

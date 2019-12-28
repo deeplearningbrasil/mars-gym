@@ -87,7 +87,7 @@ PYTHONPATH="." luigi --module recommendation.task.model.auto_encoder Unconstrain
 #### Evaluate
 
 ```
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCDAEModel \
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfoodModel \
 --model-module=recommendation.task.model.auto_encoder --model-cls=UnconstrainedAutoEncoderTraining \
 --model-task-id=UnconstrainedAutoEncoderTraining_selu____500_d17b86c064 --local-scheduler 
 ```
@@ -113,7 +113,7 @@ PYTHONPATH="." luigi --module recommendation.task.model.auto_encoder Variational
 #### Evaluate
 
 ```
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCVAEModel --model-module=recommendation.task.model.auto_encoder \
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfoodModel --model-module=recommendation.task.model.auto_encoder \
 --model-cls=VariationalAutoEncoderTraining --model-task-id=VariationalAutoEncoderTraining_selu____500_019ff423fb --local-scheduler 
 ```
 
@@ -125,16 +125,18 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCVAEModel -
 
 ```
 PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetTraining \
---project ifood_buys_visits_triplet_with_random_negative  --batch-size=512 --optimizer=adam \
+--project ifood_binary_buys_triplet_with_random_negative  --batch-size=512 --optimizer=adam \
 --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' --learning-rate=0.001 \
 --epochs=100 --n-factors=100 --loss-function=weighted_triplet --loss-function-params='{"balance_factor": 2500.0}' --local-scheduler
 ```
 
 #### Evaluate
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetWeightedModel \
+```
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel \
 --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetTraining \
---model-task-id=TripletNetTraining____512____400fad3d94 --local-scheduler 
+--model-task-id=TripletNetTraining____512____959dd83771 --local-scheduler 
+```
 
 ### Triplet Content Net
 
@@ -144,16 +146,14 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetW
 PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetSimpleContentTraining \
 --project ifood_binary_buys_content_triplet_with_random_negative  --batch-size=512 \
 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' \
---learning-rate=0.0001 --epochs=100 --n-factors=100 --loss-function=triplet_margin \
+--learning-rate=0.0001 --epochs=100 --n-factors=100 --loss-function=weighted_triplet \
 --loss-function-params='{"balance_factor": 0.9}' --content-layers="[64,10]" --local-scheduler
 ```
 
 #### Evaluate
 
 ```
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetContentModel \
---model-module=recommendation.task.model.triplet_net --model-cls=TripletNetSimpleContentTraining \
---model-task-id=TripletNetSimpleContentTraining_selu____512_078b2ba11c --local-scheduler 
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetSimpleContentTraining --model-task-id=TripletNetSimpleContentTraining_selu____512_a04b6da0d7 --local-scheduler --batch-size 1000
 ```
 
 ### Triplet Content Item-Item 
@@ -173,7 +173,7 @@ PYTHONPATH="."  luigi --module recommendation.task.model.triplet_net TripletNetI
 ```
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetInfoContent \
 --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetItemSimpleContentTraining \
---model-task-id=TripletNetItemSimpleContentTraining_selu____200_6516668ddb --batch-size 600 \
+--model-task-id=TripletNetItemSimpleContentTraining_selu____100_1fc9e9d515 --batch-size 600 \
 --group-last-k-merchants 2 --local-scheduler
 ```
 
