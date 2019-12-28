@@ -480,6 +480,82 @@ class IntraSessionTripletWithOnlineRandomNegativeGenerationDataset(InteractionsD
 
         return output, []
 
+class IntraSessionTripletWithOnlineProbNegativeGenerationDataset(InteractionsDataset):
+
+    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
+                 project_config: ProjectConfig, transformation: Union[Callable] = None,
+                 negative_indices_generator: NegativeIndicesGenerator = None,
+                 negative_proportion: float = 1.0) -> None:
+
+        data_frame = data_frame[data_frame[project_config.output_column.name] > 0].reset_index().sample(5000)
+        super().__init__(data_frame, metadata_data_frame, project_config, transformation)
+
+        self._negative_indices_generator = negative_indices_generator
+        self._data_frame_input_0_index     = self._data_frame.set_index(self._input_columns[0], drop=False).sort_index()
+        self._data_frame_input_1_index     = self._data_frame.set_index(self._input_columns[1], drop=False).sort_index()
+
+        self._items_df = self._metadata_data_frame[['merchant_idx'] + self._metadata_columns].set_index(
+            'merchant_idx',
+            drop=False).sort_index()
+
+        # self._users = self._data_frame[self._input_columns[0]].unique()
+        # self._items = self._data_frame[self._input_columns[1]].unique()
+
+        # self._n_users: int = self._users.shape[0]
+        self._n_items: int = self._items_df.shape[0]
+        self._vocab_size: int = metadata_data_frame.iloc[0]["vocab_size"]
+        self._non_text_input_dim: int = metadata_data_frame.iloc[0]["non_textual_input_dim"]
+
+    def __len__(self) -> int:
+        return self._data_frame.shape[0]
+
+    def _get_items(self, item_indices: List[int]) -> Tuple[torch.Tensor, ...]:
+        res = []
+        df_items = self._items_df.loc[item_indices]
+        for column_name in self._metadata_columns:
+            c = df_items[column_name].values.tolist()
+            dtype = torch.float32 if column_name == "restaurant_complete_info" else torch.int64
+            res.append(torch.tensor(np.array(c), dtype=dtype))
+        return tuple(res)
+
+    def _get_negative_indices(self, anch_index, item_index):
+        # Positive interactions
+        df_anch_interactions    = self._data_frame_input_0_index.loc[[anch_index]]
+        idx_anch_interactions   = df_anch_interactions[self._input_columns[1]].values
+
+        df_pos_interactions     = self._data_frame_input_1_index.loc[[item_index]]
+        idx_pos_interactions    = df_pos_interactions[self._input_columns[0]].values
+
+        idx_pos = np.concatenate((idx_anch_interactions,idx_pos_interactions))
+
+        # Negative interactions
+        df_negative  = self._items_df.loc[~self._items_df.index.isin(idx_pos)]
+        idx_negative = list(df_negative.index)
+
+        return np.random.choice(idx_negative)
+
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...],
+                                                                         Tuple[np.ndarray, ...]], list]:
+        if isinstance(indices, int):
+            indices = [indices]
+
+        rows: pd.Series = self._data_frame.iloc[indices]
+        item_indices          = rows[self._input_columns[0]].values
+        positive_item_indices = rows[self._input_columns[1]].values
+        negative_item_indices = np.array(
+            [self._get_negative_indices(anch_index, item_index)
+             for anch_index, item_index in zip(item_indices, positive_item_indices)], dtype=np.int64).flatten()
+
+        items          = self._get_items(item_indices)
+        positive_items = self._get_items(positive_item_indices)
+        negative_items = self._get_items(negative_item_indices)
+
+        output = (items, positive_items, negative_items)
+        if self._auxiliar_output_columns:
+            output = output + tuple(rows[auxiliar_output_column].values
+                                             for auxiliar_output_column in self._auxiliar_output_columns)
+
+        return output, []
 
 class UserTripletContentWithOnlineRandomNegativeGenerationDataset(InteractionsDataset):
 

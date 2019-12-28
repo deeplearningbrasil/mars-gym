@@ -27,7 +27,7 @@ import requests
 
 BASE_DIR: str = os.path.join("output", "ifood")
 DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
-
+EMBEDDING_DIR: str = os.path.join("output", "embeddings")
 
 class CheckDataset(luigi.Task):
     def output(self):
@@ -189,7 +189,6 @@ class DownloadStopWords(luigi.Task):
 
         print(self.output().path)
 
-
 class ProcessRestaurantContentDataset(luigi.Task):
     menu_text_length: int = luigi.IntParameter(default=5000)
     description_text_length: int = luigi.IntParameter(default=200)
@@ -294,6 +293,59 @@ class ProcessRestaurantContentDataset(luigi.Task):
         context.to_csv(self.output()[0].path, index=False)
         pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
 
+
+
+class BuildEmbeddingVocabulary(luigi.Task):
+    menu_text_length: int = luigi.IntParameter(default=5000)
+    description_text_length: int = luigi.IntParameter(default=200)
+    category_text_length: int = luigi.IntParameter(default=250)
+    filename: str = luigi.ChoiceParameter(choices=["cc.pt.300.vec"], default="cc.pt.300.vec")
+
+    def requires(self):
+        return ProcessRestaurantContentDataset(menu_text_length=self.menu_text_length, 
+                                                description_text_length=self.description_text_length, 
+                                                category_text_length=self.category_text_length)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurant_text_vocabulary_vec.npy"))
+
+    def load_embvec(self):
+        word2vec    = {}
+        words_count = 0
+
+        with open(f'{EMBEDDING_DIR}/{self.filename}', 'rb') as f:
+            for l in f:
+                line = l.decode().split()
+                word = line[0]
+                vect = np.array(line[1:]).astype(np.float)
+
+                word2vec[word] = vect
+                words_count += 1
+
+                #if words_count > 100:
+                #    break
+
+        return word2vec
+
+    def run(self):
+        df_vocab        = pd.read_csv(self.input()[1].path)
+        word2vec        = self.load_embvec()
+        emb_dim         = 300
+
+        matrix_len      = len(df_vocab)
+        weights_matrix  = np.zeros((matrix_len, emb_dim))
+        words_found     = 0
+
+        for i, row in df_vocab.iterrows():
+            try: 
+                weights_matrix[i] = word2vec[row.vocabulary]
+                words_found += 1
+            except KeyError:
+                weights_matrix[i] = np.random.normal(scale=0.6, size=(emb_dim, ))
+                        
+        print("Words found in Embedding: ", (words_found/matrix_len)*100)
+
+        np.save(self.output().path, weights_matrix)
 
 class SplitSessionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
@@ -521,8 +573,30 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
     def output(self):
         return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_intra_session_train_%.2f" % self.test_size))
 
+
+    def get_df_tuple_probs(self, df):
+
+        df_tuple_count  = df.groupby("merchant_idx_A","merchant_idx_B").count()
+        df_count        = df.groupby("merchant_idx_A").count()\
+                            .withColumnRenamed("count", "total").withColumnRenamed("merchant_idx_A", "_merchant_idx_A")
+
+        df_join         = df_tuple_count.join(df_count, df_tuple_count.merchant_idx_A == df_count._merchant_idx_A).cache()
+        df_join         = df_join.withColumn("prob", col("count")/col("total"))
+
+        df_join  = df_join.select("merchant_idx_A", 'merchant_idx_B', 'total', 'prob')\
+                    .withColumnRenamed("merchant_idx_A", "_merchant_idx_A")\
+                    .withColumnRenamed("merchant_idx_B", "_merchant_idx_B")\
+                    .withColumnRenamed("total", "total_ocr").cache()
+        
+        return df_join
+
     def main(self, sc: SparkContext, *args):
         os.makedirs(DATASET_DIR, exist_ok=True)
+        
+        #parans
+        total_itens_per_session  = 3
+        total_itens_interactions = 30
+
 
         spark    = SparkSession(sc)
 
@@ -534,7 +608,7 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
                     sum("buy").alias("buy"))
 
         # Filter Interactions
-        df = df.filter(df.total > 1).filter(df.buy > 1).cache()
+        df = df.filter(df.total >= total_itens_per_session).filter(df.buy > 1).cache()
 
         # Filter position in list
         df_pos = df.select(col('session_id').alias('_session_id'), 
@@ -563,9 +637,19 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
         # Filter duplicates
         udf_join = F.udf(lambda s,x,y : "_".join(sorted([str(s), str(x),str(y)])) , StringType())
         df = df.withColumn('key', udf_join('session_id', 'merchant_idx_A','merchant_idx_B'))
-        df = df.dropDuplicates(["key"]).select('session_id', 'merchant_idx_A', 'pos_A', 'merchant_idx_B', 'pos_B', 'relative_pos')
 
-        print(df.show(2))
+        df = df.dropDuplicates(["key"])
+
+        # Calculate and filter probs ocorrence
+        df_probs = self.get_df_tuple_probs(df)
+
+        df = df.join(df_probs, (df.merchant_idx_A == df_probs._merchant_idx_A) & (df.merchant_idx_B == df_probs._merchant_idx_B))
+        df = df.filter(col("total_ocr") >= total_itens_interactions)
+
+        # Save
+        df = df.select('session_id',  'merchant_idx_A', 'pos_A', 
+                        'merchant_idx_B', 'pos_B', 'relative_pos', 'prob')
+
         df.write.parquet(self.output().path)
 
 class CreateInteractionDataset(BasePySparkTask):
@@ -709,9 +793,11 @@ class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
 
     def read_data_frame(self) -> pd.DataFrame:
         df = pd.read_parquet(self.input()[1].path)
-        df["binary_buys"] = 1.0
-        df["n_users"] = self.num_users
-        df["n_items"] = self.num_businesses
+        df["merchant_idx"]  = df.merchant_idx_A
+        df["binary_buys"]   = 1.0
+        df["n_users"]       = self.num_users
+        df["n_items"]       = self.num_businesses
+
         return df
 
     @property

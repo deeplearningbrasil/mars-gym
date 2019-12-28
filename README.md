@@ -164,8 +164,8 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --mod
 PYTHONPATH="."  luigi --module recommendation.task.model.triplet_net TripletNetItemSimpleContentTraining \
 --project ifood_session_triplet_with_random_negative --n-factors 100 --loss-function relative_triplet \
 --negative-proportion 1 --batch-size 500 --save-item-embedding-tsv --use-normalize --num-filters 64 \
---filter-sizes "[1,3,5]" --save-item-embedding-tsv --optimizer "radam" --epochs 50 \
---content-layers "[64]" --dropout-prob 0.4 --local-scheduler 
+--filter-sizes "[1,3,5]" --save-item-embedding-tsv --optimizer "radam"  \
+--content-layers "[64]" --dropout-prob 0.4 --epochs 50 --local-scheduler 
 ```
 
 #### Evaluate

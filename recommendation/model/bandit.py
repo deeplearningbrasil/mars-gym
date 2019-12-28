@@ -7,6 +7,7 @@ import torch.nn as nn
 from numpy.random.mtrand import RandomState
 from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
+from tqdm import tqdm
 
 
 class BanditPolicy(object, metaclass=abc.ABCMeta):
@@ -112,7 +113,7 @@ class EpsilonGreedy(BanditPolicy):
 
 
 class LinUCB(BanditPolicy):
-    def __init__(self, reward_model: nn.Module, alpha: float, arm_index: int = 1) -> None:
+    def __init__(self, reward_model: nn.Module, alpha: float = 0.5, arm_index: int = 1) -> None:
         super().__init__(reward_model)
         self._alpha = alpha
         self._arm_index = arm_index
@@ -130,7 +131,7 @@ class LinUCB(BanditPolicy):
     def fit(self, dataset: Dataset) -> None:
         n = len(dataset)
 
-        for i in range(n):
+        for i in tqdm(range(n), total=n):
             input_: Tuple[np.ndarray, ...] = dataset[i][0]
             x, arm = self._flatten_input_and_extract_arm(input_)
 
@@ -142,7 +143,8 @@ class LinUCB(BanditPolicy):
 
     def _calculate_confidence_bound(self, arm_context: Tuple[np.ndarray]):
         x, arm = self._flatten_input_and_extract_arm(arm_context)
-        return self._alpha * np.sqrt(np.linalg.multi_dot([x.T, self._Ainv_per_arm[arm], x]))
+        Ainv = self._Ainv_per_arm.get(arm) or np.eye(x.shape[0])
+        return self._alpha * np.sqrt(np.linalg.multi_dot([x.T, Ainv, x]))
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float]) -> dict:

@@ -138,10 +138,9 @@ class RelativeTripletLoss(_Loss):
         else:
             raise NotImplementedError
 
-    def forward(self, anchor, positive, negative, relative_pos):
+    def forward(self, anchor, positive, negative, relative_pos, prob):
         loss = self.triplet_loss(anchor, positive, negative)
-        # loss = (loss * (1.5 - F.sigmoid(relative_pos.float())))
-        loss = loss / (1 + torch.log(relative_pos.float()))
+        loss = (loss*(1-prob)) / (1 + torch.log(relative_pos.float()))
 
         if self.reduction == "mean":
             return loss.mean()

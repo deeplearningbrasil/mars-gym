@@ -151,16 +151,23 @@ class TripletNetItemSimpleContentTraining(TripletNetContentTraining):
     binary: bool = luigi.BoolParameter(default=False)
     use_normalize:  bool = luigi.BoolParameter(default=False)
     recurrence_hidden_size: int = luigi.IntParameter(default=40)
+    use_word_embeddings_weight:  bool = luigi.BoolParameter(default=False)
 
     def create_module(self) -> nn.Module:
         input_dim: int = self.non_textual_input_dim
         vocab_size: int = self.vocab_size
         menu_full_text_max_words: int = self.menu_full_text_max_words
 
+        if self.use_word_embeddings_weight:
+            word_embeddings_weight = np.asmatrix(np.load(os.path.join("output", "ifood", "dataset", "restaurant_text_vocabulary_vec.npy")))
+        else:
+            word_embeddings_weight = None
+
         return TripletNetItemSimpleContent(
             input_dim=input_dim,
             vocab_size=vocab_size,
             word_embeddings_size=self.word_embeddings_size,
+            word_embeddings_weight=word_embeddings_weight,
             num_filters=self.num_filters,
             filter_sizes=self.filter_sizes,
             dropout_prob=self.dropout_prob,
