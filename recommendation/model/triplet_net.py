@@ -22,11 +22,11 @@ class TripletNet(UserAndItemEmbedding):
             return torch.cosine_similarity(self.user_embeddings(user_ids), self.item_embeddings(positive_item_ids))
         
         if positive_visits is None:
-            return self.user_embeddings(user_ids), self.item_embeddings(positive_item_ids), \
-                self.item_embeddings(negative_item_ids)
+            return self.user_embeddings(user_ids.long()), self.item_embeddings(positive_item_ids.long()), \
+                self.item_embeddings(negative_item_ids.long())
                 
-        return self.user_embeddings(user_ids), self.item_embeddings(positive_item_ids), \
-                self.item_embeddings(negative_item_ids), positive_visits, positive_buys
+        return self.user_embeddings(user_ids.long()), self.item_embeddings(positive_item_ids.long()), \
+                self.item_embeddings(negative_item_ids.long()), positive_visits, positive_buys
 
 class TripletNetItemSimpleContent(nn.Module):
     def __init__(self, input_dim: int, vocab_size: int, word_embeddings_weight: np.array, word_embeddings_size: int, recurrence_hidden_size: int,  menu_full_text_max_words: int, num_filters: int = 64, filter_sizes: List[int] = [1, 3, 5],

@@ -520,6 +520,49 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
         train_df.write.parquet(self.output().path)
 
 
+class LoggingPolicyPsDataset(BasePySparkTask):
+    test_size: float = luigi.FloatParameter(default=0.10)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+
+    def requires(self):
+        return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "logging_policy_ps_session_train_%.2f_k=%d.csv" % (self.test_size,
+                                                                                                self.minimum_interactions)))
+
+    def _evaluate_logging_policy(self, orders_df):
+
+        orders_df = orders_df.withColumn("visit", lit(1))
+
+        # Group per account and merchant
+
+        acc_mer_count = orders_df.groupBy("account_idx", "merchant_idx") \
+                            .agg(sum("visit").alias("account_merchant_visits"))
+
+        # Group per Account
+        acc_count = orders_df.groupBy('account_idx') \
+                        .agg(sum("visit").alias("account_visits"))
+
+        p0 = acc_mer_count.join(acc_count, "account_idx", how="inner")
+        p0 = p0.withColumn("ps", p0.account_merchant_visits/p0.account_visits)
+
+        p0 = p0.select("account_idx", "merchant_idx", "ps").toPandas()
+
+        return p0
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
+        spark    = SparkSession(sc)
+        train_df = spark.read.parquet(self.input().path).orderBy(col('click_timestamp'))
+
+        # Calculate P0 (logging policy)
+        p0 = self._evaluate_logging_policy(train_df)
+
+        p0.to_csv(self.output().path, index=False)
+
+
 class CreateIntraSessionInteractionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
 
@@ -631,24 +674,28 @@ class CreateInteractionDataset(BasePySparkTask):
             return c.most_common(1)[0][0]
 
         mode_value_udf = udf(mode_value, IntegerType())
-
-        #
+        
         train_df = spark.read.parquet(self.input().path)
+        
+        # Group per Account
         train_df_grouped_users = train_df.withColumn("user_total_buys", col("buy")) \
             .withColumn("user_total_visits", lit(1)) \
             .groupBy("account_id") \
-            .agg(sum("user_total_buys").alias("user_total_buys"), sum("user_total_visits").alias("user_total_visits")) 
+            .agg(sum("user_total_buys").alias("user_total_buys"), 
+                 sum("user_total_visits").alias("user_total_visits")) 
             
             
+        # Group per Account and Merchant
         train_df_grouped = train_df.withColumn("visit", lit(1)) \
             .groupBy("account_id", "account_idx",
                      "merchant_id", "merchant_idx") \
-            .agg(sum("visit").alias("visits"), sum("buy").alias("buys"),
+            .agg(sum("visit").alias("visits"), 
+                 sum("buy").alias("buys"),
                  mode_value_udf(collect_list("shift_idx")).alias("mode_shift_idx"),
                  mode_value_udf(collect_list("day_of_week")).alias("mode_day_of_week"))
 
         train_df = train_df_grouped_users \
-            .join(train_df_grouped, "account_id", how="inner") 
+                    .join(train_df_grouped, "account_id", how="inner") 
 
         train_df = train_df.withColumn("buy_prob", col("buys") / col("user_total_buys")).na.fill(0.0)
         train_df = train_df.withColumn("visit_prob", col("visits") / col("user_total_visits")).na.fill(0.0)
@@ -665,7 +712,9 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
             test_size=self.session_test_size, minimum_interactions=self.minimum_interactions), \
                IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size,
-                                                              minimum_interactions=self.minimum_interactions)
+                                                              minimum_interactions=self.minimum_interactions), \
+                LoggingPolicyPsDataset(test_size=self.session_test_size,
+                                                              minimum_interactions=self.minimum_interactions)                                                                  
 
     @property
     def dataset_dir(self) -> str:
@@ -690,13 +739,19 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
         return self._num_businesses
 
     def read_data_frame(self) -> pd.DataFrame:
-        df = pd.read_parquet(self.input()[1].path)
+        df    = pd.read_parquet(self.input()[1].path)
+        df_ps = pd.read_csv(self.input()[2].path)
+
         for c in ["buy", "user_total_buys", "user_total_visits", "hist_buys", "hist_visits"]:
             df[c] = df[c].astype(float)
-        df["buy_prob"] = df["hist_buys"].divide(df["user_total_buys"]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
-        df["visit_prob"] = df["hist_visits"].divide(df["user_total_visits"]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
-        df["n_users"] = self.num_users
-        df["n_items"] = self.num_businesses
+        
+        #df["buy_prob"]   = df["hist_buys"].divide(df["user_total_buys"]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+        #df["visit_prob"] = df["hist_visits"].divide(df["user_total_visits"]).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+        df["n_users"]    = self.num_users
+        df["n_items"]    = self.num_businesses
+
+        # Join With LogginPolicyPS
+        df = df.merge(df_ps, on=["account_idx", "merchant_idx"])
 
         return df
 
