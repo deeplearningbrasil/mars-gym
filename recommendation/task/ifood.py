@@ -16,6 +16,7 @@ import pandas as pd
 import scipy
 import torch
 from sklearn import manifold
+from torch.utils.data.dataset import Dataset
 from torchbearer import Trial
 from tqdm import tqdm
 
@@ -49,10 +50,12 @@ def _sort_merchants_by_tuple_score(account_idx: int, merchant_idx_list: List[int
 
 def _sort_merchants_by_tuple_score_with_bandit_policy(account_idx: int, merchant_idx_list: List[int],
                                                       scores_per_tuple: Dict[Tuple[int, int], float],
-                                                      bandit_policy: BanditPolicy) -> List[int]:
+                                                      dataset_indices_per_tuple: Dict[Tuple[int, int], int],
+                                                      dataset: Dataset, bandit_policy: BanditPolicy) -> List[int]:
     scores = _get_scores_per_tuple(account_idx, merchant_idx_list, scores_per_tuple)
+    dataset_indices = [dataset_indices_per_tuple[(account_idx, merchant_idx)] for merchant_idx in merchant_idx_list]
 
-    return bandit_policy.rank(merchant_idx_list, arm_scores=scores)
+    return bandit_policy.rank(merchant_idx_list, arm_scores=scores, arm_contexts=dataset[dataset_indices][0])
 
 
 def _get_scores_per_merchant(merchant_idx_list: List[int], scores_per_merchant: Dict[int, float]) -> List[float]:
@@ -62,13 +65,6 @@ def _get_scores_per_merchant(merchant_idx_list: List[int], scores_per_merchant: 
 def _sort_merchants_by_merchant_score(merchant_idx_list: List[int], scores_per_merchant: Dict[int, float]) -> List[int]:
     scores = _get_scores_per_merchant(merchant_idx_list, scores_per_merchant)
     return [merchant_idx for _, merchant_idx in sorted(zip(scores, merchant_idx_list), reverse=True)]
-
-
-def _sort_merchants_by_merchant_score_with_bandit_policy(merchant_idx_list: List[int],
-                                                         scores_per_merchant: Dict[int, float],
-                                                         bandit_policy: BanditPolicy) -> List[int]:
-    scores = _get_scores_per_merchant(merchant_idx_list, scores_per_merchant)
-    return bandit_policy.rank(merchant_idx_list, arm_scores=scores)
 
 
 def _create_relevance_list(sorted_merchant_idx_list: List[int], ordered_merchant_idx: int) -> List[int]:
@@ -377,14 +373,13 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         return scores
 
     @property
-    def test_data_frame(self):
+    def test_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_test_data_frame"):
-            print("Reading tuples files...")
             self._test_data_frame = self._read_test_data_frame()
         return self._test_data_frame
 
     @property
-    def dataset(self):
+    def dataset(self) -> Dataset:
         if not hasattr(self, "_dataset"):
             print("Reading tuples files...")
             if self.model_training.project_config.output_column.name not in self.test_data_frame.columns:
@@ -416,12 +411,20 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         scores: np.ndarray = scores_tensor.detach().cpu().numpy()
         scores = self._transform_scores(scores)
 
-        return self._create_dictionary_of_scores(scores, self.test_data_frame)
+        return self._create_dictionary_of_scores(scores)
 
-    def _create_dictionary_of_scores(self, scores: np.ndarray, df: pd.DataFrame) -> Dict[Tuple[int, int], float]:
+    def _create_dictionary_of_scores(self, scores: np.ndarray) -> Dict[Tuple[int, int], float]:
         print("Creating the dictionary of scores...")
         return {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
-                in tqdm(zip(df["account_idx"], df["merchant_idx"], scores), total=len(scores))}
+                in tqdm(zip(self.test_data_frame["account_idx"], self.test_data_frame["merchant_idx"], scores),
+                        total=len(scores))}
+
+    def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
+        print("Creating the dictionary of dataset indices...")
+        return {(account_idx, merchant_idx): i for account_idx, merchant_idx, i
+                in tqdm(zip(self.test_data_frame["account_idx"], self.test_data_frame["merchant_idx"],
+                            range(len(self.dataset))),
+                        total=len(self.dataset))}
 
     def run(self):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
@@ -434,18 +437,21 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         print("Filtering orders where the ordered merchant isn't in the list...")
         orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
 
-        print("Sorting the merchant lists")
         if self.bandit_policy == "none":
-            sort_function = _sort_merchants_by_tuple_score
+            sort_function = functools.partial(_sort_merchants_by_tuple_score, scores_per_tuple=scores_per_tuple)
         else:
             bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
+            dataset_indices_per_tuple = self._create_dictionary_of_dataset_indices()
             bandit_policy.fit(self.model_training.train_dataset)
             sort_function = functools.partial(_sort_merchants_by_tuple_score_with_bandit_policy,
+                                              scores_per_tuple=scores_per_tuple,
+                                              dataset_indices_per_tuple=dataset_indices_per_tuple,
+                                              dataset=self.dataset,
                                               bandit_policy=bandit_policy)
 
+        print("Sorting the merchant lists")
         orders_df["sorted_merchant_idx_list"] = list(tqdm(
-            starmap(functools.partial(sort_function, scores_per_tuple=scores_per_tuple),
-                    zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
+            starmap(sort_function, zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
             total=len(orders_df)))
 
         print("Creating the relevance lists...")
