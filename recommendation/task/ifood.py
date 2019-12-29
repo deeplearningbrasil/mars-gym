@@ -68,7 +68,6 @@ def _sort_merchants_by_merchant_score(merchant_idx_list: List[int], scores_per_m
     return [merchant_idx for _, merchant_idx in sorted(zip(scores, merchant_idx_list), reverse=True)]
 
 
-<<<<<<< HEAD
 def _sort_merchants_by_merchant_score_with_bandit_policy(merchant_idx_list: List[int],
                                                          scores_per_merchant: Dict[int, float],
                                                          bandit_policy: BanditPolicy) -> List[int]:
@@ -79,8 +78,6 @@ def _ps_policy_eval(relevance_list: List[int], prob_merchant_idx_list: List[int]
     return np.sum(np.array(relevance_list) * np.array(prob_merchant_idx_list))
 
 
-=======
->>>>>>> master
 def _create_relevance_list(sorted_merchant_idx_list: List[int], ordered_merchant_idx: int) -> List[int]:
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
@@ -112,7 +109,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     pin_memory: bool = luigi.BoolParameter(default=False)
-
+    sample_size: int = luigi.FloatParameter(default=1)
     # num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     def requires(self):
@@ -171,7 +168,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             .with_test_generator(generator).to(self.model_training.torch_device)
         model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=2)
 
-        #TODO else with batch size
+        # TODO else with batch size
         scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
         scores: np.ndarray = scores_tensor.detach().cpu().numpy()
         scores = self._transform_scores(scores)
@@ -197,7 +194,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         scores_per_tuple = self._evaluate_account_merchant_tuples()
 
         print("Reading the orders DataFrame...")
-        orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path).sample(100)
+        orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)#.sample(frac=self.sample_size)
 
         print("Join with LogPolicyProb...")
         logpolicy_df: pd.DataFrame = pd.read_csv(self.input()[2].path)
@@ -218,7 +215,6 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                                               dataset=self.dataset,
                                               bandit_policy=bandit_policy)
 
-<<<<<<< HEAD
         _sorted_merchant_idx_list =  list(tqdm(starmap(functools.partial(sort_function, scores_per_tuple=scores_per_tuple),
                                                 zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
                                         total=len(orders_df)))
@@ -232,12 +228,6 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
             orders_df["sorted_merchant_idx_list"] = list(_sorted_merchant_idx_list[:,0])
             orders_df["prob_merchant_idx_list"]   = list(_sorted_merchant_idx_list[:,1])
-=======
-        print("Sorting the merchant lists")
-        orders_df["sorted_merchant_idx_list"] = list(tqdm(
-            starmap(sort_function, zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
-            total=len(orders_df)))
->>>>>>> master
 
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
@@ -284,8 +274,10 @@ class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
             df["buys_per_merchant"] = parallel_literal_eval(df["buys_per_merchant"])
         return df
 
-    def _create_dictionary_of_scores(self, scores: np.ndarray, df: pd.DataFrame) -> Dict[Tuple[int, int], float]:
+    def _create_dictionary_of_scores(self, scores: np.ndarray) -> Dict[Tuple[int, int], float]:
         tuples_df = pd.read_parquet(self.input()[1].path)
+        df        = self._read_test_data_frame()
+
         print("Grouping by account index...")
         merchant_indices_per_account_idx: pd.Series = tuples_df.groupby('account_idx')['merchant_idx'].apply(list)
 
@@ -306,6 +298,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     batch_size: int = luigi.IntParameter(default=100000)
+    sample_size: int = luigi.FloatParameter(default=1)
 
     def requires(self):
         test_size = self.model_training.requires().session_test_size
@@ -313,7 +306,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         return SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                               model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
                                               bandit_policy_params=self.bandit_policy_params,
-                                              batch_size=self.batch_size)
+                                              batch_size=self.batch_size,
+                                              sample_size=self.sample_size)
 
     def output(self):
         model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
@@ -862,7 +856,7 @@ class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
                                      CreateInteractionDataset(test_size=test_size))
 
     def _read_test_data_frame(self) -> pd.DataFrame:
-        tuples_df = pd.read_parquet(self.input()[1].path)
+        tuples_df = pd.read_parquet(self.input()[1].path)#.sample(frac=self.sample_size)
 
         train_interactions_df = pd.read_parquet(self.input()[-1].path)[
             ['account_idx', 'merchant_idx', 'visits', 'buys']]
@@ -962,7 +956,8 @@ class EvaluateIfoodFullContentModel(EvaluateIfoodModel):
     def requires(self):
         return SortMerchantListsFullContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                  model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
-                                                 bandit_policy_params=self.bandit_policy_params)
+                                                 bandit_policy_params=self.bandit_policy_params,
+                                                 sample_size=self.sample_size)
 
 
 class GenerateContentEmbeddings(BaseEvaluationTask):
