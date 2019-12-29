@@ -240,7 +240,6 @@ class TripletNetSimpleContent(nn.Module):
 
         return user_emb, positive_item_emb, negative_item_emb
 
-
 class TripletNetContent(nn.Module):
     def __init__(self, input_dim: int, n_users: int, vocab_size: int, word_embeddings_size: int, max_text_len_description: int, max_text_len_category: int, max_text_len_name: int, recurrence_hidden_size: int = 40, word_embeddings_output: int = 128,
                     dropout_prob: int = 0.1, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout, content_layers: List[int] = [128], 
@@ -312,12 +311,12 @@ class TripletNetContent(nn.Module):
     def forward(self, user_ids: torch.Tensor, positive_item_content: torch.Tensor,
                 negative_item_content: torch.Tensor = None) -> Union[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
         positive_item_emb = self.compute_item_embeddings(positive_item_content)
-        user_emb = self.user_embeddings(user_ids)
+        user_emb = self.user_embeddings(user_ids.long())
         
         if negative_item_content is None:
             return torch.cosine_similarity(user_emb, positive_item_emb)
         
         negative_item_emb = self.compute_item_embeddings(negative_item_content)
 
-        return self.user_embeddings(user_ids), positive_item_emb, \
+        return user_emb, positive_item_emb, \
                negative_item_emb

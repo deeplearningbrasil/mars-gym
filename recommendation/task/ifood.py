@@ -388,8 +388,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         }
 
         if self.bandit_policy != "none":
-            metrics["IPS"]   = eval_IPS(*self._offpolicy_eval(df)),
-            metrics["CIPS"]  = eval_CIPS(*self._offpolicy_eval(df)),
+            metrics["IPS"]   = eval_IPS(*self._offpolicy_eval(df))
+            metrics["CIPS"]  = eval_CIPS(*self._offpolicy_eval(df))
             metrics["SNIPS"] = eval_SNIPS(*self._offpolicy_eval(df))            
 
         print("\n====================")
