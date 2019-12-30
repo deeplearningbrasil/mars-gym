@@ -93,25 +93,26 @@ class EpsilonGreedy(BanditPolicy):
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> dict: 
         
-        n_arms      = len(arm_indices)
+        n_arms      = len(arm_indices) 
+        total_arms  = (n_arms + pos)
         arm_probas  = np.ones(n_arms) / n_arms
 
         if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
-            action   = self._rng.choice(n_arms, p=arm_probas)
+            action   = self._rng.choice(len(arm_indices), p=arm_probas)
             selected = {
                 'idx':    action,
-                'prob':   self._epsilon/arm_probas[action],
+                'prob':   self._epsilon*arm_probas[action],
             }                
         else:
             action   = int(np.argmax(arm_scores))
             selected = {
                 'idx':    action,
-                'prob':   (1.0 - self._epsilon) + (self._epsilon/arm_probas[action]),
+                'prob':   (1.0 - self._epsilon) + (self._epsilon*arm_probas[action]),
             }
 
-        # If different from hit@1 use exploration prob
+        # If different from hit@1 use exploration probability
         if pos != 0:
-            selected['prob'] = self._epsilon/arm_probas[action]
+            selected['prob'] = self._epsilon*(1/total_arms)
 
         return selected
 

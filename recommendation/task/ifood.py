@@ -349,7 +349,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
         with Pool(self.num_processes) as p:
             df["sorted_merchant_idx_list"] = parallel_literal_eval(df["sorted_merchant_idx_list"], pool=p)
-            df["relevance_list"] = parallel_literal_eval(df["relevance_list"], pool=p)
+            df["prob_merchant_idx_list"]   = parallel_literal_eval(df["relevance_list"], pool=p)
+            df["relevance_list"]           = parallel_literal_eval(df["relevance_list"], pool=p)
 
             df["average_precision"] = list(
                 tqdm(p.map(average_precision, df["relevance_list"]), total=len(df)))
@@ -398,7 +399,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         pprint.pprint(metrics)
         print("")
 
-        df = df.drop(columns=["sorted_merchant_idx_list", "relevance_list"])
+        df = df.drop(columns=["sorted_merchant_idx_list", "prob_merchant_idx_list", "relevance_list"])
         df.to_csv(self.output()[0].path)
         with open(self.output()[1].path, "w") as metrics_file:
             json.dump(metrics, metrics_file, indent=4)
