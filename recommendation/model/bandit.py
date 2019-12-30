@@ -60,7 +60,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
             prob_arms.append(prob)
             arm_indices.pop(idx)
             arm_scores.pop(idx)
-
+        
         if with_probs:
             return zip(ranked_arms, prob_arms)
         else:
@@ -83,6 +83,30 @@ class RandomPolicy(BanditPolicy):
             'prob':  arm_probas[action],
         }  
 
+# class LoggingPolicy(BanditPolicy):
+#     def __init__(self, reward_model: nn.Module,seed: int = 42) -> None:
+#         super().__init__(reward_model)
+#         self._rng = RandomState(seed)    
+#         self.arm_probas = []
+
+#     def fit(self, dataset: Dataset) -> None:
+#         n = len(dataset)
+#         print(dataset.head())
+#         d
+
+#         self.arm_probas  = np.ones(n_arms) / n_arms
+
+
+#     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+#                     arm_scores: List[float], pos: int) -> dict: 
+        
+#         n_arms      = len(arm_indices)
+
+#         action = self._rng.choice(n_arms, p=self.arm_probas)
+#         return {
+#             'idx':   action,
+#             'prob':  self.arm_probas[action],
+#         }  
 
 class EpsilonGreedy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, epsilon: float, seed: int = 42) -> None:
@@ -111,7 +135,7 @@ class EpsilonGreedy(BanditPolicy):
             }
 
         # If different from hit@1 use exploration probability
-        if pos != 0:
+        if pos > 0:
             selected['prob'] = self._epsilon*(1/total_arms)
 
         return selected

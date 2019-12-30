@@ -21,7 +21,7 @@ from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.data import literal_eval_array_columns
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, LoggingPolicy
 from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.offpolicy_metrics import eval_IPS, eval_CIPS, eval_SNIPS
 from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k
@@ -35,7 +35,7 @@ from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import chunks, parallel_literal_eval
 
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, none=None)
+_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, log_policy=LoggingPolicy, none=None)
 
 
 def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],
