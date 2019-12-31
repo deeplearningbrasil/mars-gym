@@ -43,19 +43,22 @@ def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],
 
 
 def _sort_merchants_by_tuple_score(account_idx: int, merchant_idx_list: List[int],
-                                   scores_per_tuple: Dict[Tuple[int, int], float]) -> List[int]:
+                                   scores_per_tuple: Dict[Tuple[int, int], float], limit: int = None) -> List[int]:
     scores = _get_scores_per_tuple(account_idx, merchant_idx_list, scores_per_tuple)
-    return [merchant_idx for _, merchant_idx in sorted(zip(scores, merchant_idx_list), reverse=True)]
+    ranked_list = [merchant_idx for _, merchant_idx in sorted(zip(scores, merchant_idx_list), reverse=True)]
+    return ranked_list if limit is None else ranked_list[:limit]
 
 
 def _sort_merchants_by_tuple_score_with_bandit_policy(account_idx: int, merchant_idx_list: List[int],
                                                       scores_per_tuple: Dict[Tuple[int, int], float],
                                                       dataset_indices_per_tuple: Dict[Tuple[int, int], int],
-                                                      dataset: Dataset, bandit_policy: BanditPolicy) -> List[int]:
+                                                      dataset: Dataset, bandit_policy: BanditPolicy,
+                                                      limit: int = None) -> List[int]:
     scores = _get_scores_per_tuple(account_idx, merchant_idx_list, scores_per_tuple)
     dataset_indices = [dataset_indices_per_tuple[(account_idx, merchant_idx)] for merchant_idx in merchant_idx_list]
 
-    return bandit_policy.rank(merchant_idx_list, arm_scores=scores, arm_contexts=dataset[dataset_indices][0])
+    return bandit_policy.rank(merchant_idx_list, arm_scores=scores, arm_contexts=dataset[dataset_indices][0],
+                              limit=limit)
 
 
 def _get_scores_per_merchant(merchant_idx_list: List[int], scores_per_merchant: Dict[int, float]) -> List[float]:
@@ -350,6 +353,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     plot_histogram: bool = luigi.BoolParameter(default=False)
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
+    limit_list_size: int = luigi.IntParameter(default=50)
 
     # num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
@@ -438,7 +442,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
 
         if self.bandit_policy == "none":
-            sort_function = functools.partial(_sort_merchants_by_tuple_score, scores_per_tuple=scores_per_tuple)
+            sort_function = functools.partial(_sort_merchants_by_tuple_score, scores_per_tuple=scores_per_tuple,
+                                              limit=self.limit_list_size)
         else:
             bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
             dataset_indices_per_tuple = self._create_dictionary_of_dataset_indices()
@@ -446,8 +451,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             sort_function = functools.partial(_sort_merchants_by_tuple_score_with_bandit_policy,
                                               scores_per_tuple=scores_per_tuple,
                                               dataset_indices_per_tuple=dataset_indices_per_tuple,
-                                              dataset=self.dataset,
-                                              bandit_policy=bandit_policy)
+                                              dataset=self.dataset, bandit_policy=bandit_policy,
+                                              limit=self.limit_list_size)
 
         print("Sorting the merchant lists")
         orders_df["sorted_merchant_idx_list"] = list(tqdm(

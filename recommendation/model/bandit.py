@@ -39,7 +39,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         return arm_indices[self.select_idx(arm_indices, arm_contexts, arm_scores)]
 
     def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
-             arm_scores: List[float] = None) -> List[int]:
+             arm_scores: List[float] = None, limit: int = None) -> List[int]:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
@@ -48,7 +48,8 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         ranked_arms = []
         arm_indices = list(arm_indices)
         arm_scores = list(arm_scores)
-        for _ in range(len(arm_indices)):
+        n = len(arm_indices) if limit is None else min(len(arm_indices), limit)
+        for _ in range(n):
             idx = self.select_idx(arm_indices, arm_scores=arm_scores)
             ranked_arms.append(arm_indices[idx])
             arm_indices.pop(idx)
@@ -118,7 +119,7 @@ class LinUCB(BanditPolicy):
         return int(np.argmax(arm_scores_with_cb))
 
     def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
-             arm_scores: List[float] = None) -> List[int]:
+             arm_scores: List[float] = None, limit: int = None) -> List[int]:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
@@ -129,4 +130,5 @@ class LinUCB(BanditPolicy):
         arm_scores_with_cb = [arm_score + self._calculate_confidence_bound(arm_context)
                               for arm_context, arm_score in zip(arm_contexts, arm_scores)]
 
-        return [arm_id for _, arm_id in sorted(zip(arm_scores_with_cb, arm_indices), reverse=True)]
+        ranked_list = [arm_id for _, arm_id in sorted(zip(arm_scores_with_cb, arm_indices), reverse=True)]
+        return ranked_list if limit is None else ranked_list[:limit]
