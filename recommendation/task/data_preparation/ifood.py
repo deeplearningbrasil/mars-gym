@@ -18,6 +18,7 @@ from pyspark.sql import functions as F
 from torchnlp.encoders import LabelEncoder
 from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncoder
 from unidecode import unidecode
+from pyspark.sql.functions import when   
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames, BaseDownloadDataset
 from recommendation.utils import parallel_literal_eval
@@ -988,38 +989,49 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                                                                            minimum_interactions=self.minimum_interactions)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR,
+        return  luigi.LocalTarget(os.path.join(DATASET_DIR,
                                               "indexed_orders_test_data_%.2f_k=%d.parquet" % (self.test_size,
-                                                                                              self.minimum_interactions)))
+                                                                                              self.minimum_interactions))) 
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
 
-        session_df = spark.read.parquet(self.input()[0][1].path)
+        session_df  = spark.read.parquet(self.input()[0][1].path)
+        print("session_df size: ", session_df.count())
 
-        session_df = session_df.withColumn("mode_shift_idx", session_df.shift_idx)
-        session_df = session_df.withColumn("mode_day_of_week", session_df.day_of_week)
+        session_df   = session_df.withColumn("mode_shift_idx", session_df.shift_idx)
+        session_df   = session_df.withColumn("mode_day_of_week", session_df.day_of_week)
 
-        account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
-        merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
-            .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
+        account_df   = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+        merchant_df  = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
+                                    .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
+        
+        count_visits = session_df.filter(session_df.buy == 0).count()
 
+        #PrepareIfoodIndexedSessionTestData
+        # Filter session with visits or not
         orders_df = session_df.filter(session_df.buy == 1)
+
+        # Join with merchant the same caracteristics to simulate merchants open
         orders_df = orders_df.join(merchant_df, [merchant_df.shifts.contains(orders_df.shift),
                                                  merchant_df.days_of_week.contains(orders_df.day_of_week)]) \
-            .drop(merchant_df.merchant_id) \
-            .select(session_df.columns + ["merchant_idx"])
+                    .drop(merchant_df.merchant_id) \
+                    .select(session_df.columns + ["merchant_idx"])
+        
+        # Group and similar merchants list (merchant_idx_list)
+        orders_df = orders_df.groupBy(session_df.columns)\
+                    .agg(collect_set("merchant_idx").alias("merchant_idx_list")) \
+                    .drop("merchant_idx")
 
-        orders_df = orders_df.groupBy(session_df.columns).agg(collect_set("merchant_idx").alias("merchant_idx_list")) \
-            .drop("merchant_idx")
 
         orders_df = orders_df \
-            .join(account_df, "account_id", how="inner") \
-            .join(merchant_df, "merchant_id", how="inner") \
-            .select("session_id", "account_idx", "merchant_idx",
-                    "merchant_idx_list", "shift", "shift_idx",
-                    "mode_shift_idx", "mode_day_of_week",
-                    "day_of_week").dropDuplicates()
+                    .withColumn("count_visits", lit(count_visits)) \
+                    .join(account_df, "account_id", how="inner") \
+                    .join(merchant_df, "merchant_id", how="inner") \
+                    .select("session_id", "account_idx", "merchant_idx",
+                            "merchant_idx_list", "shift", "shift_idx",
+                            "mode_shift_idx", "mode_day_of_week",
+                            "day_of_week", "buy", "count_visits").dropDuplicates()
 
         orders_df.write.parquet(self.output().path)
 

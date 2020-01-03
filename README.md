@@ -34,7 +34,12 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateMostPopularPerUs
 
 ``` 
 PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationTraining \
---project ifood_binary_buys_cf --n-factors 256 --binary --loss-function bce --metrics '["loss", "acc"]' --local-scheduler
+--project ifood_binary_buys_cf --n-factors 256 --binary --loss-function bce --metrics '["loss", "acc"]' --epochs 200 --local-scheduler
+``` 
+
+``` 
+PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationTraining \
+--project ifood_binary_buys_cf_with_random_negative --n-factors 256 --binary --loss-function bce --metrics '["loss", "acc"]' --epochs 200 --local-scheduler
 ``` 
 
 #### Evaluate
@@ -42,7 +47,7 @@ PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization Mat
 ```
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler \
 --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationTraining \
---model-task-id=MatrixFactorizationTraining____500_False_b5e34672f9
+--model-task-id=MatrixFactorizationTraining____500_False_40c44eeb5b
 ```
 
 ### Matrix Factorization With Shift Information
@@ -51,8 +56,14 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --loc
 
 ```
 PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationWithShiftTraining \
---project ifood_buy_session_with_shift_cf --n-factors 100 --metrics '["loss", "acc"]' \
---loss-function bce --optimizer-params '{"weight_decay": 1e-8}' --save-item-embedding-tsv --local-scheduler
+--project ifood_binary_buys_with_shift_cf --n-factors 100 --metrics '["loss", "acc"]' \
+--loss-function bce --optimizer-params '{"weight_decay": 1e-8}' --epochs 200 --local-scheduler
+```
+
+```
+PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationWithShiftTraining \
+--project ifood_binary_buys_with_shift_cf_with_random_negative --n-factors 100 --metrics '["loss", "acc"]' \
+--loss-function bce --optimizer-params '{"weight_decay": 1e-8}' --epochs 200 --local-scheduler
 ```
 
 #### Evaluate
@@ -79,17 +90,17 @@ Arquiteturas de Autoencoders
 ```
 PYTHONPATH="." luigi --module recommendation.task.model.auto_encoder UnconstrainedAutoEncoderTraining \
 --project ifood_user_cdae --binary --optimizer adam --learning-rate 1e-4 --batch-size 500 \
---generator-workers 0 --loss-function focal --loss-function-params '{"gamma": 10.0, "alpha": 1616.0}' \
+--generator-workers 0 --loss-function focal --loss-function-params '{"gamma": 10.0, "alpha": 1664.0}' \
 --loss-wrapper none --data-frames-preparation-extra-params '{"split_per_user": "True"}' \
---gradient-norm-clipping 2.0 --gradient-norm-clipping-type 1 --data-transformation support_based --local-scheduler
+--gradient-norm-clipping 2.0 --gradient-norm-clipping-type 1 --data-transformation support_based --epochs 200 --local-scheduler
 ```
 
 #### Evaluate
 
 ```
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCDAEModel \
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfoodModel \
 --model-module=recommendation.task.model.auto_encoder --model-cls=UnconstrainedAutoEncoderTraining \
---model-task-id=UnconstrainedAutoEncoderTraining_selu____500_d17b86c064 --local-scheduler 
+--model-task-id=UnconstrainedAutoEncoderTraining_selu____500_4471d69030 --local-scheduler 
 ```
 
 ### CVAE - Collaborative Variational Auto-Encoders
@@ -107,14 +118,14 @@ PYTHONPATH="." luigi --module recommendation.task.model.auto_encoder Variational
 --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8}'  --activation-function=selu \
 --encoder-layers=[600,200] --decoder-layers=[600] --loss-function=vae_loss --loss-function-params='{"anneal": 0.01}'  \
 --data-transformation=support_based --data-frames-preparation-extra-params='{"split_per_user": "True"}' \
---epochs=100 --learning-rate=0.001
+--epochs=200 --learning-rate=0.001
 ``` 
 
 #### Evaluate
 
 ```
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCVAEModel --model-module=recommendation.task.model.auto_encoder \
---model-cls=VariationalAutoEncoderTraining --model-task-id=VariationalAutoEncoderTraining_selu____500_019ff423fb --local-scheduler 
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfoodModel --model-module=recommendation.task.model.auto_encoder \
+--model-cls=VariationalAutoEncoderTraining --model-task-id=VariationalAutoEncoderTraining_selu____500_249fd09ed1 --local-scheduler 
 ```
 
 ## Triplet Models
@@ -125,16 +136,18 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodCVAEModel -
 
 ```
 PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetTraining \
---project ifood_buys_visits_triplet_with_random_negative  --batch-size=512 --optimizer=adam \
+--project ifood_binary_buys_triplet_with_random_negative  --batch-size=512 --optimizer=adam \
 --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' --learning-rate=0.001 \
---epochs=100 --n-factors=100 --loss-function=weighted_triplet --loss-function-params='{"balance_factor": 2500.0}' --local-scheduler
+--epochs=200 --n-factors=100 --loss-function=weighted_triplet --loss-function-params='{"balance_factor": 2500.0}' --local-scheduler
 ```
 
 #### Evaluate
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetWeightedModel \
+```
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel \
 --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetTraining \
---model-task-id=TripletNetTraining____512____400fad3d94 --local-scheduler 
+--model-task-id=TripletNetTraining____512____8f8a418af8 --local-scheduler 
+```
 
 ### Triplet Content Net
 
@@ -144,16 +157,14 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetW
 PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetSimpleContentTraining \
 --project ifood_binary_buys_content_triplet_with_random_negative  --batch-size=512 \
 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' \
---learning-rate=0.0001 --epochs=100 --n-factors=100 --loss-function=triplet_margin \
+--learning-rate=0.0001 --epochs=200 --n-factors=100 --loss-function=weighted_triplet \
 --loss-function-params='{"balance_factor": 0.9}' --content-layers="[64,10]" --local-scheduler
 ```
 
 #### Evaluate
 
 ```
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetContentModel \
---model-module=recommendation.task.model.triplet_net --model-cls=TripletNetSimpleContentTraining \
---model-task-id=TripletNetSimpleContentTraining_selu____512_078b2ba11c --local-scheduler 
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetSimpleContentTraining --model-task-id=TripletNetSimpleContentTraining_selu____512_a04b6da0d7 --local-scheduler --batch-size 1000
 ```
 
 ### Triplet Content Item-Item 
@@ -173,7 +184,7 @@ PYTHONPATH="."  luigi --module recommendation.task.model.triplet_net TripletNetI
 ```
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetInfoContent \
 --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetItemSimpleContentTraining \
---model-task-id=TripletNetItemSimpleContentTraining_selu____300_833e64754d --batch-size 600 \
+--model-task-id=TripletNetItemSimpleContentTraining_selu____100_1fc9e9d515 --batch-size 600 \
 --group-last-k-merchants 2 --local-scheduler
 ```
 
@@ -183,7 +194,7 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodTripletNetI
 
 
 ```
-PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits ContextualBanditsTraining --project ifood_contextual_bandit --local-scheduler --batch-size=512 --optimizer=radam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.801}' --learning-rate=0.001 --epochs=500 --loss-function=crm --loss-function-params='{"balance_factor": 10.0}' --use-normalize --use-buys-visits  --content-layers=[256,128,64]  --binary --predictor=logistic_regression --context-embeddings --use-numerical-content --user-embeddings --n-factors=20 --epochs 206
+PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits ContextualBanditsTraining --project ifood_contextual_bandit --local-scheduler --batch-size=512 --optimizer=radam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.801}' --learning-rate=0.001  --loss-function=crm --use-normalize --use-buys-visits  --content-layers=[256,128,64]  --binary --predictor=logistic_regression --context-embeddings --use-numerical-content --user-embeddings --n-factors=100 --epochs 200
 ```
 
 #### Evaluate
