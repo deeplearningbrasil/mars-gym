@@ -63,7 +63,8 @@ def _sort_merchants_by_tuple_score_with_bandit_policy(account_idx: int, merchant
         dataset_indices = [dataset_indices_per_tuple[(account_idx, merchant_idx)] for merchant_idx in merchant_idx_list]
         arm_contexts    =  dataset[dataset_indices][0]
 
-    return bandit_policy.rank(merchant_idx_list, arm_scores=scores, arm_contexts=arm_contexts, limit=limit)
+    return bandit_policy.rank(merchant_idx_list, arm_scores=scores, arm_contexts=arm_contexts, limit=limit,
+                              with_probs=True)
 
 
 def _get_scores_per_merchant(merchant_idx_list: List[int], scores_per_merchant: Dict[int, float]) -> List[float]:
@@ -79,7 +80,7 @@ def _sort_merchants_by_merchant_score_with_bandit_policy(merchant_idx_list: List
                                                          scores_per_merchant: Dict[int, float],
                                                          bandit_policy: BanditPolicy) -> List[int]:
     scores = _get_scores_per_merchant(merchant_idx_list, scores_per_merchant)
-    return bandit_policy.rank(merchant_idx_list, arm_scores=scores)
+    return bandit_policy.rank(merchant_idx_list, arm_scores=scores, with_probs=True)
 
 def _ps_policy_eval(relevance_list: List[int], prob_merchant_idx_list: List[int]) -> List[int]:
     return np.sum(np.array(relevance_list) * np.array(prob_merchant_idx_list))
@@ -535,12 +536,12 @@ class SortMerchantListsByMostPopular(luigi.Task):
         if self.bandit_policy == "none":
             sort_function = functools.partial(_sort_merchants_by_merchant_score, scores_per_merchant=scores_dict)
 
-            _sorted_merchant_idx_list =  list(tqdm(starmap(functools.partial(sort_function, scores_per_merchant=scores_dict),
+            sorted_merchant_idx_list =  list(tqdm(starmap(functools.partial(sort_function, scores_per_merchant=scores_dict),
                                                     zip(orders_df["merchant_idx_list"])),
                                             total=len(orders_df)))
 
-            orders_df["sorted_merchant_idx_list"] = list(_sorted_merchant_idx_list)
-            orders_df["prob_merchant_idx_list"]   = np.ones(len(_sorted_merchant_idx_list))
+            orders_df["sorted_merchant_idx_list"] = list(sorted_merchant_idx_list)
+            orders_df["prob_merchant_idx_list"]   = np.ones(len(sorted_merchant_idx_list))
 
         else:
             bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
@@ -549,14 +550,13 @@ class SortMerchantListsByMostPopular(luigi.Task):
                                               scores_per_merchant=scores_dict,
                                               bandit_policy=bandit_policy)
 
-            _sorted_merchant_idx_list =  list(tqdm(starmap(functools.partial(sort_function, scores_per_merchant=scores_dict),
-                                                    zip(orders_df["merchant_idx_list"])),
+            sorted_merchant_idx_list =  list(tqdm(starmap(sort_function, zip(orders_df["merchant_idx_list"])),
                                             total=len(orders_df)))
             # unzip (sorted, prob)
-            _sorted_merchant_idx_list = np.array([list(zip(*s)) for s in _sorted_merchant_idx_list])
+            sorted, prob = zip(*sorted_merchant_idx_list)
 
-            orders_df["sorted_merchant_idx_list"] = list(_sorted_merchant_idx_list[:,0])
-            orders_df["prob_merchant_idx_list"]   = list(_sorted_merchant_idx_list[:,1])
+            orders_df["sorted_merchant_idx_list"] = sorted
+            orders_df["prob_merchant_idx_list"] = prob
 
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
