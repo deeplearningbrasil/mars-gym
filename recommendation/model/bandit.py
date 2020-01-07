@@ -39,7 +39,8 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         return arm_indices[self.select_idx(arm_indices, arm_contexts, arm_scores)]
 
     def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
-             arm_scores: List[float] = None, with_probs: bool = True, limit: int = None) -> List[int]:
+             arm_scores: List[float] = None, with_probs: bool = True,
+             limit: int = None) -> Union[List[int], Tuple[List[int], List[float]]]:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
@@ -62,7 +63,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
             arm_scores.pop(idx)
 
         if with_probs:
-            return zip(ranked_arms, prob_arms)
+            return ranked_arms, prob_arms
         else:
             return ranked_arms
 
@@ -83,8 +84,9 @@ class RandomPolicy(BanditPolicy):
             'prob':  arm_probas[action],
         }
 
+
 class EpsilonGreedy(BanditPolicy):
-    def __init__(self, reward_model: nn.Module, epsilon: float, seed: int = 42) -> None:
+    def __init__(self, reward_model: nn.Module, epsilon: float = 0.05, seed: int = 42) -> None:
         super().__init__(reward_model)
         self._epsilon = epsilon
         self._rng = RandomState(seed)

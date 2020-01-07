@@ -27,7 +27,7 @@ dependencies:
 - category_encoders
 - pip:
   - imbalanced-learn==0.4.3
-  - torchbearer==0.5.2
+  - torchbearer==0.5.1
   - mlflow==1.0.0
   - pytorch-nlp==0.4.1
   - unidecode==1.1.1
