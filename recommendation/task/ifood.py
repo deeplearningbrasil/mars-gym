@@ -35,7 +35,8 @@ from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import chunks, parallel_literal_eval
 
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, none=None)
+_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB,
+                                                       random=RandomPolicy, none=None)
 
 
 def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],

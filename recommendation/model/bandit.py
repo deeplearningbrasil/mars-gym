@@ -1,6 +1,7 @@
 import abc
 from typing import List, Union, Tuple, Dict
 
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -9,12 +10,14 @@ from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
 
+from recommendation.utils import chunks
+
 
 class BanditPolicy(object, metaclass=abc.ABCMeta):
     def __init__(self, reward_model: nn.Module) -> None:
         self._reward_model = reward_model
 
-    def fit(self, dataset: Dataset) -> None:
+    def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
         pass
 
     @abc.abstractmethod
@@ -120,10 +123,10 @@ class EpsilonGreedy(BanditPolicy):
             return action
 
 
-class LinUCB(BanditPolicy):
-    def __init__(self, reward_model: nn.Module, alpha: float = 0.5, arm_index: int = 1) -> None:
+class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
+
+    def __init__(self, reward_model: nn.Module, arm_index: int = 1) -> None:
         super().__init__(reward_model)
-        self._alpha = alpha
         self._arm_index = arm_index
         self._Ainv_per_arm: Dict[int, np.ndarray] = {}
 
@@ -131,37 +134,36 @@ class LinUCB(BanditPolicy):
         ## x should have shape (n, 1)
         Ainv -= np.linalg.multi_dot([Ainv, x, x.T, Ainv]) / (1.0 + np.linalg.multi_dot([x.T, Ainv, x]))
 
-    def _flatten_input_and_extract_arm(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, int]:
-        flattened_input = np.concatenate([el.reshape(1, -1) for el in input_], axis=1)[0]
+    def _flatten_input_and_extract_arms(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
+        flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
 
-        return np.delete(flattened_input, self._arm_index), int(flattened_input[self._arm_index])
+        return np.delete(flattened_input, self._arm_index, axis=1), flattened_input[:, self._arm_index]
 
-    def fit(self, dataset: Dataset) -> None:
+    def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
         n = len(dataset)
 
-        for i in tqdm(range(n), total=n):
-            input_: Tuple[np.ndarray, ...] = dataset[i][0]
-            x, arm = self._flatten_input_and_extract_arm(input_)
+        for indices in tqdm(chunks(range(n), batch_size), total=math.ceil(n / batch_size)):
+            input_: Tuple[np.ndarray, ...] = dataset[indices][0]
+            X, arms = self._flatten_input_and_extract_arms(input_)
 
-            if arm not in self._Ainv_per_arm:
-                self._Ainv_per_arm[arm] = np.eye(x.shape[0])
+            for x, arm in zip(X, arms):
+                if arm not in self._Ainv_per_arm:
+                    self._Ainv_per_arm[arm] = np.eye(x.shape[0])
 
-            x = x.reshape((-1, 1))
-            self._sherman_morrison_update(self._Ainv_per_arm[arm], x)
+                x = x.reshape((-1, 1))
+                self._sherman_morrison_update(self._Ainv_per_arm[arm], x)
 
-    def _calculate_confidence_bound(self, arm_context: Tuple[np.ndarray]):
-        x, arm = self._flatten_input_and_extract_arm(arm_context)
-        Ainv = self._Ainv_per_arm.get(arm) or np.eye(x.shape[0])
-        return self._alpha * np.sqrt(np.linalg.multi_dot([x.T, Ainv, x]))
+    @abc.abstractmethod
+    def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
+        pass
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
-        arm_contexts: List[Tuple[np.ndarray, ...]] = [tuple(el[i] for el in arm_contexts)
-                                                      for i in range(len(arm_indices))]
-        arm_scores_with_cb = [arm_score + self._calculate_confidence_bound(arm_context)
-                              for arm_context, arm_score in zip(arm_contexts, arm_scores)]
+        X, arms = self._flatten_input_and_extract_arms(arm_contexts)
+        arm_scores = [self._calculate_score(arm_score, x, arm)
+                              for x, arm, arm_score in zip(X, arms, arm_scores)]
 
-        action = int(np.argmax(arm_scores_with_cb))
+        action = int(np.argmax(arm_scores))
 
         if with_prob:
             return action, int(pos == 0)
@@ -176,12 +178,11 @@ class LinUCB(BanditPolicy):
             arm_scores = self._calculate_scores(arm_contexts)
         assert len(arm_indices) == len(arm_scores)
 
-        arm_contexts: List[Tuple[np.ndarray, ...]] = [tuple(el[i] for el in arm_contexts)
-                                                      for i in range(len(arm_indices))]
-        arm_scores_with_cb = [arm_score + self._calculate_confidence_bound(arm_context)
-                              for arm_context, arm_score in zip(arm_contexts, arm_scores)]
+        X, arms = self._flatten_input_and_extract_arms(arm_contexts)
+        arm_scores = [self._calculate_score(arm_score, x, arm)
+                              for x, arm, arm_score in zip(X, arms, arm_scores)]
 
-        ranked_arms = [arm_id for _, arm_id in sorted(zip(arm_scores_with_cb, arm_indices), reverse=True)]
+        ranked_arms = [arm_id for _, arm_id in sorted(zip(arm_scores, arm_indices), reverse=True)]
         if limit is not None:
             ranked_arms = ranked_arms[:limit]
 
@@ -189,3 +190,29 @@ class LinUCB(BanditPolicy):
             return ranked_arms, [1.0 if i == 0 else 0.0 for i in range(len(ranked_arms))]
         else:
             return ranked_arms
+
+
+class LinUCB(_LinBanditPolicy):
+    def __init__(self, reward_model: nn.Module, alpha: float = 0.5, arm_index: int = 1) -> None:
+        super().__init__(reward_model, arm_index)
+        self._alpha = alpha
+
+    def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
+        Ainv = self._Ainv_per_arm.get(arm) or np.eye(x.shape[0])
+        confidence_bound = self._alpha * np.sqrt(np.linalg.multi_dot([x.T, Ainv, x]))
+        return original_score + confidence_bound
+
+
+class LinThompsonSampling(_LinBanditPolicy):
+    def __init__(self, reward_model: nn.Module, v_sq: float = 1.0, arm_index: int = 1) -> None:
+        """
+        :param v_sq: Parameter by which to multiply the covariance matrix (more means higher variance).
+        """
+        super().__init__(reward_model, arm_index)
+        self._v_sq = v_sq
+
+    def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
+        Ainv = self._Ainv_per_arm.get(arm) or np.eye(x.shape[0])
+
+        mu = np.random.multivariate_normal(original_score, self._v_sq * Ainv)
+        return x.dot(mu)
