@@ -88,6 +88,9 @@ def _ps_policy_eval(relevance_list: List[int], prob_merchant_idx_list: List[int]
     return np.sum(np.array(relevance_list) * np.array(prob_merchant_idx_list))
 
 
+def _get_rhat_scores(relevance_list: List[int], scores_merchant_idx_list: List[int]) -> List[int]:
+    return np.sum(np.array(relevance_list) * np.array(scores_merchant_idx_list))
+
 def _get_rhat_rewards(relevance_list: List[int], rewards_merchant_idx_list: List[int]) -> List[int]:
     return rewards_merchant_idx_list[0]
 
@@ -342,13 +345,16 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                         zip(orders_df["account_idx"], orders_df["sorted_merchant_idx_list"])),
                     total=len(orders_df)))
 
+        orders_df["rhat_scores"] = list(tqdm(
+            starmap(_get_rhat_scores, zip(orders_df["relevance_list"], orders_df["scores_merchant_idx_list"])),
+            total=len(orders_df)))
+
         print("Creating direct estimator rewards merchant list...")
         orders_df["rewards_merchant_idx_list"] = list(tqdm(
             starmap(functools.partial(_get_scores_per_tuple, scores_per_tuple=de_rewards_per_tuple), 
                         zip(orders_df["account_idx"], orders_df["sorted_merchant_idx_list"])),
                     total=len(orders_df)))
 
-        print("Calcule rewards direct estimator...")
         orders_df["rhat_rewards"] = list(tqdm(
             starmap(_get_rhat_rewards, zip(orders_df["relevance_list"], orders_df["rewards_merchant_idx_list"])),
             total=len(orders_df)))
@@ -371,8 +377,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                 os.path.join(os.path.split(self.output().path)[0], "ps.jpg"))
 
         orders_df[["session_id", "account_idx", "merchant_idx", "shift_idx", "day_of_week", 
-                   "sorted_merchant_idx_list", "scores_merchant_idx_list", "rewards_merchant_idx_list",
-                   "prob_merchant_idx_list", "relevance_list", 
+                   "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
+                   "rewards_merchant_idx_list", "prob_merchant_idx_list", "relevance_list", 
                    "ps", "ps_eval", "count_visits", "rhat_rewards", "rewards"]].to_csv(
             self.output().path, index=False)
 

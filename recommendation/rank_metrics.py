@@ -281,7 +281,7 @@ def _get_predicted_at_k(predicted: List[list], k: int) -> List[list]:
 
 
 def prediction_coverage_at_k(predicted: List[list], catalog: list, k: int) -> float:
-    return prediction_coverage(_get_predicted_at_k(predicted, k), catalog)
+    return prediction_coverage(_get_predicted_at_k(predicted, k), catalog)/100
 
 
 def personalization_at_k(predicted: List[list], k: int) -> float:
