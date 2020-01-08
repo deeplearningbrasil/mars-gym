@@ -1,7 +1,9 @@
 import abc
 import importlib
-
+import os
 import luigi
+import json
+from recommendation.files import get_params_path
 
 from recommendation.task.model.base import BaseTorchModelTraining, load_torch_model_training_from_task_id
 
@@ -24,3 +26,15 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
             self._model_training = load_torch_model_training_from_task_id(class_, self.model_task_id)
 
         return self._model_training
+
+    @property
+    def n_items(self):
+        return self.model_training.n_items
+
+    @property
+    def output_path(self):
+        return os.path.join("output", "evaluation", self.__class__.__name__, "results", self.task_name)
+
+    def _save_params(self):
+        with open(get_params_path(self.output_path), "w") as params_file:
+            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)

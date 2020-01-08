@@ -6,6 +6,9 @@ from typing import List
 import numpy as np
 import pandas as pd
 import scipy
+from typing import Dict, Tuple, List, Any, Type, Union
+from torch.utils.data.dataset import Dataset
+
 
 def _calc_sample_weigths(rewards, t_props, l_props):
   # Compute the sample weights - propensity ratios
@@ -92,3 +95,42 @@ def eval_SNIPS(rewards, t_props, l_props):
   return result
 
 
+def eval_doubly_robust(rhat_rewards, rewards, t_props, l_props, cap=None):
+  # Calculate Sample Weigths
+  p_ratio, n_e, cv =  _calc_sample_weigths(rewards, t_props, l_props)
+
+
+  # Cap ratios
+  if cap is not None:
+    p_ratio = np.clip(p_ratio, a_min=None, a_max=cap)
+
+  #################
+  # Roubly Robust #
+  #################
+  dr = rhat_rewards + (p_ratio*(rewards-rhat_rewards))
+
+  return np.mean(dr)
+
+
+def DirectEstimator(object):
+  
+  def __init__(estimator):
+    self.estimator = estimator
+
+  def predict_proba(self, X):
+    pass
+
+  def _flatten_input_and_extract_arm(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, int]:
+      flattened_input = np.concatenate([el.reshape(1, -1) for el in input_], axis=1)[0]
+
+      return np.delete(flattened_input, self._arm_index), int(flattened_input[self._arm_index])
+
+  def fit(self, dataset: Dataset) -> None:
+      n = len(dataset)
+
+      for i in tqdm(range(n), total=n):
+        input_: Tuple[np.ndarray, ...] = dataset[i][0]
+        x, arm = self._flatten_input_and_extract_arm(input_)
+
+        raise(Exception("==>", x, arm))
+  

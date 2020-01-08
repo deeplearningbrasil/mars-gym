@@ -21,10 +21,10 @@ from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.data import literal_eval_array_columns
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy
 from recommendation.plot import plot_histogram, plot_tsne
-from recommendation.offpolicy_metrics import eval_IPS, eval_CIPS, eval_SNIPS
-from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k
+from recommendation.offpolicy_metrics import DirectEstimator, eval_IPS, eval_CIPS, eval_SNIPS, eval_doubly_robust
+from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k, precision_at_k
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     PrepareIfoodIndexedSessionTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
@@ -34,8 +34,9 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import chunks, parallel_literal_eval
+from recommendation.task.model.contextual_bandits import DirectEstimatorTraining
 
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, none=None)
+_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, model=ModelPolicy, none=None)
 
 
 def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],
@@ -56,8 +57,8 @@ def _sort_merchants_by_tuple_score_with_bandit_policy(account_idx: int, merchant
                                                       dataset: Dataset, bandit_policy: BanditPolicy,
                                                       limit: int = None) -> Tuple[List[int], List[float]]:
     scores = _get_scores_per_tuple(account_idx, merchant_idx_list, scores_per_tuple)
-
-    if dataset is None:
+    
+    if dataset is None or dataset_indices_per_tuple is None:
         arm_contexts = None
     else:
         dataset_indices = [dataset_indices_per_tuple[(account_idx, merchant_idx)] for merchant_idx in merchant_idx_list]
@@ -82,8 +83,13 @@ def _sort_merchants_by_merchant_score_with_bandit_policy(merchant_idx_list: List
     scores = _get_scores_per_merchant(merchant_idx_list, scores_per_merchant)
     return bandit_policy.rank(merchant_idx_list, arm_scores=scores, with_probs=True)
 
+
 def _ps_policy_eval(relevance_list: List[int], prob_merchant_idx_list: List[int]) -> List[int]:
     return np.sum(np.array(relevance_list) * np.array(prob_merchant_idx_list))
+
+
+def _get_rhat_rewards(relevance_list: List[int], rewards_merchant_idx_list: List[int]) -> List[int]:
+    return rewards_merchant_idx_list[0]
 
 
 def _create_relevance_list(sorted_merchant_idx_list: List[int], ordered_merchant_idx: int) -> List[int]:
@@ -124,10 +130,16 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     def requires(self):
         test_size = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
+
         return PrepareIfoodIndexedOrdersTestData(test_size=test_size, minimum_interactions=minimum_interactions), \
                ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=test_size,
                                                                       minimum_interactions=minimum_interactions), \
-               LoggingPolicyPsDataset(test_size=test_size, minimum_interactions=minimum_interactions)
+               LoggingPolicyPsDataset(test_size=test_size, minimum_interactions=minimum_interactions),\
+               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator'), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=test_size, minimum_interactions=minimum_interactions), \
+               CreateInteractionDataset(test_size=test_size)               
+
     def output(self):
         return luigi.LocalTarget(
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
@@ -145,6 +157,35 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         if not hasattr(self, "_test_data_frame"):
             self._test_data_frame = self._read_test_data_frame()
         return self._test_data_frame
+
+    @property
+    def tuple_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_tuple_data_frame"):
+            self._tuple_data_frame = pd.read_parquet(self.input()[1].path)
+        return self._tuple_data_frame
+
+    @property
+    def test_direct_estimator_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_test_direct_estimator_data_frame"):
+
+            tuples_df = self.tuple_data_frame
+
+            train_interactions_df = pd.read_parquet(self.input()[-1].path)[
+                ['account_idx', 'merchant_idx', 'visits', 'buys']]
+            train_interactions_df['buys']   = train_interactions_df['buys'].astype(float)
+            train_interactions_df['visits'] = train_interactions_df['visits'].astype(float)
+
+            tuples_df = tuples_df.merge(train_interactions_df, on=['account_idx', 'merchant_idx'], how='outer')
+            tuples_df.dropna(subset=['session_id'], how='all', inplace=True)
+            tuples_df.fillna(0.0, inplace=True)
+            tuples_df.rename(columns={"buys": "hist_buys", "visits": "hist_visits"}, inplace=True)
+                        
+            self._test_direct_estimator_data_frame = tuples_df
+        return self._test_direct_estimator_data_frame
+
+    @property
+    def train_dataset(self) -> Dataset:
+        return self.model_training.train_dataset
 
     @property
     def dataset(self) -> Dataset:
@@ -179,15 +220,49 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         # TODO else with batch size
         scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
-        scores: np.ndarray = scores_tensor.detach().cpu().numpy()
+        scores: np.ndarray = scores_tensor.detach().cpu().numpy().reshape(-1)
+
         scores = self._transform_scores(scores)
 
         return self._create_dictionary_of_scores(scores)
 
+    def _direct_estimator_rewards_merchant_tuples(self):
+        print("Create the direct estimator rewards")
+        
+        module_training = DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator')
+        
+        print("Loading trained model (DE)... ", module_training.task_id)            
+        module = module_training.get_trained_module()
+
+        print("Loading Dataset from DE model...")
+        _dataset = module_training.project_config.dataset_class(self.test_direct_estimator_data_frame,
+                                                                    module_training.metadata_data_frame,
+                                                                    module_training.project_config,
+                                                                    negative_proportion=0.0)
+
+        generator = NoAutoCollationDataLoader(_dataset, batch_size=module_training.batch_size, shuffle=False,
+                                              num_workers=module_training.generator_workers,
+                                              pin_memory=module_training.pin_memory if module_training.device == "cuda" else False)
+
+        trial = Trial(module,
+                      criterion=lambda *args:
+                      torch.zeros(1, device=module_training.torch_device, requires_grad=True)) \
+            .with_test_generator(generator).to(module_training.torch_device)
+
+        scores_tensor: torch.Tensor = trial.predict(verbose=2)
+        scores: np.ndarray = scores_tensor.detach().cpu().numpy().reshape(-1)
+        scores = self._transform_scores(scores)
+
+        return {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
+                in tqdm(zip(self.test_direct_estimator_data_frame["account_idx"], 
+                            self.test_direct_estimator_data_frame["merchant_idx"], scores),
+                        total=len(scores))}
+
     def _create_dictionary_of_scores(self, scores: np.ndarray) -> Dict[Tuple[int, int], float]:
         print("Creating the dictionary of scores...")
         return {(account_idx, merchant_idx): score for account_idx, merchant_idx, score
-                in tqdm(zip(self.test_data_frame["account_idx"], self.test_data_frame["merchant_idx"], scores),
+                in tqdm(zip(self.test_data_frame["account_idx"], self.test_data_frame["merchant_idx"], 
+                            scores),
                         total=len(scores))}
 
     def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
@@ -200,10 +275,12 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     def run(self):
         os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
 
-        scores_per_tuple = self._evaluate_account_merchant_tuples()
+        scores_per_tuple     = self._evaluate_account_merchant_tuples()
+
+        de_rewards_per_tuple = scores_per_tuple.copy()
 
         print("Reading the orders DataFrame...")
-        orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)#.sample(frac=self.sample_size)
+        orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)#.sample(100)
 
         print("Join with LogPolicyProb...")
         logpolicy_df: pd.DataFrame = pd.read_csv(self.input()[2].path)
@@ -224,9 +301,15 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             orders_df["prob_merchant_idx_list"]   = list(np.ones(len(sorted_merchant_idx_list)))
 
         else:
+            # BanditPolicy
             bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
+            bandit_policy.fit(self.train_dataset)
+
+            # DirectEstimator
+            de_rewards_per_tuple = self._direct_estimator_rewards_merchant_tuples()
+
+            # Sort Function
             dataset_indices_per_tuple = self._create_dictionary_of_dataset_indices()
-            bandit_policy.fit(self.model_training.train_dataset)
             sort_function = functools.partial(_sort_merchants_by_tuple_score_with_bandit_policy,
                                               scores_per_tuple=scores_per_tuple,
                                               dataset_indices_per_tuple=dataset_indices_per_tuple,
@@ -253,17 +336,44 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             starmap(_ps_policy_eval, zip(orders_df["relevance_list"], orders_df["prob_merchant_idx_list"])),
             total=len(orders_df)))
 
+        print("Creating scores merchant list...")
+        orders_df["scores_merchant_idx_list"] = list(tqdm(
+            starmap(functools.partial(_get_scores_per_tuple, scores_per_tuple=scores_per_tuple), 
+                        zip(orders_df["account_idx"], orders_df["sorted_merchant_idx_list"])),
+                    total=len(orders_df)))
+
+        print("Creating direct estimator rewards merchant list...")
+        orders_df["rewards_merchant_idx_list"] = list(tqdm(
+            starmap(functools.partial(_get_scores_per_tuple, scores_per_tuple=de_rewards_per_tuple), 
+                        zip(orders_df["account_idx"], orders_df["sorted_merchant_idx_list"])),
+                    total=len(orders_df)))
+
+        print("Calcule rewards direct estimator...")
+        orders_df["rhat_rewards"] = list(tqdm(
+            starmap(_get_rhat_rewards, zip(orders_df["relevance_list"], orders_df["rewards_merchant_idx_list"])),
+            total=len(orders_df)))
+
         print("Calcule rewards...")
         orders_df["rewards"] = orders_df["buy"]
 
         print("Saving the output file...")
         if self.plot_histogram:
-            plot_histogram(scores_per_tuple.values()).savefig(
-                os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
+            plot_histogram(de_rewards_per_tuple.values()).savefig(
+               os.path.join(os.path.split(self.output().path)[0], "DE_rewards_histogram.jpg"))
 
-        orders_df[["session_id", "account_idx", "merchant_idx", "sorted_merchant_idx_list",
-                   "prob_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week",
-                   "ps", "ps_eval", "count_visits", "rewards"]].to_csv(
+            plot_histogram(scores_per_tuple.values()).savefig(
+               os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
+            
+            plot_histogram(orders_df["ps_eval"].values).savefig(
+                os.path.join(os.path.split(self.output().path)[0], "ps_eval.jpg"))
+
+            plot_histogram(orders_df["ps"].values).savefig(
+                os.path.join(os.path.split(self.output().path)[0], "ps.jpg"))
+
+        orders_df[["session_id", "account_idx", "merchant_idx", "shift_idx", "day_of_week", 
+                   "sorted_merchant_idx_list", "scores_merchant_idx_list", "rewards_merchant_idx_list",
+                   "prob_merchant_idx_list", "relevance_list", 
+                   "ps", "ps_eval", "count_visits", "rhat_rewards", "rewards"]].to_csv(
             self.output().path, index=False)
 
 
@@ -289,7 +399,7 @@ class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
         return df
 
     def _create_dictionary_of_scores(self, scores: np.ndarray) -> Dict[Tuple[int, int], float]:
-        tuples_df = pd.read_parquet(self.input()[1].path)
+        tuples_df = self.tuple_data_frame
         df        = self._read_test_data_frame()
 
         print("Grouping by account index...")
@@ -306,6 +416,8 @@ class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
         print("Creating the dictionary of scores...")
         return dict(scores_per_tuple)
 
+    def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
+        return None
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
@@ -313,28 +425,26 @@ class EvaluateIfoodModel(BaseEvaluationTask):
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     batch_size: int = luigi.IntParameter(default=100000)
     sample_size: int = luigi.FloatParameter(default=1)
+    plot_histogram: bool = luigi.BoolParameter(default=False)
+    limit_list_size: int = luigi.IntParameter(default=50)
 
     def requires(self):
         test_size = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
-        return SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
+        return (SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                               model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
                                               bandit_policy_params=self.bandit_policy_params,
                                               batch_size=self.batch_size,
-                                              sample_size=self.sample_size)
+                                              sample_size=self.sample_size,
+                                              plot_histogram=self.plot_histogram,
+                                              limit_list_size=self.limit_list_size),)
 
     def output(self):
-        model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                                  self.task_name)
-        return luigi.LocalTarget(os.path.join(model_path, "orders_with_metrics.csv")), \
-               luigi.LocalTarget(os.path.join(model_path, "metrics.json")),
+        return luigi.LocalTarget(os.path.join(self.output_path, "orders_with_metrics.csv")), \
+               luigi.LocalTarget(os.path.join(self.output_path, "metrics.json")),
 
     def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input().path)
-
-    @property
-    def n_items(self):
-        return self.model_training.n_items
+        return pd.read_csv(self.input()[0].path)
 
     def _mean_personalization(self, df: pd.DataFrame, k: int):
         grouped_df = df.groupby(["shift_idx", "day_of_week"])
@@ -350,11 +460,12 @@ class EvaluateIfoodModel(BaseEvaluationTask):
 
         # Adiciona zeros que são das visitas sem compra, recompensas zeradas para o calculo geral
         #
-        rewards = np.concatenate((df_offpolicy['rewards'], np.zeros(df.iloc[0].count_visits)), axis=None)
-        ps_eval = np.concatenate((df_offpolicy['ps_eval'], np.ones(df.iloc[0].count_visits)), axis=None)
-        ps      = np.concatenate((df_offpolicy['ps'], np.ones(df.iloc[0].count_visits)), axis=None)
-
-        return rewards, ps_eval, ps
+        rewards      = np.concatenate((df_offpolicy['rewards'], np.zeros(df.iloc[0].count_visits)), axis=None)
+        rhat_rewards = np.concatenate((df_offpolicy['rhat_rewards'], np.zeros(df.iloc[0].count_visits)), axis=None)
+        ps_eval      = np.concatenate((df_offpolicy['ps_eval'], np.ones(df.iloc[0].count_visits)), axis=None)
+        ps           = np.concatenate((df_offpolicy['ps'], np.ones(df.iloc[0].count_visits)), axis=None)
+        
+        return rhat_rewards, rewards, ps_eval, ps
 
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
@@ -362,12 +473,17 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         df: pd.DataFrame = self.read_evaluation_data_frame()
 
         with Pool(self.num_processes) as p:
-            df["sorted_merchant_idx_list"] = parallel_literal_eval(df["sorted_merchant_idx_list"], pool=p)
-            df["prob_merchant_idx_list"]   = parallel_literal_eval(df["relevance_list"], pool=p)
-            df["relevance_list"]           = parallel_literal_eval(df["relevance_list"], pool=p)
+            df["sorted_merchant_idx_list"]  = parallel_literal_eval(df["sorted_merchant_idx_list"], pool=p)
+            df["scores_merchant_idx_list"]  = parallel_literal_eval(df["scores_merchant_idx_list"], pool=p)
+            df["rewards_merchant_idx_list"] = parallel_literal_eval(df["rewards_merchant_idx_list"], pool=p)
+            df["prob_merchant_idx_list"]    = parallel_literal_eval(df["relevance_list"], pool=p)
+            df["relevance_list"]            = parallel_literal_eval(df["relevance_list"], pool=p)
 
             df["average_precision"] = list(
                 tqdm(p.map(average_precision, df["relevance_list"]), total=len(df)))
+
+            df["precision_at_1"] = list(
+                tqdm(p.map(functools.partial(precision_at_k, k=1), df["relevance_list"]), total=len(df)))
 
             df["ndcg_at_5"] = list(
                 tqdm(p.map(functools.partial(ndcg_at_k, k=5), df["relevance_list"]), total=len(df)))
@@ -383,29 +499,35 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         catalog = range(self.n_items)
 
         metrics = {
+            "model_task": self.model_task_id,
             "count": len(df),
             "mean_average_precision": df["average_precision"].mean(),
+            "precision_at_1": df["precision_at_1"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
-            #"ndcg_at_10": df["ndcg_at_10"].mean(),
+            "ndcg_at_10": df["ndcg_at_10"].mean(),
             "ndcg_at_15": df["ndcg_at_15"].mean(),
-            #"ndcg_at_20": df["ndcg_at_20"].mean(),
+            "ndcg_at_20": df["ndcg_at_20"].mean(),
             "ndcg_at_50": df["ndcg_at_50"].mean(),
             "coverage_at_5": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 5),
-            #"coverage_at_10": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 10),
+            "coverage_at_10": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 10),
             "coverage_at_15": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 15),
-            #"coverage_at_20": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 20),
+            "coverage_at_20": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 20),
             "coverage_at_50": prediction_coverage_at_k(df["sorted_merchant_idx_list"], catalog, 50),
             "personalization_at_5": self._mean_personalization(df, 5),
-            #"personalization_at_10": self._mean_personalization(df, 10),
+            "personalization_at_10": self._mean_personalization(df, 10),
             "personalization_at_15": self._mean_personalization(df, 15),
-            #"personalization_at_20": self._mean_personalization(df, 20),
+            "personalization_at_20": self._mean_personalization(df, 20),
             "personalization_at_50": self._mean_personalization(df, 50)
         }
 
         if self.bandit_policy != "none":
-            metrics["IPS"]   = eval_IPS(*self._offpolicy_eval(df))
-            metrics["CIPS"]  = eval_CIPS(*self._offpolicy_eval(df))
-            metrics["SNIPS"] = eval_SNIPS(*self._offpolicy_eval(df))
+            rhat_rewards, rewards, ps_eval, ps = self._offpolicy_eval(df)
+
+            metrics["IPS"]   = eval_IPS(rewards, ps_eval, ps)
+            metrics["CIPS"]  = eval_CIPS(rewards, ps_eval, ps)
+            metrics["SNIPS"] = eval_SNIPS(rewards, ps_eval, ps)            
+            metrics["DirectEstimator"] = np.mean(rhat_rewards)
+            metrics["DoublyRobust"]    = eval_doubly_robust(rhat_rewards, rewards, ps_eval, ps)
 
         print("\n====================")
         print("Metrics")
@@ -413,52 +535,48 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         pprint.pprint(metrics)
         print("")
 
-        df = df.drop(columns=["sorted_merchant_idx_list", "prob_merchant_idx_list", "relevance_list"])
+        df = df.drop(columns=["sorted_merchant_idx_list", "scores_merchant_idx_list",
+                                "rewards_merchant_idx_list", "prob_merchant_idx_list", 
+                                "relevance_list"])
+
         df.to_csv(self.output()[0].path)
+        
         with open(self.output()[1].path, "w") as metrics_file:
             json.dump(metrics, metrics_file, indent=4)
+        
+        self._save_params()
 
-
-class SortMerchantListsRandomly(luigi.Task):
+class SortMerchantListsRandomly(SortMerchantListsForIfoodModel):
     test_size: float = luigi.FloatParameter(default=0.1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
+    @property
+    def dataset(self) -> Dataset:
+        return None
+
+    @property
+    def train_dataset(self) -> Dataset:
+        return None
+
+    def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
+        return None
+
     def requires(self):
         return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
-                                                 minimum_interactions=self.minimum_interactions)
+                                                 minimum_interactions=self.minimum_interactions), \
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=self.test_size,
+                                                                      minimum_interactions=self.minimum_interactions), \
+               LoggingPolicyPsDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator'), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               CreateInteractionDataset(test_size=self.test_size)                            
 
-    def output(self):
-        return luigi.LocalTarget(
-            os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.task_id, "orders_with_sorted_merchants.csv"))
 
-    def random(self, l):
-        np.random.shuffle(l)
-        return list(l)
+    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
+        scores: np.array  = np.random.rand(len(self.test_data_frame))
 
-    def run(self):
-        os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
-
-        print("Reading the orders DataFrame...")
-        orders_df: pd.DataFrame = pd.read_parquet(self.input().path)
-
-        print("Filtering orders where the ordered merchant isn't in the list...")
-        orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
-
-        print("Sorting the merchant lists")
-        orders_df["sorted_merchant_idx_list"] = list(tqdm(
-            map(self.random, orders_df["merchant_idx_list"]),
-            total=len(orders_df)))
-
-        print("Creating the relevance lists...")
-        orders_df["relevance_list"] = list(tqdm(
-            starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
-            total=len(orders_df)))
-
-        print("Saving the output file...")
-        orders_df[["session_id", "sorted_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week"]].to_csv(
-            self.output().path, index=False)
-
+        return self._create_dictionary_of_scores(scores)
 
 class EvaluateAutoEncoderIfoodModel(EvaluateIfoodModel):
     def requires(self):
@@ -466,280 +584,178 @@ class EvaluateAutoEncoderIfoodModel(EvaluateIfoodModel):
                                                          model_cls=self.model_cls,
                                                          model_task_id=self.model_task_id,
                                                          bandit_policy=self.bandit_policy,
-                                                         bandit_policy_params=self.bandit_policy_params)
+                                                         bandit_policy_params=self.bandit_policy_params,
+                                                         plot_histogram=self.plot_histogram)
 
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
-    model_task_id: str = luigi.Parameter(default="none")
-    test_size: float = luigi.FloatParameter(default=0.1)
-    minimum_interactions: int = luigi.FloatParameter(default=5)
-
-    def requires(self):
-        return SortMerchantListsRandomly(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size,
-                                                                           minimum_interactions=self.minimum_interactions)
-
-    def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
-
-    @property
-    def n_items(self):
-        return len(pd.read_csv(self.input()[1][1].path))
-
-
-class SortMerchantListsByMostPopular(luigi.Task):
-    model_task_id: str = luigi.Parameter(default="none")
+    model_task_id: str = luigi.Parameter(default="RandomIfoodModel")
     test_size: float = luigi.FloatParameter(default=0.1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
+    plot_histogram: bool = luigi.BoolParameter(default=False)
+    limit_list_size: int = luigi.IntParameter(default=50)
 
     def requires(self):
-        return CreateInteractionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
-                                                 minimum_interactions=self.minimum_interactions), \
-                LoggingPolicyPsDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions)
-
-    def output(self):
-        return luigi.LocalTarget(
-            os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.task_id, "orders_with_sorted_merchants.csv"))
-
-    def run(self):
-        os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
-
-        print("Reading the interactions DataFrame...")
-        interactions_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)
-        print("Generating the scores")
-        scores: pd.Series = interactions_df.groupby("merchant_idx")["buys"].sum()
-        scores_dict: Dict[int, float] = {merchant_idx: score for merchant_idx, score
-                                         in tqdm(zip(scores.index, scores),
-                                                 total=len(scores))}
-
-        print("Reading the orders DataFrame...")
-        orders_df: pd.DataFrame = pd.read_parquet(self.input()[1].path)
-
-        print("Join with LogPolicyProb...")
-        logpolicy_df: pd.DataFrame = pd.read_csv(self.input()[2].path)
-        orders_df = orders_df.merge(logpolicy_df, how='left', on=['merchant_idx', 'account_idx']).fillna(0)
-
-        print("Filtering orders where the ordered merchant isn't in the list...")
-        orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
-
-        # print("Sorting the merchant lists")
-        # orders_df["sorted_merchant_idx_list"] = list(tqdm(
-        #     starmap(functools.partial(_sort_merchants_by_merchant_score, scores_per_merchant=scores_dict),
-        #             zip(orders_df["merchant_idx_list"])),
-        #     total=len(orders_df)))
-
-        print("Sorting the merchant lists")
-        if self.bandit_policy == "none":
-            sort_function = functools.partial(_sort_merchants_by_merchant_score, scores_per_merchant=scores_dict)
-
-            sorted_merchant_idx_list =  list(tqdm(starmap(functools.partial(sort_function, scores_per_merchant=scores_dict),
-                                                    zip(orders_df["merchant_idx_list"])),
-                                            total=len(orders_df)))
-
-            orders_df["sorted_merchant_idx_list"] = list(sorted_merchant_idx_list)
-            orders_df["prob_merchant_idx_list"]   = np.ones(len(sorted_merchant_idx_list))
-
-        else:
-            bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
-            bandit_policy.fit(None)
-            sort_function = functools.partial(_sort_merchants_by_merchant_score_with_bandit_policy,
-                                              scores_per_merchant=scores_dict,
-                                              bandit_policy=bandit_policy)
-
-            sorted_merchant_idx_list =  list(tqdm(starmap(sort_function, zip(orders_df["merchant_idx_list"])),
-                                            total=len(orders_df)))
-            # unzip (sorted, prob)
-            sorted, prob = zip(*sorted_merchant_idx_list)
-
-            orders_df["sorted_merchant_idx_list"] = sorted
-            orders_df["prob_merchant_idx_list"] = prob
-
-        print("Creating the relevance lists...")
-        orders_df["relevance_list"] = list(tqdm(
-            starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
-            total=len(orders_df)))
-
-        print("Calculate ps policy eval...")
-        orders_df["ps_eval"] = list(tqdm(
-            starmap(_ps_policy_eval, zip(orders_df["relevance_list"], orders_df["prob_merchant_idx_list"])),
-            total=len(orders_df)))
-
-        print("Calcule rewards...")
-        orders_df["rewards"] = orders_df["buy"]
-
-        print("Saving the output file...")
-        orders_df[["session_id", "account_idx", "merchant_idx", "sorted_merchant_idx_list",
-                   "prob_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week",
-                   "ps", "ps_eval", "count_visits", "rewards"]].to_csv(
-            self.output().path, index=False)
-
-
-class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
-    model_task_id: str = luigi.Parameter(default="none")
-    test_size: float = luigi.FloatParameter(default=0.1)
-    minimum_interactions: int = luigi.FloatParameter(default=5)
-    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
-    bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
-
-    def requires(self):
-        return SortMerchantListsByMostPopular(test_size=self.test_size, minimum_interactions=self.minimum_interactions,
-                                                bandit_policy=self.bandit_policy, bandit_policy_params=self.bandit_policy_params), \
+        return SortMerchantListsRandomly(test_size=self.test_size, 
+                                              minimum_interactions=self.minimum_interactions,
+                                              bandit_policy=self.bandit_policy, 
+                                              bandit_policy_params=self.bandit_policy_params,
+                                              plot_histogram=self.plot_histogram,
+                                              model_task_id=self.model_task_id,
+                                              limit_list_size=self.limit_list_size), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                    test_size=self.test_size, minimum_interactions=self.minimum_interactions)
 
-    def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
-
-    def output(self):
-        model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                                    self.task_id)
-        return luigi.LocalTarget(os.path.join(model_path, "orders_with_metrics.csv")), \
-                luigi.LocalTarget(os.path.join(model_path, "metrics.json")),
-
     @property
     def n_items(self):
         return len(pd.read_csv(self.input()[1][1].path))
 
 
-class SortMerchantListsByMostPopularPerUser(luigi.Task):
-    model_task_id: str = luigi.Parameter(default="none")
+class SortMerchantListsByMostPopular(SortMerchantListsForIfoodModel):
+    test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+
+    @property
+    def dataset(self) -> Dataset:
+        return None
+
+    @property
+    def train_dataset(self) -> Dataset:
+        return None
+
+    def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
+        return None
+
+    def requires(self):
+        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
+                                                 minimum_interactions=self.minimum_interactions), \
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=self.test_size,
+                                                                      minimum_interactions=self.minimum_interactions), \
+               LoggingPolicyPsDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator'), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               CreateInteractionDataset(test_size=self.test_size)                            
+
+
+    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
+        
+        interactions_df = pd.read_parquet(self.input()[-1].path)
+        test_df         = self.test_data_frame
+
+        # Group by Merchant a sum results
+        scores: pd.DataFrame = interactions_df\
+                                .groupby("merchant_idx")["buys"].sum().reset_index()\
+                                .rename(columns = {'buys': 'total_buy'})
+
+        merchant_tuples_scores: pd.DataFrame = test_df.merge(scores, how='left', on='merchant_idx').fillna(0)
+
+        return self._create_dictionary_of_scores(merchant_tuples_scores['total_buy'])
+
+
+class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
+    model_task_id: str = luigi.Parameter(default="MostPopularIfoodModel")
+    test_size: float = luigi.FloatParameter(default=0.1)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
+    bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
+    plot_histogram: bool = luigi.BoolParameter(default=False)
+    limit_list_size: int = luigi.IntParameter(default=50)
+
+    def requires(self):
+        return SortMerchantListsByMostPopular(test_size=self.test_size, 
+                                              minimum_interactions=self.minimum_interactions,
+                                              bandit_policy=self.bandit_policy, 
+                                              bandit_policy_params=self.bandit_policy_params,
+                                              plot_histogram=self.plot_histogram,
+                                              model_task_id=self.model_task_id,
+                                              limit_list_size=self.limit_list_size), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                   test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+
+    @property
+    def n_items(self):
+        return len(pd.read_csv(self.input()[1][1].path))
+
+    @property
+    def output_path(self):
+        return os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                                    self.task_id)
+
+
+class SortMerchantListsByMostPopularPerUser(SortMerchantListsForIfoodModel):
     test_size: float = luigi.FloatParameter(default=0.1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     buy_importance: float = luigi.FloatParameter(default=1.0)
     visit_importance: float = luigi.FloatParameter(default=0.0)
-    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
-    bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
+
+    @property
+    def dataset(self) -> Dataset:
+        return None
+
+    @property
+    def train_dataset(self) -> Dataset:
+        return None
+
+    def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
+        return None
 
     def requires(self):
-        return CreateInteractionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
+        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
                                                  minimum_interactions=self.minimum_interactions), \
-               LoggingPolicyPsDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=self.test_size,
+                                                                      minimum_interactions=self.minimum_interactions), \
+               LoggingPolicyPsDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator'), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+               CreateInteractionDataset(test_size=self.test_size)                            
 
-    def output(self):
-        return luigi.LocalTarget(
-            os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.task_id + "GenerateMostPopularPerUserRelevanceLists_buy_importance=%.2f_visit_importance=%.2f" % (
-                             self.buy_importance,
-                             self.visit_importance),
-                         "orders_with_sorted_merchants.csv"))
 
-    def run(self):
-        os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
+    def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
+        interactions_df = pd.read_parquet(self.input()[-1].path)
+        test_df         = self.test_data_frame
 
-        print("Reading the interactions DataFrame...")
-        interactions_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)
-        print("Generating the scores")
-        grouped_interactions = interactions_df.groupby(["account_idx", "merchant_idx"])
-        scores: pd.Series = grouped_interactions["buys"].sum() * self.buy_importance \
-                            + grouped_interactions["visits"].sum() * self.visit_importance
-        scores_per_tuple: Dict[Tuple[int, int], float] = {(account_idx, merchant_idx): score
-                                                          for (account_idx, merchant_idx), score
-                                                          in tqdm(zip(scores.index, scores), total=len(scores))}
+        grouped_interactions          = interactions_df.groupby(["account_idx", "merchant_idx"])\
+                                        .agg({'buys': 'sum', 'visits': 'sum'}).reset_index()
 
-        print("Reading the orders DataFrame...")
-        orders_df: pd.DataFrame = pd.read_parquet(self.input()[1].path)
+        grouped_interactions['score'] = grouped_interactions.apply(lambda row: row['buys'] * self.buy_importance + row['visits']*self.visit_importance, axis=1) 
 
-        print("Join with LogPolicyProb...")
-        logpolicy_df: pd.DataFrame = pd.read_csv(self.input()[2].path)
-        orders_df = orders_df.merge(logpolicy_df, how='left', on=['merchant_idx', 'account_idx']).fillna(0)
+        merchant_tuples_scores: pd.DataFrame = test_df.merge(grouped_interactions, how='left', 
+                                                                on=['account_idx', 'merchant_idx']).fillna(-1)
 
-        print("Filtering orders where the ordered merchant isn't in the list...")
-        orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
-
-        # print("Sorting the merchant lists")
-        # orders_df["sorted_merchant_idx_list"] = list(tqdm(
-        #     starmap(functools.partial(_sort_merchants_by_tuple_score, scores_per_tuple=scores_per_tuple),
-        #             zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
-        #     total=len(orders_df)))
-
-        print("Sorting the merchant lists")
-        if self.bandit_policy == "none":
-            sort_function = functools.partial(_sort_merchants_by_tuple_score, scores_per_tuple=scores_per_tuple)
-
-            sorted_merchant_idx_list =  list(tqdm(starmap(functools.partial(sort_function, scores_per_tuple=scores_per_tuple),
-                                                    zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
-                                            total=len(orders_df)))
-
-            orders_df["sorted_merchant_idx_list"] = list(sorted_merchant_idx_list)
-            orders_df["prob_merchant_idx_list"]   = np.ones(len(sorted_merchant_idx_list))
-
-        else:
-            bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
-            bandit_policy.fit(None)
-            sort_function = functools.partial(_sort_merchants_by_tuple_score_with_bandit_policy,
-                                              dataset=None,
-                                              dataset_indices_per_tuple=None,
-                                              scores_per_tuple=scores_per_tuple,
-                                              bandit_policy=bandit_policy)
-
-            sorted_merchant_idx_list =  list(tqdm(starmap(functools.partial(sort_function, scores_per_tuple=scores_per_tuple),
-                                                    zip(orders_df["account_idx"], orders_df["merchant_idx_list"])),
-                                            total=len(orders_df)))
-            # unzip (sorted, prob)
-            sorted, prob = zip(*sorted_merchant_idx_list)
-
-            orders_df["sorted_merchant_idx_list"] = sorted
-            orders_df["prob_merchant_idx_list"] = prob
-
-        print("Creating the relevance lists...")
-        orders_df["relevance_list"] = list(tqdm(
-            starmap(_create_relevance_list, zip(orders_df["sorted_merchant_idx_list"], orders_df["merchant_idx"])),
-            total=len(orders_df)))
-
-        print("Calculate ps policy eval...")
-        orders_df["ps_eval"] = list(tqdm(
-            starmap(_ps_policy_eval, zip(orders_df["relevance_list"], orders_df["prob_merchant_idx_list"])),
-            total=len(orders_df)))
-
-        print("Calcule rewards...")
-        orders_df["rewards"] = orders_df["buy"]
-
-        print("Saving the output file...")
-        orders_df[["session_id", "account_idx", "merchant_idx", "sorted_merchant_idx_list",
-                   "prob_merchant_idx_list", "relevance_list", "shift_idx", "day_of_week",
-                   "ps", "ps_eval", "count_visits", "rewards"]].to_csv(
-            self.output().path, index=False)
+        return self._create_dictionary_of_scores(merchant_tuples_scores['score'])
 
 
 class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
-    model_task_id: str = luigi.Parameter(default="none")
+    model_task_id: str = luigi.Parameter(default="MostPopularPerUserIfoodModel")
     test_size: float = luigi.FloatParameter(default=0.1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
-    buy_importance: float = luigi.FloatParameter(default=1.0)
-    visit_importance: float = luigi.FloatParameter(default=0.0)
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
+    limit_list_size: int = luigi.IntParameter(default=50)
+    buy_importance: float = luigi.FloatParameter(default=1.0)
+    visit_importance: float = luigi.FloatParameter(default=0.0)
 
     def requires(self):
-        return SortMerchantListsByMostPopularPerUser(test_size=self.test_size,
-                                                     minimum_interactions=self.minimum_interactions,
-                                                     buy_importance=self.buy_importance,
-                                                     visit_importance=self.visit_importance,
-                                                     bandit_policy=self.bandit_policy,
-                                                     bandit_policy_params=self.bandit_policy_params                                                     ), \
+        return SortMerchantListsByMostPopularPerUser(test_size=self.test_size, 
+                                                    minimum_interactions=self.minimum_interactions,
+                                                    bandit_policy=self.bandit_policy, 
+                                                    bandit_policy_params=self.bandit_policy_params,
+                                                    plot_histogram=self.plot_histogram,
+                                                    model_task_id=self.model_task_id,
+                                                    limit_list_size=self.limit_list_size,
+                                                    buy_importance=self.buy_importance,
+                                                    visit_importance=self.visit_importance                                                  ), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                    test_size=self.test_size,
                    minimum_interactions=self.minimum_interactions)
 
-    def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
-
     @property
     def n_items(self):
         return len(pd.read_csv(self.input()[1][1].path))
-
-    def output(self):
-        model_path = os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                                  self.task_id + "_buy_importance=%.6f_visit_importance=%.6f" % (
-                                      self.buy_importance,
-                                      self.visit_importance))
-        return luigi.LocalTarget(os.path.join(model_path, "orders_with_metrics.csv")), \
-               luigi.LocalTarget(os.path.join(model_path, "metrics.json")),
 
 
 class GenerateUserEmbeddingsFromContentModel(BaseEvaluationTask):
@@ -965,19 +981,12 @@ class SortMerchantListsTripletNetInfoContent(SortMerchantListsForIfoodModel):
 class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
 
-    def requires(self):
-        test_size = self.model_training.requires().session_test_size
-        minimum_interactions = self.model_training.requires().minimum_interactions
-        return super().requires() + (GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-            test_size=test_size, minimum_interactions=minimum_interactions), \
-                                     CreateInteractionDataset(test_size=test_size))
-
     def _read_test_data_frame(self) -> pd.DataFrame:
         tuples_df = pd.read_parquet(self.input()[1].path)#.sample(frac=self.sample_size)
 
         train_interactions_df = pd.read_parquet(self.input()[-1].path)[
             ['account_idx', 'merchant_idx', 'visits', 'buys']]
-        train_interactions_df['buys'] = train_interactions_df['buys'].astype(float)
+        train_interactions_df['buys']   = train_interactions_df['buys'].astype(float)
         train_interactions_df['visits'] = train_interactions_df['visits'].astype(float)
 
         tuples_df = tuples_df.merge(train_interactions_df, on=['account_idx', 'merchant_idx'], how='outer')
@@ -996,11 +1005,12 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
     group_last_k_merchants: int = luigi.FloatParameter(default=20)
 
     def requires(self):
-        return [SortMerchantListsTripletNetInfoContent(
-            model_module=self.model_module, model_cls=self.model_cls,
-            model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
-            bandit_policy_params=self.bandit_policy_params, batch_size=self.batch_size,
-            group_last_k_merchants=self.group_last_k_merchants),
+        return [
+            SortMerchantListsTripletNetInfoContent(
+                model_module=self.model_module, model_cls=self.model_cls,
+                model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
+                bandit_policy_params=self.bandit_policy_params, batch_size=self.batch_size,
+                group_last_k_merchants=self.group_last_k_merchants),
             ProcessRestaurantContentDataset(),
             GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                 test_size=self.test_size,
@@ -1037,6 +1047,7 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
         catalog = range(1664)
 
         metrics = {
+            "model_task": self.model_task_id,
             "count": len(df),
             "mean_average_precision": df["average_precision"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
@@ -1074,7 +1085,8 @@ class EvaluateIfoodFullContentModel(EvaluateIfoodModel):
         return SortMerchantListsFullContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                  model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
                                                  bandit_policy_params=self.bandit_policy_params,
-                                                 sample_size=self.sample_size)
+                                                 sample_size=self.sample_size,
+                                                 plot_histogram=self.plot_histogram)
 
 
 class GenerateContentEmbeddings(BaseEvaluationTask):
