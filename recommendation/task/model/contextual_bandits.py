@@ -4,10 +4,24 @@ import os
 import numpy as np
 from typing import Callable, List, Type, Union
 
-from recommendation.task.model.base import BaseTorchModelTraining, TORCH_ACTIVATION_FUNCTIONS, TORCH_WEIGHT_INIT, \
+from recommendation.task.model.base import BaseTorchModelTraining, TORCH_LOSS_FUNCTIONS, TORCH_ACTIVATION_FUNCTIONS, TORCH_WEIGHT_INIT, \
     TORCH_DROPOUT_MODULES
-from recommendation.model.contextual_bandits import ContextualBandit
+from recommendation.model.contextual_bandits import ContextualBandit, DirectEstimator
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
+
+class DirectEstimatorTraining(BaseTorchModelTraining):
+    n_factors: int = luigi.IntParameter(default=100)
+    dropout_prob: float = luigi.FloatParameter(default=0.1)
+    learning_rate: float = luigi.FloatParameter(1e-4)
+    loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce")
+    n_factors: int = luigi.IntParameter(default=100)
+
+    def create_module(self) -> nn.Module:
+        return DirectEstimator(
+            n_users=self.n_users,
+            n_items=self.n_items,
+            n_factors=self.n_factors,
+            dropout_prob=self.dropout_prob)
 
 class ContextualBanditsTraining(BaseTorchModelTraining):
     loss_function: str = luigi.ChoiceParameter(choices=["crm"], default="crm")

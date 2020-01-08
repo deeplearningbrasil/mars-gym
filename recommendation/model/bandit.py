@@ -73,7 +73,6 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         else:
             return ranked_arms
 
-
 class RandomPolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
         super().__init__(reward_model)
@@ -89,6 +88,21 @@ class RandomPolicy(BanditPolicy):
 
         if with_prob:
             return action, arm_probas[action]
+        else:
+            return action
+
+class ModelPolicy(BanditPolicy):
+    def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._rng = RandomState(seed)
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
+
+        action = int(np.argmax(arm_scores))
+
+        if with_prob:
+            return action, int(pos == 0)
         else:
             return action
 
