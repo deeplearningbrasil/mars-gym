@@ -150,7 +150,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         return tuples_df
 
     def _transform_scores(self, scores: np.ndarray) -> np.ndarray:
-        return scores
+        return scores.reshape(-1)
 
     @property
     def test_data_frame(self) -> pd.DataFrame:
@@ -220,7 +220,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         # TODO else with batch size
         scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
-        scores: np.ndarray = scores_tensor.detach().cpu().numpy().reshape(-1)
+        scores: np.ndarray = scores_tensor.detach().cpu().numpy()
 
         scores = self._transform_scores(scores)
 
@@ -393,6 +393,9 @@ class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
 
         return df
 
+    def _transform_scores(self, scores: np.ndarray) -> np.ndarray:
+        return scores
+
     def _eval_buys_per_merchant_column(self, df: pd.DataFrame):
         if len(df) > 0 and type(df.iloc[0]["buys_per_merchant"]) is str:
             df["buys_per_merchant"] = parallel_literal_eval(df["buys_per_merchant"])
@@ -431,20 +434,20 @@ class EvaluateIfoodModel(BaseEvaluationTask):
     def requires(self):
         test_size = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
-        return (SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
+        return SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                               model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
                                               bandit_policy_params=self.bandit_policy_params,
                                               batch_size=self.batch_size,
                                               sample_size=self.sample_size,
                                               plot_histogram=self.plot_histogram,
-                                              limit_list_size=self.limit_list_size),)
+                                              limit_list_size=self.limit_list_size)
 
     def output(self):
         return luigi.LocalTarget(os.path.join(self.output_path, "orders_with_metrics.csv")), \
                luigi.LocalTarget(os.path.join(self.output_path, "metrics.json")),
 
     def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
+        return pd.read_csv(self.input().path)
 
     def _mean_personalization(self, df: pd.DataFrame, k: int):
         grouped_df = df.groupby(["shift_idx", "day_of_week"])
@@ -608,6 +611,9 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                    test_size=self.test_size, minimum_interactions=self.minimum_interactions)
 
+    def read_evaluation_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.input()[0].path)
+
     @property
     def n_items(self):
         return len(pd.read_csv(self.input()[1][1].path))
@@ -674,6 +680,9 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
                                               limit_list_size=self.limit_list_size), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                    test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+
+    def read_evaluation_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.input()[0].path)
 
     @property
     def n_items(self):
@@ -752,6 +761,9 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                    test_size=self.test_size,
                    minimum_interactions=self.minimum_interactions)
+
+    def read_evaluation_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.input()[0].path)
 
     @property
     def n_items(self):
