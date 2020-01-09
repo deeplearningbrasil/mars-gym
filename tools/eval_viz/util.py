@@ -3,7 +3,7 @@ import json
 import os
 from pandas.io.json import json_normalize
 
-def json2df(paths, file):
+def json2df(paths, file, idx):
   data = []
   for model, path in paths.items():
     file_path = os.path.join(path, file)
@@ -19,13 +19,8 @@ def json2df(paths, file):
 
   df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
   
-  # if 'model_task' in df.columns:
-  #   df = df.set_index('model_task')
-  # elif 'model_task_id' in df.columns:
-  #   df = df.set_index('model_task_id')
-  # elif 'path' in df.columns:
-  #   df = df.set_index('path')
-  df = df.set_index('model')
+  df = df.set_index(idx)
+
   return df
 
 def filter_df(df, lines, columns = None, sort = None):

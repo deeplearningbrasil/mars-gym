@@ -53,15 +53,15 @@ def fetch_results_path():
 
 @st.cache
 def load_data_metrics():
-  return json2df(fetch_results_path(), 'metrics.json')
+  return json2df(fetch_results_path(), 'metrics.json', 'model')
 
 @st.cache
 def load_eval_params():
-  return json2df(fetch_results_path(), 'params.json')
+  return json2df(fetch_results_path(), 'params.json', 'model')
 
 @st.cache
 def load_train_params():
-  return json2df(fetch_training_path(), 'params.json')
+  return json2df(fetch_training_path(), 'params.json', 'path')
 
 def load_data_orders_metrics(model):
   return pd.read_csv(os.path.join(fetch_results_path()[model],'orders_with_metrics.csv'))
@@ -113,7 +113,8 @@ def display_one_result():
   df_metrics        = filter_df(load_data_metrics(), [input_model_eval]).transpose()
   df_eval_params    = filter_df(load_eval_params(), [input_model_eval]).transpose()
   df_orders         = load_data_orders_metrics(input_model_eval)
-
+  print(input_model_eval)
+  print(load_train_params().head())
   try:
     df_train_params   = filter_df(load_train_params(), [input_model_eval]).transpose()
     df_hist           = load_history_train(input_model_eval)
