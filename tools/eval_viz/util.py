@@ -10,20 +10,22 @@ def json2df(paths, file):
     try:
       with open(file_path) as json_file:
         d = json.load(json_file)
-        d['path'] = path.split("/")[-1]
+        d['path']  = path.split("/")[-1]
+        d['model'] = d['path'].replace("_"+d['path'].split("_")[-1], "")
+
         data.append(d)
     except IsADirectoryError:
       data.append({'path': path.split("/")[-1]})
 
   df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
   
-  if 'model_task' in df.columns:
-    df = df.set_index('model_task')
-  elif 'model_task_id' in df.columns:
-    df = df.set_index('model_task_id')
-  elif 'path' in df.columns:
-    df = df.set_index('path')
-
+  # if 'model_task' in df.columns:
+  #   df = df.set_index('model_task')
+  # elif 'model_task_id' in df.columns:
+  #   df = df.set_index('model_task_id')
+  # elif 'path' in df.columns:
+  #   df = df.set_index('path')
+  df = df.set_index('model')
   return df
 
 def filter_df(df, lines, columns = None, sort = None):
