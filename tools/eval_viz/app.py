@@ -9,6 +9,7 @@ from plot import *
 from util import *
 
 PATH_EVALUATION = '../../output/evaluation/'
+PATH_TRAIN      = '../../output/models/'
 
 PAGES = {
   "Home": "pages.home",
@@ -16,14 +17,27 @@ PAGES = {
 }
 
 GRAPH_METRIC = {
+  "Bar": plot_bar,
   "Line": plot_line,
-  "Bar": plot_bar
+  "Radar": plot_radar
 }
 
 GRAPH_METRIC_MODEL = {
   "Hist": plot_hist,
   "Box": plot_box
 }
+
+@st.cache
+def fetch_training_path():
+    paths  = []
+    models = []
+    for root, dirs, files in os.walk(PATH_TRAIN):
+      if '/results' in root:
+        for d in dirs:
+          paths.append(os.path.join(root, d))
+          models.append(d)
+              
+    return dict(zip(models, paths))
 
 @st.cache
 def fetch_results_path():
@@ -33,7 +47,7 @@ def fetch_results_path():
       if '/results' in root and 'Evaluate' in root:
         for d in dirs:
           paths.append(os.path.join(root, d))
-          models.append(d)
+          models.append(d.replace("_"+d.split("_")[-1], ""))
               
     return dict(zip(models, paths))
 
@@ -42,21 +56,27 @@ def load_data_metrics():
   return json2df(fetch_results_path(), 'metrics.json')
 
 @st.cache
-def load_data_params():
+def load_eval_params():
   return json2df(fetch_results_path(), 'params.json')
+
+@st.cache
+def load_train_params():
+  return json2df(fetch_training_path(), 'params.json')
 
 def load_data_orders_metrics(model):
   return pd.read_csv(os.path.join(fetch_results_path()[model],'orders_with_metrics.csv'))
 
+def load_history_train(model):
+  return pd.read_csv(os.path.join(fetch_training_path()[model],'history.csv')).set_index('epoch')
 
 def display_compare_results():
-  st.title("Compare Results")
+  st.title("[Compare Results]")
 
   st.sidebar.markdown("## Filter Options")
   input_models_eval = st.sidebar.multiselect("Results", sorted(fetch_results_path().keys()))
 
-  input_metrics     = st.sidebar.multiselect("Metrics", sorted(load_data_metrics().columns))
-  input_params      = st.sidebar.multiselect("Parameters", sorted(load_data_params().columns))
+  input_metrics     = st.sidebar.multiselect("Metrics", sorted(load_data_metrics().columns), default=['ndcg_at_5', 'mean_average_precision'])
+  input_params      = st.sidebar.multiselect("Parameters", sorted(load_eval_params().columns))
 
   st.sidebar.markdown("## Graph Options")
 
@@ -64,43 +84,71 @@ def display_compare_results():
   input_df_trans    = st.sidebar.checkbox("Transpose Data?")
   input_sorted      = st.sidebar.selectbox("Sort", sorted(load_data_metrics().columns), index=11)
 
-  df_metrics = filter_df(load_data_metrics(), input_models_eval, input_metrics, input_sorted)
-  df_params  = filter_df(load_data_params(), input_models_eval, input_params)
+  df_metrics      = filter_df(load_data_metrics(), input_models_eval, input_metrics, input_sorted)
+  df_eval_params  = filter_df(load_eval_params(), input_models_eval, input_params).transpose()
+  
+  try:
+    df_train_params   = filter_df(load_train_params(), input_models_eval).transpose()
+  except:
+    df_train_params = df_hist = None
 
   st.markdown('## Metrics')
   st.dataframe(df_metrics)
-
-  st.markdown('## DataViz')
   GRAPH_METRIC[input_graph](df_metrics.transpose() if input_df_trans else df_metrics)
 
-  st.markdown('## Params')
-  st.dataframe(df_params)
+  if df_train_params is not None:
+    st.markdown('## Params (Train)')
+    st.dataframe(df_train_params)
+
+  st.markdown('## Params (Eval)')
+  st.dataframe(df_eval_params)
+  
 
 def display_one_result():
   st.sidebar.markdown("## Filter Options")  
-  input_model_eval  = st.sidebar.selectbox("Result", sorted(fetch_results_path().keys()))
-  st.title(input_model_eval)
+  input_model_eval  = st.sidebar.selectbox("Result", sorted(fetch_results_path().keys()), index=0)
+  st.title("[Model Result]")
+  st.write(input_model_eval)
 
-  df_metrics = filter_df(load_data_metrics(), [input_model_eval]).transpose()
-  df_params  = filter_df(load_data_params(), [input_model_eval]).transpose()
-  df_orders  = load_data_orders_metrics(input_model_eval)
+  df_metrics        = filter_df(load_data_metrics(), [input_model_eval]).transpose()
+  df_eval_params    = filter_df(load_eval_params(), [input_model_eval]).transpose()
+  df_orders         = load_data_orders_metrics(input_model_eval)
+
+  try:
+    df_train_params   = filter_df(load_train_params(), [input_model_eval]).transpose()
+    df_hist           = load_history_train(input_model_eval)
+  except:
+    df_train_params = df_hist = None
 
   st.sidebar.markdown("## Graph Options")
-  input_column = st.sidebar.multiselect("Column", sorted(df_orders.columns))
-  input_graph  = st.sidebar.radio("Graph", list(GRAPH_METRIC_MODEL.keys()))
+  if df_hist is not None:
+    input_coluns_tl = st.sidebar.multiselect("Columns Train Log", sorted(df_hist.columns), default=['loss', 'val_loss'])
 
-  st.markdown('## Orders with Metrics')
+  input_column    = st.sidebar.multiselect("Column (orders_with_metrics.csv)", sorted(df_orders.columns), default=['ps'])
+  input_graph     = st.sidebar.radio("Graph", list(GRAPH_METRIC_MODEL.keys()))
+
+  if df_hist is not None:
+    st.markdown('## Train Logs')
+    plot_history(df_hist[input_coluns_tl])
+
+  st.markdown('''
+    ## Orders with Metrics
+    ### orders_with_metrics.csv
+  ''')
+  
   st.dataframe(df_orders.head())
-
-  st.markdown('## DataViz')
   if len(input_column) > 0:
     GRAPH_METRIC_MODEL[input_graph](df_orders[input_column])
 
   st.markdown('## Metrics')
   st.dataframe(df_metrics)
 
-  st.markdown('## Params')
-  st.dataframe(df_params)
+  if df_train_params is not None:
+    st.markdown('## Params (Train)')
+    st.dataframe(df_train_params)
+
+  st.markdown('## Params (Eval)')
+  st.dataframe(df_eval_params)
 
 def main():
     """Main function of the App"""
@@ -113,7 +161,7 @@ def main():
 
     st.sidebar.markdown("## Navigation")
     
-    input_page        = st.sidebar.radio("Choose a page", ["[Compare Results]", "[Only One Result]"])
+    input_page        = st.sidebar.radio("Choose a page", ["[Model Result]", "[Compare Results]"])
 
     if input_page == "[Compare Results]":
       display_compare_results()

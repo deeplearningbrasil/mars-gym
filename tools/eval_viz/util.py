@@ -16,7 +16,14 @@ def json2df(paths, file):
       data.append({'path': path.split("/")[-1]})
 
   df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
-  df = df.set_index('path')
+  
+  if 'model_task' in df.columns:
+    df = df.set_index('model_task')
+  elif 'model_task_id' in df.columns:
+    df = df.set_index('model_task_id')
+  elif 'path' in df.columns:
+    df = df.set_index('path')
+
   return df
 
 def filter_df(df, lines, columns = None, sort = None):
