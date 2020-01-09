@@ -8,6 +8,7 @@ from numpy.random.mtrand import RandomState
 from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
+import collections 
 
 
 class BanditPolicy(object, metaclass=abc.ABCMeta):
@@ -21,6 +22,10 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
     def _select_idx(self, arm_ids: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
         pass
+    
+    @abc.abstractmethod
+    def _compute_prob(self, arm_scores: List[float])) -> List[float]:
+        raise NotImplementedError
 
     def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
         inputs: torch.Tensor = default_convert(arm_contexts)
@@ -48,25 +53,36 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         assert len(arm_indices) == len(arm_scores)
 
         ranked_arms = []
-        if with_probs:
-            prob_arms = []
         arm_indices = list(arm_indices)
         arm_scores = list(arm_scores)
+
+        if with_probs:
+            prob_ranked_arms = []
+            arm_probs = self._compute_prob(arm_scores)
+
+        print("Arm Indices: " + str(arm_indices))
+        print("Arm Scores: " + str(arm_scores))
+        if with_probs:
+            print("Arm Probs: " + str(arm_probs))
+
         n = len(arm_indices) if limit is None else min(len(arm_indices), limit)
         for i in range(n):
             idx = self.select_idx(arm_indices, arm_scores=arm_scores, pos=i, with_prob=with_probs)
 
-            if with_probs:
-                idx, prob = idx  # type: int, float
-                prob_arms.append(prob)
-
             ranked_arms.append(arm_indices[idx])
+
+            if with_probs:
+                prob_ranked_arms.append(arm_probs[idx])
+                arm_probs.pop(idx)
 
             arm_indices.pop(idx)
             arm_scores.pop(idx)
+            
 
         if with_probs:
-            return ranked_arms, prob_arms
+            print("Ranked Arms: " + str(ranked_arms))
+            print("Prob Ranked Arms: " + str(prob_ranked_arms))
+            return ranked_arms, prob_ranked_arms
         else:
             return ranked_arms
 
@@ -105,33 +121,106 @@ class ModelPolicy(BanditPolicy):
 
 
 class EpsilonGreedy(BanditPolicy):
-    def __init__(self, reward_model: nn.Module, epsilon: float = 0.05, seed: int = 42) -> None:
+    def __init__(self, reward_model: nn.Module, epsilon: float = 0.05, epsilon_decay: float = 1.0, seed: int = 42) -> None:
         super().__init__(reward_model)
         self._epsilon = epsilon
         self._rng = RandomState(seed)
+        self._epsilon_decay = epsilon_decay
+
+    def _compute_prob(self, arm_scores):
+        arm_probs = self._epsilon * np.ones(n_arms) / n_arms
+
+        argmax = int(np.argmax(arm_scores))
+
+        arms_probas[argmax] += (1 - self._epsilon)
+
+        return arm_probs
+
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
 
         n_arms = len(arm_indices)
-        total_arms = (n_arms + pos)
         arm_probas = np.ones(n_arms) / n_arms
 
         if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
             action = self._rng.choice(len(arm_indices), p=arm_probas)
-            prob = self._epsilon * arm_probas[action]
         else:
             action = int(np.argmax(arm_scores))
-            prob = (1.0 - self._epsilon) + (self._epsilon * arm_probas[action])
 
-        # If different from hit@1 use exploration probability
-        if pos > 0:
-            prob = self._epsilon * (1 / total_arms)
+        #We must adapt the epsilon rate only in the beginning of each evaluation:
+        if pos == 0:
+            self._epsilon *= self._epsilon_decay
 
-        if with_prob:
-            return action, prob
+        return action
+
+class PercentileAdaptiveGreedy(BanditPolicy):
+    def __init__(self, reward_model: nn.Module, window_size: int = 500, exploration_threshold: float = 0.9, percentile = 35, percentile_decay: float = 0.9998,
+         seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._window_size = window_size
+        self._initial_exploration_threshold = exploration_threshold
+        self._percentile_decay = percentile_decay
+        self._best_arm_history = {} # We save a deque for each pos
+        self._rng = RandomState(seed)
+        self._percentile = percentile
+        self._t = 0
+        self._first_evaluation = True
+
+    def _compute_prob(self, arm_scores):
+        max_score = max(arm_scores)
+
+        exploration_threshold = np.percentile(self._best_arm_history[pos], self._percentile) \
+            if self._t >= self._window_size else self._initial_exploration_threshold
+        
+        arm_probs = np.zeros(len(arm_scores))
+        argmax = int(np.argmax(arm_scores))
+        
+        if max_score > exploration_threshold:
+            arm_probs[argmax] = 1.0
+        else:   
+            arm_probs = exploration_threshold * np.ones(n_arms) / n_arms
+
+        return arm_probs
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
+
+        if self._t == 0:
+            self._best_arm_history[pos] = collections.deque([])
+
+        if pos == 0:
+            if not self._first_evaluation:
+                self._t += 1
+            else:
+                #As first evaluation, we do not need do update t
+                self._first_evaluation = False
+
+        n_arms = len(arm_indices)
+        arm_probas = np.ones(n_arms) / n_arms
+
+        max_score = max(arm_scores)
+    
+        exploration_threshold = np.percentile(self._best_arm_history[pos], self._percentile) \
+            if self._t >= self._window_size else self._initial_exploration_threshold
+
+        if max_score > exploration_threshold:
+            action = int(np.argmax(arm_scores))
         else:
-            return action
+            action = self._rng.choice(len(arm_indices), p=arm_probas)
+
+        if self._t >= self._window_size:
+            #update history
+            self._best_arm_history[pos].append(max_score)
+            self._best_arm_history[pos].popleft()
+            
+            #We must adapt the percentile only in the beginning of each evaluation:
+            if pos == 0:
+                self._percentile *= self._percentile_decay
+        else:
+            self._best_arm_history[pos].append(max_score)
+            
+        return action
 
 
 class LinUCB(BanditPolicy):
