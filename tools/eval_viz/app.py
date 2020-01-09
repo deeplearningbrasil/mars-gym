@@ -47,17 +47,17 @@ def fetch_results_path():
       if '/results' in root and 'Evaluate' in root:
         for d in dirs:
           paths.append(os.path.join(root, d))
-          models.append(d.replace("_"+d.split("_")[-1], ""))
+          models.append(d) #.replace("_"+d.split("_")[-1], "")
               
     return dict(zip(models, paths))
 
 @st.cache
 def load_data_metrics():
-  return json2df(fetch_results_path(), 'metrics.json', 'model')
+  return json2df(fetch_results_path(), 'metrics.json', 'path')
 
 @st.cache
 def load_eval_params():
-  return json2df(fetch_results_path(), 'params.json', 'model')
+  return json2df(fetch_results_path(), 'params.json', 'path')
 
 @st.cache
 def load_train_params():
@@ -88,7 +88,7 @@ def display_compare_results():
   df_eval_params  = filter_df(load_eval_params(), input_models_eval, input_params).transpose()
   
   try:
-    df_train_params   = filter_df(load_train_params(), input_models_eval).transpose()
+    df_train_params   = filter_df(load_train_params(), cut_name(input_models_eval)).transpose()
   except:
     df_train_params = df_hist = None
 
@@ -113,11 +113,10 @@ def display_one_result():
   df_metrics        = filter_df(load_data_metrics(), [input_model_eval]).transpose()
   df_eval_params    = filter_df(load_eval_params(), [input_model_eval]).transpose()
   df_orders         = load_data_orders_metrics(input_model_eval)
-  print(input_model_eval)
-  print(load_train_params().head())
+
   try:
-    df_train_params   = filter_df(load_train_params(), [input_model_eval]).transpose()
-    df_hist           = load_history_train(input_model_eval)
+    df_train_params   = filter_df(load_train_params(), cut_name([input_model_eval])).transpose()
+    df_hist           = load_history_train(cut_name([input_model_eval])[0])
   except:
     df_train_params = df_hist = None
 

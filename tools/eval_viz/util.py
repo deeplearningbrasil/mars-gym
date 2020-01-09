@@ -33,3 +33,6 @@ def filter_df(df, lines, columns = None, sort = None):
     df = df[columns]
 
   return df
+
+def cut_name(names = []):
+  return [n.replace("_"+n.split("_")[-1], "") for n in names]
