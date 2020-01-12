@@ -129,7 +129,7 @@ def display_one_result():
 
   if df_hist is not None:
     st.markdown('## Train Logs')
-    plot_history(df_hist[input_coluns_tl])
+    plot_history(df_hist[input_coluns_tl], "History")
 
   st.markdown('''
     ## Orders with Metrics
@@ -138,7 +138,7 @@ def display_one_result():
   
   st.dataframe(df_orders.head())
   if len(input_column) > 0:
-    GRAPH_METRIC_MODEL[input_graph](df_orders[input_column])
+    GRAPH_METRIC_MODEL[input_graph](df_orders[input_column], "Distribution Variables")
 
   st.markdown('## Metrics')
   st.dataframe(df_metrics)

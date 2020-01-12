@@ -8,28 +8,28 @@ import os
 
 TEMPLATE = 'plotly_white' #simple_white
 
-def plot_bar(df):
+def plot_bar(df, title=""):
   data = []
   for i, row in df.iterrows():
     data.append(go.Bar(name=row.name, x=row.keys(), y=row.values))
   
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5))
+  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
   st.plotly_chart(fig)
 
-def plot_line(df):
+def plot_line(df, title=""):
   data = []
   for i, row in df.iterrows():
     data.append(go.Scatter(name=row.name, x=row.keys(), y=row.values))
   
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5))
+  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
 
   st.plotly_chart(fig)
 
-def plot_radar(df):
+def plot_radar(df, title=""):
   data = []
   for i, row in df.iterrows():
     data.append(go.Scatterpolar(
@@ -41,11 +41,11 @@ def plot_radar(df):
   
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5))
+  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
 
   st.plotly_chart(fig)
 
-def plot_hist(df):
+def plot_hist(df, title=""):
   data = []
 
   fig = go.Figure()
@@ -54,12 +54,11 @@ def plot_hist(df):
     fig.add_trace(go.Histogram(x=df[c], name=c))
 
   # Add title
-  fig.update_layout()
-  fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), barmode='stack')
+  fig.update_layout(template=TEMPLATE, legend_orientation="h",  barmode='stack', title=title)
 
   st.plotly_chart(fig)
 
-def plot_box(df):
+def plot_box(df, title=""):
   data = []
 
   fig = go.Figure()
@@ -68,17 +67,17 @@ def plot_box(df):
     fig.add_trace(go.Box(y=df[c], name=c))
 
   # Add title
-  fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5))
+  fig.update_layout(template=TEMPLATE, legend_orientation="h",  title=title)
 
   st.plotly_chart(fig)
 
-def plot_history(df):
+def plot_history(df, title=""):
   data = []
   for c in df.columns:
     data.append(go.Scatter(name=c,  y=df[c]))
   
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout( template=TEMPLATE)
+  fig.update_layout(template=TEMPLATE, legend_orientation="h",  title=title)
 
   st.plotly_chart(fig)

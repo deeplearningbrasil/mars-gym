@@ -1,5 +1,4 @@
 import functools
-import functools
 import json
 import math
 import os
@@ -87,17 +86,14 @@ def _sort_merchants_by_merchant_score_with_bandit_policy(merchant_idx_list: List
 def _ps_policy_eval(relevance_list: List[int], prob_merchant_idx_list: List[int]) -> List[int]:
     return np.sum(np.array(relevance_list) * np.array(prob_merchant_idx_list))
 
-
 def _get_rhat_scores(relevance_list: List[int], scores_merchant_idx_list: List[int]) -> List[int]:
     return np.sum(np.array(relevance_list) * np.array(scores_merchant_idx_list))
 
 def _get_rhat_rewards(relevance_list: List[int], rewards_merchant_idx_list: List[int]) -> List[int]:
     return rewards_merchant_idx_list[0]
 
-
 def _create_relevance_list(sorted_merchant_idx_list: List[int], ordered_merchant_idx: int) -> List[int]:
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
-
 
 def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int],
                              scores_per_tuple: Dict[Tuple[int, int], float]) -> List[int]:
@@ -106,11 +102,9 @@ def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, mercha
                                 sorted(zip(scores, merchant_idx_list), reverse=True)]
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
-
 def _generate_random_relevance_list(ordered_merchant_idx: int, merchant_idx_list: List[int]) -> List[int]:
     np.random.shuffle(merchant_idx_list)
     return _create_relevance_list(merchant_idx_list, ordered_merchant_idx)
-
 
 def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, merchant_idx_list: List[int],
                                                   scores_per_merchant: Dict[int, float]) -> List[int]:
@@ -127,21 +121,23 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     limit_list_size: int = luigi.IntParameter(default=50)
     pin_memory: bool = luigi.BoolParameter(default=False)
-    sample_size: int = luigi.FloatParameter(default=1)
     # num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     def requires(self):
-        test_size = self.model_training.requires().session_test_size
+        test_size            = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
+        sample_size          = self.model_training.requires().sample_size
 
-        return PrepareIfoodIndexedOrdersTestData(test_size=test_size, minimum_interactions=minimum_interactions), \
-               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=test_size,
-                                                                      minimum_interactions=minimum_interactions), \
-               LoggingPolicyPsDataset(test_size=test_size, minimum_interactions=minimum_interactions),\
-               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator'), \
-               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                    test_size=test_size, minimum_interactions=minimum_interactions), \
-               CreateInteractionDataset(test_size=test_size)               
+        train_dataset_split = {'test_size': test_size, 
+                                'minimum_interactions':minimum_interactions,
+                                'sample_size':sample_size}
+        
+        return PrepareIfoodIndexedOrdersTestData(**train_dataset_split), \
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(**train_dataset_split), \
+               LoggingPolicyPsDataset(**train_dataset_split),\
+               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=test_size, minimum_interactions=minimum_interactions, sample_size=sample_size), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(**train_dataset_split), \
+               CreateInteractionDataset(**train_dataset_split)               
 
     def output(self):
         return luigi.LocalTarget(
@@ -150,6 +146,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
     def _read_test_data_frame(self) -> pd.DataFrame:
         tuples_df = pd.read_parquet(self.input()[1].path)
+
         return tuples_df
 
     def _transform_scores(self, scores: np.ndarray) -> np.ndarray:
@@ -231,8 +228,11 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
     def _direct_estimator_rewards_merchant_tuples(self):
         print("Create the direct estimator rewards")
-        
-        module_training = DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator')
+
+        test_size            = self.model_training.requires().session_test_size
+        minimum_interactions = self.model_training.requires().minimum_interactions
+        sample_size          = self.model_training.requires().sample_size
+        module_training = DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=test_size, minimum_interactions=minimum_interactions, sample_size=sample_size)
         
         print("Loading trained model (DE)... ", module_training.task_id)            
         module = module_training.get_trained_module()
@@ -283,7 +283,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         de_rewards_per_tuple = scores_per_tuple.copy()
 
         print("Reading the orders DataFrame...")
-        orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)#.sample(100)
+        orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)
 
         print("Join with LogPolicyProb...")
         logpolicy_df: pd.DataFrame = pd.read_csv(self.input()[2].path)
@@ -349,6 +349,10 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             starmap(_get_rhat_scores, zip(orders_df["relevance_list"], orders_df["scores_merchant_idx_list"])),
             total=len(orders_df)))
 
+        orders_df["rhat_merchant_idx"] = list(tqdm(
+            starmap(lambda sorted_merchant_idx_list, scores_merchant_idx_list: sorted_merchant_idx_list[0], zip(orders_df["sorted_merchant_idx_list"], orders_df["scores_merchant_idx_list"])),
+            total=len(orders_df)))
+
         print("Creating direct estimator rewards merchant list...")
         orders_df["rewards_merchant_idx_list"] = list(tqdm(
             starmap(functools.partial(_get_scores_per_tuple, scores_per_tuple=de_rewards_per_tuple), 
@@ -376,7 +380,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             plot_histogram(orders_df["ps"].values).savefig(
                 os.path.join(os.path.split(self.output().path)[0], "ps.jpg"))
 
-        orders_df[["session_id", "account_idx", "merchant_idx", "shift_idx", "day_of_week", 
+        orders_df[["session_id", "account_idx", "merchant_idx", "rhat_merchant_idx", "shift_idx", "day_of_week", 
                    "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
                    "rewards_merchant_idx_list", "prob_merchant_idx_list", "relevance_list", 
                    "ps", "ps_eval", "count_visits", "rhat_rewards", "rewards"]].to_csv(
@@ -433,18 +437,14 @@ class EvaluateIfoodModel(BaseEvaluationTask):
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     batch_size: int = luigi.IntParameter(default=100000)
-    sample_size: int = luigi.FloatParameter(default=1)
     plot_histogram: bool = luigi.BoolParameter(default=False)
     limit_list_size: int = luigi.IntParameter(default=50)
 
     def requires(self):
-        test_size = self.model_training.requires().session_test_size
-        minimum_interactions = self.model_training.requires().minimum_interactions
         return SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
                                               model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
                                               bandit_policy_params=self.bandit_policy_params,
                                               batch_size=self.batch_size,
-                                              sample_size=self.sample_size,
                                               plot_histogram=self.plot_histogram,
                                               limit_list_size=self.limit_list_size)
 
@@ -556,7 +556,8 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         self._save_params()
 
 class SortMerchantListsRandomly(SortMerchantListsForIfoodModel):
-    test_size: float = luigi.FloatParameter(default=0.1)
+    test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     @property
@@ -571,15 +572,14 @@ class SortMerchantListsRandomly(SortMerchantListsForIfoodModel):
         return None
 
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
-                                                 minimum_interactions=self.minimum_interactions), \
-               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=self.test_size,
-                                                                      minimum_interactions=self.minimum_interactions), \
-               LoggingPolicyPsDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator'), \
-               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                    test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               CreateInteractionDataset(test_size=self.test_size)                            
+        train_dataset_split = {'test_size': self.test_size, 'minimum_interactions':self.minimum_interactions, 'sample_size':self.sample_size}
+
+        return PrepareIfoodIndexedOrdersTestData(**train_dataset_split), \
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(**train_dataset_split), \
+               LoggingPolicyPsDataset(**train_dataset_split), \
+               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=self.test_size, minimum_interactions=self.minimum_interactions, sample_size=self.sample_size), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(**train_dataset_split), \
+               CreateInteractionDataset(**train_dataset_split)                            
 
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
@@ -599,8 +599,11 @@ class EvaluateAutoEncoderIfoodModel(EvaluateIfoodModel):
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="RandomIfoodModel")
-    test_size: float = luigi.FloatParameter(default=0.1)
+    
+    test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
+
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     plot_histogram: bool = luigi.BoolParameter(default=False)
@@ -608,14 +611,17 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
 
     def requires(self):
         return SortMerchantListsRandomly(test_size=self.test_size, 
-                                              minimum_interactions=self.minimum_interactions,
-                                              bandit_policy=self.bandit_policy, 
-                                              bandit_policy_params=self.bandit_policy_params,
-                                              plot_histogram=self.plot_histogram,
-                                              model_task_id=self.model_task_id,
-                                              limit_list_size=self.limit_list_size), \
+                                        sample_size=self.sample_size,
+                                        minimum_interactions=self.minimum_interactions,
+                                        bandit_policy=self.bandit_policy, 
+                                        bandit_policy_params=self.bandit_policy_params,
+                                        plot_histogram=self.plot_histogram,
+                                        model_task_id=self.model_task_id,
+                                        limit_list_size=self.limit_list_size), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                   test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+                                        test_size=self.test_size, 
+                                        minimum_interactions=self.minimum_interactions, 
+                                        sample_size=self.sample_size)
 
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
@@ -626,7 +632,8 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
 
 
 class SortMerchantListsByMostPopular(SortMerchantListsForIfoodModel):
-    test_size: float = luigi.FloatParameter(default=0.1)
+    test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     @property
@@ -641,15 +648,16 @@ class SortMerchantListsByMostPopular(SortMerchantListsForIfoodModel):
         return None
 
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
-                                                 minimum_interactions=self.minimum_interactions), \
-               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=self.test_size,
-                                                                      minimum_interactions=self.minimum_interactions), \
-               LoggingPolicyPsDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator'), \
-               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                    test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               CreateInteractionDataset(test_size=self.test_size)                            
+        train_dataset_split = {'test_size': self.test_size, 
+                                'minimum_interactions':self.minimum_interactions,
+                                'sample_size':self.sample_size}
+
+        return PrepareIfoodIndexedOrdersTestData(**train_dataset_split), \
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(**train_dataset_split), \
+               LoggingPolicyPsDataset(**train_dataset_split), \
+               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=self.test_size, minimum_interactions=self.minimum_interactions, sample_size=self.sample_size), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(**train_dataset_split), \
+               CreateInteractionDataset(**train_dataset_split)                            
 
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
@@ -670,6 +678,7 @@ class SortMerchantListsByMostPopular(SortMerchantListsForIfoodModel):
 class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="MostPopularIfoodModel")
     test_size: float = luigi.FloatParameter(default=0.1)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
@@ -678,6 +687,7 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 
     def requires(self):
         return SortMerchantListsByMostPopular(test_size=self.test_size, 
+                                              sample_size=self.sample_size,
                                               minimum_interactions=self.minimum_interactions,
                                               bandit_policy=self.bandit_policy, 
                                               bandit_policy_params=self.bandit_policy_params,
@@ -685,7 +695,9 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
                                               model_task_id=self.model_task_id,
                                               limit_list_size=self.limit_list_size), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                   test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+                                            test_size=self.test_size, 
+                                            sample_size=self.sample_size,
+                                            minimum_interactions=self.minimum_interactions)
 
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
@@ -702,6 +714,7 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
 
 class SortMerchantListsByMostPopularPerUser(SortMerchantListsForIfoodModel):
     test_size: float = luigi.FloatParameter(default=0.1)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     buy_importance: float = luigi.FloatParameter(default=1.0)
     visit_importance: float = luigi.FloatParameter(default=0.0)
@@ -718,15 +731,14 @@ class SortMerchantListsByMostPopularPerUser(SortMerchantListsForIfoodModel):
         return None
 
     def requires(self):
-        return PrepareIfoodIndexedOrdersTestData(test_size=self.test_size,
-                                                 minimum_interactions=self.minimum_interactions), \
-               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(test_size=self.test_size,
-                                                                      minimum_interactions=self.minimum_interactions), \
-               LoggingPolicyPsDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator'), \
-               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                    test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               CreateInteractionDataset(test_size=self.test_size)                            
+        train_dataset_split = {'test_size': self.test_size, 'minimum_interactions':self.minimum_interactions, 'sample_size':self.sample_size}
+
+        return PrepareIfoodIndexedOrdersTestData(**train_dataset_split), \
+               ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(**train_dataset_split), \
+               LoggingPolicyPsDataset(**train_dataset_split), \
+               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=self.test_size, minimum_interactions=self.minimum_interactions, sample_size=self.sample_size), \
+               GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(**train_dataset_split), \
+               CreateInteractionDataset(**train_dataset_split)                            
 
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
@@ -747,6 +759,7 @@ class SortMerchantListsByMostPopularPerUser(SortMerchantListsForIfoodModel):
 class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
     model_task_id: str = luigi.Parameter(default="MostPopularPerUserIfoodModel")
     test_size: float = luigi.FloatParameter(default=0.1)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
@@ -756,6 +769,7 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
 
     def requires(self):
         return SortMerchantListsByMostPopularPerUser(test_size=self.test_size, 
+                                                    sample_size=self.sample_size,
                                                     minimum_interactions=self.minimum_interactions,
                                                     bandit_policy=self.bandit_policy, 
                                                     bandit_policy_params=self.bandit_policy_params,
@@ -765,8 +779,9 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
                                                     buy_importance=self.buy_importance,
                                                     visit_importance=self.visit_importance                                                  ), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                   test_size=self.test_size,
-                   minimum_interactions=self.minimum_interactions)
+                                                    test_size=self.test_size,
+                                                    sample_size=self.sample_size,
+                                                    minimum_interactions=self.minimum_interactions)
 
     def read_evaluation_data_frame(self) -> pd.DataFrame:
         return pd.read_csv(self.input()[0].path)
@@ -777,15 +792,14 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
 
 
 class GenerateUserEmbeddingsFromContentModel(BaseEvaluationTask):
-    test_size: float = luigi.FloatParameter(default=0.10)
-    minimum_interactions: int = luigi.FloatParameter(default=10)
     group_last_k_merchants: int = luigi.FloatParameter(default=20)
 
     # use_visit_interactions: bool
 
     def requires(self):
-        test_size = self.model_training.requires().session_test_size
+        test_size            = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
+        sample_size          = self.model_training.requires().sample_size
 
         return (GenerateContentEmbeddings(
             model_module=self.model_module,
@@ -793,7 +807,8 @@ class GenerateUserEmbeddingsFromContentModel(BaseEvaluationTask):
             model_task_id=self.model_task_id),
                 IndexAccountsAndMerchantsOfSessionTrainDataset(
                     test_size=test_size,
-                    minimum_interactions=minimum_interactions),
+                    minimum_interactions=minimum_interactions,
+                    sample_size=sample_size),
                 ProcessRestaurantContentDataset(),
                 CreateShiftIndices())
 
@@ -902,8 +917,10 @@ class SortMerchantListsTripletNetInfoContent(SortMerchantListsForIfoodModel):
     group_last_k_merchants: int = luigi.FloatParameter(default=20)
 
     def requires(self):
-        test_size = self.model_training.requires().session_test_size
+        test_size            = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
+        sample_size          = self.model_training.requires().sample_size
+
         return super().requires() + \
                (GenerateContentEmbeddings(
                    model_module=self.model_module,
@@ -911,9 +928,9 @@ class SortMerchantListsTripletNetInfoContent(SortMerchantListsForIfoodModel):
                    model_task_id=self.model_task_id,
                    batch_size=self.batch_size),
                 IndexAccountsAndMerchantsOfSessionTrainDataset(
-                    test_size=test_size, minimum_interactions=minimum_interactions),
+                    test_size=test_size, minimum_interactions=minimum_interactions, sample_size=self.sample_size),
                 GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                    test_size=test_size, minimum_interactions=minimum_interactions),
+                    test_size=test_size, minimum_interactions=minimum_interactions, sample_size=self.sample_size),
                 GenerateUserEmbeddingsFromContentModel(
                     group_last_k_merchants=self.group_last_k_merchants,
                     model_module=self.model_module,
@@ -1019,19 +1036,24 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
     model_task_id: str = luigi.Parameter(default="none")
     test_size: float = luigi.FloatParameter(default=0.1)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     group_last_k_merchants: int = luigi.FloatParameter(default=20)
 
     def requires(self):
         return [
             SortMerchantListsTripletNetInfoContent(
-                model_module=self.model_module, model_cls=self.model_cls,
-                model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
-                bandit_policy_params=self.bandit_policy_params, batch_size=self.batch_size,
+                model_module=self.model_module, 
+                model_cls=self.model_cls,
+                model_task_id=self.model_task_id, 
+                bandit_policy=self.bandit_policy,
+                bandit_policy_params=self.bandit_policy_params, 
+                batch_size=self.batch_size,
                 group_last_k_merchants=self.group_last_k_merchants),
             ProcessRestaurantContentDataset(),
             GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                 test_size=self.test_size,
+                sample_size=self.sample_size,
                 minimum_interactions=self.minimum_interactions)]
 
     @property
@@ -1103,7 +1125,6 @@ class EvaluateIfoodFullContentModel(EvaluateIfoodModel):
         return SortMerchantListsFullContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                  model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
                                                  bandit_policy_params=self.bandit_policy_params,
-                                                 sample_size=self.sample_size,
                                                  plot_histogram=self.plot_histogram)
 
 

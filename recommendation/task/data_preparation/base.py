@@ -47,7 +47,10 @@ class BaseDownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
 
 
 class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
-    test_size: float = luigi.FloatParameter(default=0.2)
+    session_test_size: float = luigi.FloatParameter(default=0.10)
+    test_size: float = luigi.FloatParameter(default=0.0)
+    sample_size: int = luigi.IntParameter(default=-1)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
     dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "k_fold"], default="holdout")
     n_splits: int = luigi.IntParameter(default=10)
     split_index: int = luigi.IntParameter(default=0)

@@ -349,15 +349,17 @@ class BuildEmbeddingVocabulary(luigi.Task):
 
 class SplitSessionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return AddShiftAndWeekDayToSessionDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_%.2f_k=%d" % (self.test_size,
-                                                                                        self.minimum_interactions))), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_%.2f" % self.test_size))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_%.2f_k=%d_s=%d" % (self.test_size,
+                                                                                             self.minimum_interactions,
+                                                                                             self.sample_size))), \
+               luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_%.2f_s=%d" % (self.test_size, self.sample_size)))
 
     def filter_train_session(self, df: pd.DataFrame, minimum_interactions: int) -> pd.DataFrame:
         df_account_buy    = df.groupBy("account_id").agg(sum(df.buy).alias("count_buy")).cache()
@@ -378,11 +380,14 @@ class SplitSessionDataset(BasePySparkTask):
         df = spark.read.parquet(self.input().path)
         df = df.filter(df.account_id.isNotNull()).dropDuplicates()
 
-        count = df.count()
+        if self.sample_size > 0:
+            df = df.sort("click_timestamp").limit(self.sample_size)
+
+        count  = df.count()
         n_test = math.ceil(self.test_size * count)
 
         train_df = df.sort("click_timestamp").limit(count - n_test).cache()
-        test_df = df.sort("click_timestamp", ascending=False).limit(n_test).cache()
+        test_df  = df.sort("click_timestamp", ascending=False).limit(n_test).cache()
 
         train_df = self.filter_train_session(train_df, self.minimum_interactions)
 
@@ -392,16 +397,19 @@ class SplitSessionDataset(BasePySparkTask):
 
 class AddVisitsBuysForInteractionDataset(luigi.Task):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return SplitSessionDataset()
+        return SplitSessionDataset(test_size=self.test_size, 
+                                    sample_size=self.sample_size, 
+                                    minimum_interactions=self.minimum_interactions)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_buys_visits_%.2f_k=%d" % (self.test_size,
-                                                                                        self.minimum_interactions))), \
-                luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_buys_visits_%.2f_k=%d" % (self.test_size,
-                                                                                        self.minimum_interactions)))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
+                                                                                        self.minimum_interactions, self.sample_size))), \
+                luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
+                                                                                        self.minimum_interactions, self.sample_size)))
 
     def add_visits_buys(self, df):
         user_total_buys     = []
@@ -462,19 +470,24 @@ class AddVisitsBuysForInteractionDataset(luigi.Task):
 
 class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return ProcessRestaurantContentDataset(), \
-               SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+               SplitSessionDataset(test_size=self.test_size,
+                                   minimum_interactions=self.minimum_interactions,
+                                   sample_size=self.sample_size)
 
     def output(self):
         return luigi.LocalTarget(
-            os.path.join(DATASET_DIR, "accounts_for_session_train_%.2f_k=%d.csv" % (self.test_size,
-                                                                                    self.minimum_interactions))), \
+            os.path.join(DATASET_DIR, "accounts_for_session_train_%.2f_k=%d_s=%d.csv" % (self.test_size,
+                                                                                    self.minimum_interactions,
+                                                                                    self.sample_size))), \
                luigi.LocalTarget(
-                   os.path.join(DATASET_DIR, "merchants_for_session_train_%.2f_k=%d.csv" % (self.test_size,
-                                                                                            self.minimum_interactions)))
+                   os.path.join(DATASET_DIR, "merchants_for_session_train_%.2f_k=%d_s=%d.csv" % (self.test_size,
+                                                                                            self.minimum_interactions,
+                                                                                            self.sample_size)))
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
@@ -493,17 +506,24 @@ class GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTas
 
 class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return AddVisitsBuysForInteractionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+        return AddVisitsBuysForInteractionDataset(
+                    test_size=self.test_size, 
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                    test_size=self.test_size,
-                   minimum_interactions=self.minimum_interactions)
+                   minimum_interactions=self.minimum_interactions,
+                   sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_session_train_%.2f_k=%d" % (self.test_size,
-                                                                                                self.minimum_interactions)))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_session_train_%.2f_k=%d_s=%d" % (self.test_size,
+                                                                                                     self.minimum_interactions,
+                                                                                                     self.sample_size
+                                                                                                    )))
 
     def main(self, sc: SparkContext, *args):
         os.makedirs(DATASET_DIR, exist_ok=True)
@@ -523,14 +543,18 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
 
 class LoggingPolicyPsDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+        return IndexAccountsAndMerchantsOfSessionTrainDataset(
+                            test_size=self.test_size, 
+                            minimum_interactions=self.minimum_interactions,
+                            sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "logging_policy_ps_session_train_%.2f_k=%d.csv" % (self.test_size,
-                                                                                                self.minimum_interactions)))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "logging_policy_ps_session_train_%.2f_k=%d_s=%d.csv" % (self.test_size,
+                                                                                                self.minimum_interactions, self.sample_size)))
 
     def _evaluate_logging_policy(self, orders_df):
 
@@ -566,12 +590,17 @@ class LoggingPolicyPsDataset(BasePySparkTask):
 
 class CreateIntraSessionInteractionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size)
+        return IndexAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=self.test_size, 
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_intra_session_train_%.2f" % self.test_size))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_intra_session_train_%.2f_k=%d_s=%d" % (self.test_size, self.minimum_interactions, self.sample_size)))
 
 
     def get_df_tuple_probs(self, df):
@@ -654,15 +683,17 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
 
 class CreateInteractionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size,
-                                                              minimum_interactions=self.minimum_interactions)
+                                                              minimum_interactions=self.minimum_interactions,
+                                                              sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "interactions_train_%.2f_k=%d" % (
-            self.test_size, self.minimum_interactions)))
+        return luigi.LocalTarget(os.path.join(DATASET_DIR, "interactions_train_%.2f_k=%d_s=%d" % (
+            self.test_size, self.minimum_interactions, self.sample_size)))
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
@@ -705,17 +736,20 @@ class CreateInteractionDataset(BasePySparkTask):
 
 
 class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
-    session_test_size: float = luigi.FloatParameter(default=0.10)
-    test_size: float = luigi.FloatParameter(default=0.0)
-    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-            test_size=self.session_test_size, minimum_interactions=self.minimum_interactions), \
-               IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size,
-                                                              minimum_interactions=self.minimum_interactions), \
-                LoggingPolicyPsDataset(test_size=self.session_test_size,
-                                                              minimum_interactions=self.minimum_interactions)                                                                  
+                    test_size=self.session_test_size, 
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size), \
+               IndexAccountsAndMerchantsOfSessionTrainDataset(
+                    test_size=self.session_test_size,
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size), \
+                LoggingPolicyPsDataset(
+                    test_size=self.session_test_size,
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size)                                                                  
 
     @property
     def dataset_dir(self) -> str:
@@ -761,13 +795,16 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
         return self.input()[0][1].path
 
 class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
-    session_test_size: float = luigi.FloatParameter(default=0.10)
-    test_size: float = luigi.FloatParameter(default=0.0)
-    minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.session_test_size, minimum_interactions=self.minimum_interactions), \
-               CreateIntraSessionInteractionDataset(test_size=self.session_test_size)
+        return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
+                        test_size=self.session_test_size, 
+                        minimum_interactions=self.minimum_interactions,
+                        sample_size=self.sample_size), \
+               CreateIntraSessionInteractionDataset(
+                        test_size=self.session_test_size,
+                        minimum_interactions=self.minimum_interactions,
+                        sample_size=self.sample_size)
 
     @property
     def dataset_dir(self) -> str:
@@ -807,15 +844,15 @@ class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
 
 
 class PrepareIfoodInteractionsDataFrames(BasePrepareDataFrames):
-    session_test_size: float = luigi.FloatParameter(default=0.10)
-    test_size: float = luigi.FloatParameter(default=0.0)
-    minimum_interactions: int = luigi.FloatParameter(default=5)
-
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-            test_size=self.session_test_size, minimum_interactions=self.minimum_interactions), \
-               CreateInteractionDataset(test_size=self.session_test_size,
-                                        minimum_interactions=self.minimum_interactions)
+                    test_size=self.session_test_size, 
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size), \
+               CreateInteractionDataset(
+                   test_size=self.session_test_size,
+                   minimum_interactions=self.minimum_interactions,
+                   sample_size=self.sample_size)
 
     @property
     def dataset_dir(self) -> str:
@@ -870,15 +907,17 @@ class PrepareIfoodVisitsBuysInteractionsDataFrames(PrepareIfoodInteractionsDataF
 
 
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
-    session_test_size: float = luigi.FloatParameter(default=0.10)
-    test_size: float = luigi.FloatParameter(default=0.0)
-    minimum_interactions: int = luigi.FloatParameter(default=5)
     split_per_user: bool = luigi.BoolParameter(default=False)
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-            test_size=self.session_test_size, minimum_interactions=self.minimum_interactions), \
-               CreateInteractionDataset(test_size=self.session_test_size, minimum_interactions=self.minimum_interactions)
+                    test_size=self.session_test_size, 
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size), \
+               CreateInteractionDataset(
+                    test_size=self.session_test_size, 
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size)
 
     @property
     def dataset_dir(self) -> str:
@@ -943,17 +982,22 @@ class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodA
 
 class PrepareIfoodIndexedSessionTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+        return SplitSessionDataset(test_size=self.test_size, 
+                                    minimum_interactions=self.minimum_interactions,
+                                    sample_size=self.sample_size), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size,
-                                                                           minimum_interactions=self.minimum_interactions)
+                                                                           minimum_interactions=self.minimum_interactions,
+                                                                           sample_size=self.sample_size)
 
     def output(self):
         return luigi.LocalTarget(os.path.join(DATASET_DIR,
-                                              "indexed_session_test_data_%.2f_k=%d.parquet" % (self.test_size,
-                                                                                              self.minimum_interactions)))
+                                              "indexed_session_test_data_%.2f_k=%d_s=%d.parquet" % (self.test_size,
+                                                                                                    self.minimum_interactions,
+                                                                                                    self.sample_size)))
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
@@ -981,17 +1025,22 @@ class PrepareIfoodIndexedSessionTestData(BasePySparkTask):
 
 class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return SplitSessionDataset(test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
+        return SplitSessionDataset(test_size=self.test_size, 
+                                    minimum_interactions=self.minimum_interactions,
+                                    sample_size=self.sample_size), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(test_size=self.test_size,
-                                                                           minimum_interactions=self.minimum_interactions)
+                                                                           minimum_interactions=self.minimum_interactions,
+                                                                           sample_size=self.sample_size)
 
     def output(self):
         return  luigi.LocalTarget(os.path.join(DATASET_DIR,
-                                              "indexed_orders_test_data_%.2f_k=%d.parquet" % (self.test_size,
-                                                                                              self.minimum_interactions))) 
+                                              "indexed_orders_test_data_%.2f_k=%d_s=%d.parquet" % (self.test_size,
+                                                                                              self.minimum_interactions,
+                                                                                              self.sample_size))) 
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
@@ -1006,11 +1055,15 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         merchant_df  = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
                                     .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
         
-        count_visits = session_df.filter(session_df.buy == 0).count()
+        session_train  = spark.read.parquet(self.input()[0][0].path)
+        session_eval   = spark.read.parquet(self.input()[0][1].path)
+
+        count_visits = session_train.count()
 
         #PrepareIfoodIndexedSessionTestData
         # Filter session with visits or not
         orders_df = session_df.filter(session_df.buy == 1)
+
 
         # Join with merchant the same caracteristics to simulate merchants open
         orders_df = orders_df.join(merchant_df, [merchant_df.shifts.contains(orders_df.shift),
@@ -1018,10 +1071,12 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                     .drop(merchant_df.merchant_id) \
                     .select(session_df.columns + ["merchant_idx"])
         
+
         # Group and similar merchants list (merchant_idx_list)
         orders_df = orders_df.groupBy(session_df.columns)\
                     .agg(collect_set("merchant_idx").alias("merchant_idx_list")) \
                     .drop("merchant_idx")
+
 
 
         orders_df = orders_df \
@@ -1033,22 +1088,33 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                             "mode_shift_idx", "mode_day_of_week",
                             "day_of_week", "buy", "count_visits").dropDuplicates()
 
+        test_size = orders_df.count()
+        
+        if test_size == 0:
+            raise Exception("Test Data Empty after filtered...")
+        
         orders_df.write.parquet(self.output().path)
 
 
 class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-            test_size=self.test_size, minimum_interactions=self.minimum_interactions), \
-               PrepareIfoodIndexedOrdersTestData(test_size=self.test_size, minimum_interactions=self.minimum_interactions)
+                    test_size=self.test_size, 
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size), \
+               PrepareIfoodIndexedOrdersTestData(
+                    test_size=self.test_size, 
+                    minimum_interactions=self.minimum_interactions,
+                    sample_size=self.sample_size)
 
     def output(self):
         return luigi.LocalTarget(
-            os.path.join(DATASET_DIR, "account_merchant_tuples_from_test_data_%.2f_k=%d.parquet" % (
-                self.test_size, self.minimum_interactions)))
+            os.path.join(DATASET_DIR, "account_merchant_tuples_from_test_data_%.2f_k=%d_s=%d.parquet" % (
+                self.test_size, self.minimum_interactions, self.sample_size)))
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
