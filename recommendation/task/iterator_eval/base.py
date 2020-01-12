@@ -31,7 +31,7 @@ _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGre
 # PYTHONPATH="." luigi \
 # --module recommendation.task.iterator_eval.base BaseIteratorEvaluationTask \
 # --local-scheduler \
-# --model-task-id=ContextualBanditsTraining_selu____512_54d17b4f72 \
+# --model-task-id=ContextualBanditsTraining_selu____512_c67e4449b9 \
 # --model-module=recommendation.task.model.contextual_bandits \
 # --model-cls=ContextualBanditsTraining \
 # --model-module-eval=recommendation.task.ifood   \
