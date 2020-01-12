@@ -8,8 +8,8 @@ import os
 from plot import *
 from util import *
 
-PATH_EVALUATION = '../../output/evaluation/'
-PATH_TRAIN      = '../../output/models/'
+PATH_EVALUATION = 'output/evaluation/'
+PATH_TRAIN      = 'output/models/'
 
 PAGES = {
   "Home": "pages.home",
@@ -82,7 +82,7 @@ def display_compare_results():
 
   input_graph       = st.sidebar.radio("Graph", list(GRAPH_METRIC.keys()))
   input_df_trans    = st.sidebar.checkbox("Transpose Data?")
-  input_sorted      = st.sidebar.selectbox("Sort", sorted(load_data_metrics().columns), index=11)
+  input_sorted      = st.sidebar.selectbox("Sort", [""] + sorted(load_data_metrics().columns), index=0)
 
   df_metrics      = filter_df(load_data_metrics(), input_models_eval, input_metrics, input_sorted)
   df_eval_params  = filter_df(load_eval_params(), input_models_eval, input_params).transpose()
@@ -124,7 +124,7 @@ def display_one_result():
   if df_hist is not None:
     input_coluns_tl = st.sidebar.multiselect("Columns Train Log", sorted(df_hist.columns), default=['loss', 'val_loss'])
 
-  input_column    = st.sidebar.multiselect("Column (orders_with_metrics.csv)", sorted(df_orders.columns), default=['ps'])
+  input_column    = st.sidebar.multiselect("Column (orders_with_metrics.csv)", sorted(df_orders.columns), default=['rhat_scores'])
   input_graph     = st.sidebar.radio("Graph", list(GRAPH_METRIC_MODEL.keys()))
 
   if df_hist is not None:

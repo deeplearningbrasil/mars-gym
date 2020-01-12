@@ -383,7 +383,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         orders_df[["session_id", "account_idx", "merchant_idx", "rhat_merchant_idx", "shift_idx", "day_of_week", 
                    "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
                    "rewards_merchant_idx_list", "prob_merchant_idx_list", "relevance_list", 
-                   "ps", "ps_eval", "count_visits", "rhat_rewards", "rewards"]].to_csv(
+                   "ps", "ps_eval", "count_visits", "count_buys", "rhat_rewards", "rewards"]].to_csv(
             self.output().path, index=False)
 
 
@@ -438,7 +438,6 @@ class EvaluateIfoodModel(BaseEvaluationTask):
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     batch_size: int = luigi.IntParameter(default=100000)
     plot_histogram: bool = luigi.BoolParameter(default=False)
-    limit_list_size: int = luigi.IntParameter(default=50)
 
     def requires(self):
         return SortMerchantListsForIfoodModel(model_module=self.model_module, model_cls=self.model_cls,
@@ -510,6 +509,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         metrics = {
             "model_task": self.model_task_id,
             "count": len(df),
+            "evaluated": len(df)/df.iloc[0].count_buys,
             "mean_average_precision": df["average_precision"].mean(),
             "precision_at_1": df["precision_at_1"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
@@ -594,7 +594,8 @@ class EvaluateAutoEncoderIfoodModel(EvaluateIfoodModel):
                                                          model_task_id=self.model_task_id,
                                                          bandit_policy=self.bandit_policy,
                                                          bandit_policy_params=self.bandit_policy_params,
-                                                         plot_histogram=self.plot_histogram)
+                                                         plot_histogram=self.plot_histogram,
+                                                         limit_list_size=self.limit_list_size)
 
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
@@ -607,7 +608,6 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     plot_histogram: bool = luigi.BoolParameter(default=False)
-    limit_list_size: int = luigi.IntParameter(default=50)
 
     def requires(self):
         return SortMerchantListsRandomly(test_size=self.test_size, 
@@ -683,7 +683,6 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     plot_histogram: bool = luigi.BoolParameter(default=False)
-    limit_list_size: int = luigi.IntParameter(default=50)
 
     def requires(self):
         return SortMerchantListsByMostPopular(test_size=self.test_size, 
@@ -763,7 +762,6 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
     minimum_interactions: int = luigi.FloatParameter(default=5)
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
-    limit_list_size: int = luigi.IntParameter(default=50)
     buy_importance: float = luigi.FloatParameter(default=1.0)
     visit_importance: float = luigi.FloatParameter(default=0.0)
 
@@ -1054,7 +1052,8 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
             GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
                 test_size=self.test_size,
                 sample_size=self.sample_size,
-                minimum_interactions=self.minimum_interactions)]
+                minimum_interactions=self.minimum_interactions,
+                limit_list_size=self.limit_list_size)]
 
     @property
     def n_items(self):
@@ -1125,7 +1124,9 @@ class EvaluateIfoodFullContentModel(EvaluateIfoodModel):
         return SortMerchantListsFullContentModel(model_module=self.model_module, model_cls=self.model_cls,
                                                  model_task_id=self.model_task_id, bandit_policy=self.bandit_policy,
                                                  bandit_policy_params=self.bandit_policy_params,
-                                                 plot_histogram=self.plot_histogram)
+                                                 plot_histogram=self.plot_histogram,
+                                                 limit_list_size=self.limit_list_size
+                                                 )
 
 
 class GenerateContentEmbeddings(BaseEvaluationTask):

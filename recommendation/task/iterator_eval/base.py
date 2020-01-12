@@ -253,7 +253,7 @@ class IteratorEvaluationTask(luigi.Task): #WrapperTask
         return SplitSessionDataset(test_size=0, sample_size=-1, minimum_interactions=0)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join("output", "evaluation", self.__class__.__name__, "results", self.task_name, "log.csv"))
+        return luigi.LocalTarget(os.path.join("output", "evaluation", self.__class__.__name__, "results",  "log.csv"))
 
     @property
     def task_name(self):
@@ -283,6 +283,8 @@ class IteratorEvaluationTask(luigi.Task): #WrapperTask
         return self._model_evaluate     
 
     def run(self):
+        os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
+
         log          = []
         full_df      = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
 
@@ -307,10 +309,8 @@ class IteratorEvaluationTask(luigi.Task): #WrapperTask
                         'sample_size': sample_size,
                         'test_size': test_size})
 
-            if i > 2:
-                break
-
         df = pd.DataFrame(log)
+        print(df.head())
         df.to_csv(self.output().path)
 
         #ContextualBanDitsTraining_selu____512_54d17b4f72

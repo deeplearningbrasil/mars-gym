@@ -1058,12 +1058,12 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         session_train  = spark.read.parquet(self.input()[0][0].path)
         session_eval   = spark.read.parquet(self.input()[0][1].path)
 
-        count_visits = session_train.count()
+        count_visits   = session_df.filter(session_df.buy == 0).count()
+        count_buys     = session_df.filter(session_df.buy == 1).count()
 
         #PrepareIfoodIndexedSessionTestData
         # Filter session with visits or not
         orders_df = session_df.filter(session_df.buy == 1)
-
 
         # Join with merchant the same caracteristics to simulate merchants open
         orders_df = orders_df.join(merchant_df, [merchant_df.shifts.contains(orders_df.shift),
@@ -1078,15 +1078,15 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                     .drop("merchant_idx")
 
 
-
         orders_df = orders_df \
                     .withColumn("count_visits", lit(count_visits)) \
+                    .withColumn("count_buys", lit(count_buys)) \
                     .join(account_df, "account_id", how="inner") \
                     .join(merchant_df, "merchant_id", how="inner") \
                     .select("session_id", "account_idx", "merchant_idx",
                             "merchant_idx_list", "shift", "shift_idx",
                             "mode_shift_idx", "mode_day_of_week",
-                            "day_of_week", "buy", "count_visits").dropDuplicates()
+                            "day_of_week", "count_buys", "count_visits", "buy").dropDuplicates()
 
         test_size = orders_df.count()
         
