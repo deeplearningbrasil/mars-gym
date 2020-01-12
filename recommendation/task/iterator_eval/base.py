@@ -31,7 +31,7 @@ _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGre
 # PYTHONPATH="." luigi \
 # --module recommendation.task.iterator_eval.base BaseIteratorEvaluationTask \
 # --local-scheduler \
-# --model-task-id=ContextualBanditsTraining_selu____512_54d17b4f72 \
+# --model-task-id=ContextualBanditsTraining_selu____512_c67e4449b9 \
 # --model-module=recommendation.task.model.contextual_bandits \
 # --model-cls=ContextualBanditsTraining \
 # --model-module-eval=recommendation.task.ifood   \
@@ -306,9 +306,6 @@ class IteratorEvaluationTask(luigi.Task): #WrapperTask
                         'eval_path': task_eval.output_path, 
                         'sample_size': sample_size,
                         'test_size': test_size})
-
-            if i > 2:
-                break
 
         df = pd.DataFrame(log)
         df.to_csv(self.output().path)
