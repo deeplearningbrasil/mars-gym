@@ -9,9 +9,10 @@ from recommendation.task.model.base import BaseTorchModelTraining, load_torch_mo
 
 
 class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
-    model_module: str = luigi.Parameter(default="datalife.task.model.matrix_factorization")
+    model_module: str = luigi.Parameter(default="recommendation.task.model.matrix_factorization")
     model_cls: str = luigi.Parameter(default="MatrixFactorizationTraining")
     model_task_id: str = luigi.Parameter()
+    limit_list_size: int = luigi.IntParameter(default=50)
 
     @property
     def task_name(self):

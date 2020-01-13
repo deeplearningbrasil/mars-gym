@@ -29,7 +29,7 @@ class UnconstrainedAutoEncoder(nn.Module):
         if binary:
             self.decoder.append(nn.Sigmoid())
 
-        if dropout_prob:
+        if dropout_prob > 0:
             self.dropout: nn.Module = dropout_module(dropout_prob)
 
         self.activation_function = activation_function
@@ -88,7 +88,7 @@ class VariationalAutoEncoder(nn.Module):
         if binary:
             self.decoder.append(nn.Sigmoid())
 
-        if dropout_prob:
+        if dropout_prob > 0:
             self.dropout: nn.Module = dropout_module(dropout_prob)
         
         self.activation_function = activation_function
@@ -168,7 +168,7 @@ class HybridVAE(nn.Module):
         if binary:
             self.decoder.append(nn.Sigmoid())
 
-        if dropout_prob:
+        if dropout_prob > 0:
             self.dropout: nn.Module = dropout_module(dropout_prob)
         
         self.activation_function = activation_function
@@ -256,7 +256,7 @@ class AttentiveVariationalAutoEncoder(nn.Module):
         if binary:
             self.decoder.append(nn.Sigmoid())
 
-        if dropout_prob:
+        if dropout_prob > 0:
             self.dropout: nn.Module = dropout_module(dropout_prob)
         
         self.activation_function = activation_function

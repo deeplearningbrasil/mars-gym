@@ -1,5 +1,19 @@
 # Recommendation-System
 
+## Install
+
+```
+conda env create -f environment.yml
+```
+
+## Tools
+
+### DataViz
+
+```
+streamlit run tools/eval_viz/app.py
+```
+
 ## Baseline
 
 ### Random Model

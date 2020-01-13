@@ -77,6 +77,9 @@ class BaseModelTraining(luigi.Task):
 
     data_transformation: str = luigi.ChoiceParameter(choices=TORCH_DATA_TRANSFORMATIONS.keys(), default="none")
     data_transformation_params: dict = luigi.DictParameter(default={})
+    sample_size: int = luigi.IntParameter(default=-1)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+    session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
     dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "k_fold"], default="holdout")
     val_size: float = luigi.FloatParameter(default=0.2)
@@ -91,11 +94,13 @@ class BaseModelTraining(luigi.Task):
     eq_filters: Dict[str, any] = luigi.DictParameter(default={})
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
-
     seed: int = luigi.IntParameter(default=SEED)
 
     def requires(self):
-        return self.project_config.prepare_data_frames_task(test_size=self.test_size,
+        return self.project_config.prepare_data_frames_task(session_test_size=self.session_test_size,
+                                                            sample_size=self.sample_size,
+                                                            minimum_interactions=self.minimum_interactions,
+                                                            test_size=self.test_size,
                                                             dataset_split_method=self.dataset_split_method,
                                                             val_size=self.val_size,
                                                             n_splits=self.n_splits,
@@ -418,6 +423,7 @@ class BaseTorchModelTraining(BaseModelTraining):
 
 def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraining],
                                             task_dir: str) -> BaseTorchModelTraining:
+
     return model_cls(**get_params(task_dir))
 
 
