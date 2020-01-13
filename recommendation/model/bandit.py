@@ -83,33 +83,39 @@ class RandomPolicy(BanditPolicy):
         super().__init__(reward_model)
         self._rng = RandomState(seed)
 
+    def _compute_prob(self, arm_scores):
+        n_arms = len(arm_scores)
+        arms_probs = np.ones(n_arms) / n_arms
+        return arms_probs
+
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
 
         n_arms = len(arm_indices)
         arm_probas = np.ones(n_arms) / n_arms
 
         action = self._rng.choice(n_arms, p=arm_probas)
 
-        if with_prob:
-            return action, arm_probas[action]
-        else:
-            return action
+        return action
 
 class ModelPolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
         super().__init__(reward_model)
         self._rng = RandomState(seed)
 
+    def _compute_prob(self, arm_scores):
+        n_arms = len(arm_scores)
+        arms_probs = np.zeros(n_arms)
+        argmax = int(np.argmax(arm_scores))
+        arms_probs[argmax] = 1.0
+        return arms_probs
+
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
 
         action = int(np.argmax(arm_scores))
 
-        if with_prob:
-            return action, int(pos == 0)
-        else:
-            return action
+        return action
 
 
 class EpsilonGreedy(BanditPolicy):
@@ -148,6 +154,7 @@ class EpsilonGreedy(BanditPolicy):
         return action
 
 class PercentileAdaptiveGreedy(BanditPolicy):
+    #TODO: Tune these parameters: window_size, exploration_threshold, percentile, percentile_decay
     def __init__(self, reward_model: nn.Module, window_size: int = 500, exploration_threshold: float = 0.9, percentile = 35, percentile_decay: float = 0.9998,
          seed: int = 42) -> None:
         super().__init__(reward_model)
@@ -250,8 +257,17 @@ class LinUCB(BanditPolicy):
         Ainv = self._Ainv_per_arm.get(arm) or np.eye(x.shape[0])
         return self._alpha * np.sqrt(np.linalg.multi_dot([x.T, Ainv, x]))
 
+    
+    def _compute_prob(self, arm_scores):
+        #In this case, we expected arm_scores to be arms_scores_with_cb
+        n_arms = len(arm_scores)
+        arms_probs = np.zeros(n_arms)
+        argmax = int(np.argmax(arm_scores))
+        arms_probs[argmax] = 1.0
+        return arms_probs
+
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
         arm_contexts: List[Tuple[np.ndarray, ...]] = [tuple(el[i] for el in arm_contexts)
                                                       for i in range(len(arm_indices))]
         arm_scores_with_cb = [arm_score + self._calculate_confidence_bound(arm_context)
@@ -259,10 +275,7 @@ class LinUCB(BanditPolicy):
 
         action = int(np.argmax(arm_scores_with_cb))
 
-        if with_prob:
-            return action, int(pos == 0)
-        else:
-            return action
+        return action
 
     def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
              arm_scores: List[float] = None, with_probs: bool = False,
