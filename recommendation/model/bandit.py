@@ -20,11 +20,11 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def _select_idx(self, arm_ids: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
         pass
     
     @abc.abstractmethod
-    def _compute_prob(self, arm_scores: List[float])) -> List[float]:
+    def _compute_prob(self, arm_scores: List[float]) -> List[float]:
         raise NotImplementedError
 
     def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
@@ -33,12 +33,11 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         return scores.detach().cpu().numpy().tolist()
 
     def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
-                   arm_scores: List[float] = None, pos: int = None,
-                   with_prob: bool = False) -> Union[int, Tuple[int, float]]:
+                   arm_scores: List[float] = None, pos: int = None) -> Union[int, Tuple[int, float]]:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
-        return self._select_idx(arm_indices, arm_contexts, arm_scores, pos, with_prob)
+        return self._select_idx(arm_indices, arm_contexts, arm_scores, pos)
 
     def select(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                arm_scores: List[float] = None) -> int:
@@ -128,13 +127,14 @@ class EpsilonGreedy(BanditPolicy):
         self._epsilon_decay = epsilon_decay
 
     def _compute_prob(self, arm_scores):
-        arm_probs = self._epsilon * np.ones(n_arms) / n_arms
+        n_arms = len(arm_scores)
+        arms_probs = self._epsilon * np.ones(n_arms) / n_arms
 
         argmax = int(np.argmax(arm_scores))
 
-        arms_probas[argmax] += (1 - self._epsilon)
+        arms_probs[argmax] += (1 - self._epsilon)
 
-        return arm_probs
+        return arms_probs
 
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
