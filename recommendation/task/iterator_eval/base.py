@@ -10,7 +10,7 @@ from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from recommendation.task.model.base import BaseTorchModelTraining, load_torch_model_training_from_task_id
 from recommendation.task.evaluation import BaseEvaluationTask
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy
 from recommendation.task.data_preparation.ifood import SplitSessionDataset, CheckDataset, PrepareIfoodSessionsDataFrames
 from recommendation.utils import chunks, parallel_literal_eval
 from tqdm import tqdm
@@ -25,7 +25,8 @@ from luigi.contrib.external_program import ExternalProgramTask, ExternalPythonPr
 from luigi.contrib.external_program import ExternalProgramRunError
 BASE_DIR: str = os.path.join("output", "ifood")
 
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, model=ModelPolicy, none=None)
+_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, \
+    adaptive=PercentileAdaptiveGreedy, model=ModelPolicy, none=None)
 
 
 # PYTHONPATH="." luigi \

@@ -168,9 +168,10 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         self._first_evaluation = True
 
     def _compute_prob(self, arm_scores):
+        n_arms = len(arm_scores)
         max_score = max(arm_scores)
 
-        exploration_threshold = np.percentile(self._best_arm_history[pos], self._percentile) \
+        exploration_threshold = np.percentile(self._best_arm_history[0], self._percentile) \
             if self._t >= self._window_size else self._initial_exploration_threshold
         
         arm_probs = np.zeros(len(arm_scores))
@@ -184,10 +185,7 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         return arm_probs
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float], pos: int, with_prob: bool) -> Union[int, Tuple[int, float]]:
-
-        if self._t == 0:
-            self._best_arm_history[pos] = collections.deque([])
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
 
         if pos == 0:
             if not self._first_evaluation:
@@ -196,6 +194,9 @@ class PercentileAdaptiveGreedy(BanditPolicy):
                 #As first evaluation, we do not need do update t
                 self._first_evaluation = False
 
+        if self._t == 0:
+            self._best_arm_history[pos] = collections.deque([])
+
         n_arms = len(arm_indices)
         arm_probas = np.ones(n_arms) / n_arms
 
@@ -203,6 +204,11 @@ class PercentileAdaptiveGreedy(BanditPolicy):
     
         exploration_threshold = np.percentile(self._best_arm_history[pos], self._percentile) \
             if self._t >= self._window_size else self._initial_exploration_threshold
+
+        print("Pos -> Current History " + str(pos) + " -> " + str(self._best_arm_history[pos]))
+        print("Percentile: " + str(self._percentile))
+        print("Exploration Threshold: " + str(exploration_threshold))
+        print("Max Score: " + str(max_score))
 
         if max_score > exploration_threshold:
             action = int(np.argmax(arm_scores))
