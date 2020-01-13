@@ -14,8 +14,6 @@ conda env create -f environment.yml
 streamlit run tools/eval_viz/app.py
 ```
 
-
-
 ## Baseline
 
 ### Random Model

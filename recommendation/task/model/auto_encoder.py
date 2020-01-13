@@ -16,7 +16,7 @@ class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
 
     encoder_layers: List[int] = luigi.ListParameter(default=[256, 128, 128, 64])
     decoder_layers: List[int] = luigi.ListParameter(default=[128, 128, 256])
-    dropout_prob: float = luigi.FloatParameter(default=None)
+    dropout_prob: float = luigi.FloatParameter(default=0)
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
@@ -44,7 +44,7 @@ class UnconstrainedAutoEncoderTraining(BaseTorchModelTraining):
 class VariationalAutoEncoderTraining(BaseTorchModelTraining):
     encoder_layers: List[int] = luigi.ListParameter(default=[256, 128, 128])
     decoder_layers: List[int] = luigi.ListParameter(default=[128, 128, 256])
-    dropout_prob: float = luigi.FloatParameter(default=None)
+    dropout_prob: float = luigi.FloatParameter(default=0)
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     loss_function: str = luigi.ChoiceParameter(choices=["vae_loss", "focal_vae_loss"], default="vae_loss")
@@ -64,7 +64,7 @@ class AttentiveVariationalAutoEncoderTraining(BaseTorchModelTraining):
     encoder_layers: List[int] = luigi.ListParameter(default=[256, 128, 128])
     attention_layers: List[int] = luigi.ListParameter(default=[256,  128, 128])
     decoder_layers: List[int] = luigi.ListParameter(default=[128, 128, 256])
-    dropout_prob: float = luigi.FloatParameter(default=None)
+    dropout_prob: float = luigi.FloatParameter(default=0)
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     loss_function: str = luigi.ChoiceParameter(choices=["attentive_vae_loss"], default="attentive_vae_loss")
@@ -83,7 +83,7 @@ class AttentiveVariationalAutoEncoderTraining(BaseTorchModelTraining):
 class HybridVAETraining(BaseTorchModelTraining):
     encoder_layers: List[int] = luigi.ListParameter(default=[256, 128, 128])
     decoder_layers: List[int] = luigi.ListParameter(default=[128, 128, 256])
-    dropout_prob: float = luigi.FloatParameter(default=None)
+    dropout_prob: float = luigi.FloatParameter(default=0)
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     loss_function: str = luigi.ChoiceParameter(choices=["vae_loss", "focal_vae_loss"], default="vae_loss")

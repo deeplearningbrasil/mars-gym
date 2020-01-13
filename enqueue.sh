@@ -57,10 +57,10 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --loc
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationWithShiftTraining --model-task-id=MatrixFactorizationWithShiftTraining____500____527f8fb688 --bandit-policy model --plot-histogram
 
-# MatrixFactorizationWithShiftTraining____500____3ae7f490c8
+# MatrixFactorizationWithShiftTraining____500____527f8fb688
 PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationWithShiftTraining --project ifood_binary_buys_with_shift_cf_with_random_negative --n-factors 100 --metrics '["loss", "acc"]' --loss-function bce --optimizer-params '{"weight_decay": 1e-8}' --epochs 300 --local-scheduler
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationWithShiftTraining --model-task-id=MatrixFactorizationWithShiftTraining____500____3ae7f490c8 --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationWithShiftTraining --model-task-id=VariationalAutoEncoderTraining_selu____500_92015ca2d2 --plot-histogram
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationWithShiftTraining --model-task-id=MatrixFactorizationWithShiftTraining____500____3ae7f490c8 --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
 
@@ -76,13 +76,16 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfood
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfoodModel --model-module=recommendation.task.model.auto_encoder --model-cls=UnconstrainedAutoEncoderTraining --model-task-id=UnconstrainedAutoEncoderTraining_selu____500_4471d69030 --local-scheduler  --bandit-policy model --plot-histogram
 
 # VariationalAutoEncoderTraining_selu____500_249fd09ed1
-PYTHONPATH="." luigi --module recommendation.task.model.auto_encoder VariationalAutoEncoderTraining --project ifood_user_cdae --generator-workers=0 --local-scheduler --batch-size=500 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8}'  --activation-function=selu --encoder-layers=[600,200] --decoder-layers=[600] --loss-function=vae_loss --loss-function-params='{"anneal": 0.01}'  --data-transformation=support_based --data-frames-preparation-extra-params='{"split_per_user": "True"}' --epochs=300 --learning-rate=0.001
+PYTHONPATH="." luigi --module recommendation.task.model.auto_encoder VariationalAutoEncoderTraining --project ifood_user_cdae --generator-workers=0 --local-scheduler --batch-size=500 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8}'  --activation-function=selu --encoder-layers=[600,200] --decoder-layers=[600] --loss-function=vae_loss --loss-function-params='{"anneal": 0.01}'  --data-transformation=support_based --data-frames-preparation-extra-params='{"split_per_user": "True"}' --epochs=300 --learning-rate=0.001 test-size=0.1111111111111111, sample-size=4050000
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfoodModel --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-task-id=VariationalAutoEncoderTraining_selu____500_249fd09ed1 --local-scheduler --plot-histogram
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfoodModel --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-task-id=VariationalAutoEncoderTraining_selu____500_249fd09ed1 --local-scheduler  --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfoodModel --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-task-id=VariationalAutoEncoderTraining_selu____500_249fd09ed1 --local-scheduler  --bandit-policy model --plot-histogram
+
+PYTHONPATH="." luigi --module recommendation.task.iterator_eval.base IterationEvaluationTask --local-scheduler --model-task-id=VariationalAutoEncoderTraining_selu____500_6ca7c7f5b2 --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateAutoEncoderIfoodModel --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}'
+
 
 # TripletNetTraining____512____07f142e58b
 PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetTraining --project ifood_binary_buys_triplet_with_random_negative  --batch-size=512 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' --learning-rate=0.001 --epochs=300 --n-factors=100 --loss-function=weighted_triplet --loss-function-params='{"balance_factor": 2500.0}' --local-scheduler

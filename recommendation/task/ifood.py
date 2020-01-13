@@ -135,7 +135,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         return PrepareIfoodIndexedOrdersTestData(**train_dataset_split), \
                ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(**train_dataset_split), \
                LoggingPolicyPsDataset(**train_dataset_split),\
-               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=test_size, minimum_interactions=minimum_interactions, sample_size=sample_size), \
+               self.load_direct_estimator(), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(**train_dataset_split), \
                CreateInteractionDataset(**train_dataset_split)               
 
@@ -143,6 +143,17 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         return luigi.LocalTarget(
             os.path.join("output", "evaluation", self.__class__.__name__, "results",
                          self.task_name, "orders_with_sorted_merchants.csv"))
+
+    def load_direct_estimator(self) -> DirectEstimatorTraining:
+        test_size            = self.model_training.requires().session_test_size
+        minimum_interactions = self.model_training.requires().minimum_interactions
+        sample_size          = self.model_training.requires().sample_size
+
+        return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
+                                       session_test_size=test_size, 
+                                       minimum_interactions=minimum_interactions, 
+                                       sample_size=sample_size)        
+
 
     def _read_test_data_frame(self) -> pd.DataFrame:
         tuples_df = pd.read_parquet(self.input()[1].path)
@@ -228,11 +239,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
     def _direct_estimator_rewards_merchant_tuples(self):
         print("Create the direct estimator rewards")
-
-        test_size            = self.model_training.requires().session_test_size
-        minimum_interactions = self.model_training.requires().minimum_interactions
-        sample_size          = self.model_training.requires().sample_size
-        module_training = DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=test_size, minimum_interactions=minimum_interactions, sample_size=sample_size)
+        module_training      = self.load_direct_estimator()
         
         print("Loading trained model (DE)... ", module_training.task_id)            
         module = module_training.get_trained_module()
@@ -509,7 +516,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         metrics = {
             "model_task": self.model_task_id,
             "count": len(df),
-            "evaluated": len(df)/df.iloc[0].count_buys,
+            "count_percent": len(df)/df.iloc[0].count_buys,
             "mean_average_precision": df["average_precision"].mean(),
             "precision_at_1": df["precision_at_1"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
@@ -571,13 +578,19 @@ class SortMerchantListsRandomly(SortMerchantListsForIfoodModel):
     def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
         return None
 
+    def load_direct_estimator(self) -> DirectEstimatorTraining:
+        return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
+                                       session_test_size=self.test_size, 
+                                       minimum_interactions=self.minimum_interactions, 
+                                       sample_size=self.sample_size)    
+
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 'minimum_interactions':self.minimum_interactions, 'sample_size':self.sample_size}
 
         return PrepareIfoodIndexedOrdersTestData(**train_dataset_split), \
                ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(**train_dataset_split), \
                LoggingPolicyPsDataset(**train_dataset_split), \
-               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=self.test_size, minimum_interactions=self.minimum_interactions, sample_size=self.sample_size), \
+               self.load_direct_estimator(), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(**train_dataset_split), \
                CreateInteractionDataset(**train_dataset_split)                            
 
@@ -647,6 +660,11 @@ class SortMerchantListsByMostPopular(SortMerchantListsForIfoodModel):
     def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
         return None
 
+    def load_direct_estimator(self) -> DirectEstimatorTraining:
+        return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
+                                       session_test_size=self.test_size, 
+                                       minimum_interactions=self.minimum_interactions, 
+                                       sample_size=self.sample_size)    
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 
                                 'minimum_interactions':self.minimum_interactions,
@@ -655,7 +673,7 @@ class SortMerchantListsByMostPopular(SortMerchantListsForIfoodModel):
         return PrepareIfoodIndexedOrdersTestData(**train_dataset_split), \
                ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(**train_dataset_split), \
                LoggingPolicyPsDataset(**train_dataset_split), \
-               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=self.test_size, minimum_interactions=self.minimum_interactions, sample_size=self.sample_size), \
+               self.load_direct_estimator(), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(**train_dataset_split), \
                CreateInteractionDataset(**train_dataset_split)                            
 
@@ -729,13 +747,18 @@ class SortMerchantListsByMostPopularPerUser(SortMerchantListsForIfoodModel):
     def _create_dictionary_of_dataset_indices(self) -> Dict[Tuple[int, int], int]:
         return None
 
+    def load_direct_estimator(self) -> DirectEstimatorTraining:
+        return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
+                                       session_test_size=self.test_size, 
+                                       minimum_interactions=self.minimum_interactions, 
+                                       sample_size=self.sample_size)       
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 'minimum_interactions':self.minimum_interactions, 'sample_size':self.sample_size}
 
         return PrepareIfoodIndexedOrdersTestData(**train_dataset_split), \
                ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(**train_dataset_split), \
                LoggingPolicyPsDataset(**train_dataset_split), \
-               DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', session_test_size=self.test_size, minimum_interactions=self.minimum_interactions, sample_size=self.sample_size), \
+               self.load_direct_estimator(), \
                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(**train_dataset_split), \
                CreateInteractionDataset(**train_dataset_split)                            
 
