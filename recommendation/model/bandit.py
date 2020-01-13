@@ -57,16 +57,11 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
         if with_probs:
             prob_ranked_arms = []
-            arm_probs = self._compute_prob(arm_scores)
-
-        print("Arm Indices: " + str(arm_indices))
-        print("Arm Scores: " + str(arm_scores))
-        if with_probs:
-            print("Arm Probs: " + str(arm_probs))
+            arm_probs = list(self._compute_prob(arm_scores))
 
         n = len(arm_indices) if limit is None else min(len(arm_indices), limit)
         for i in range(n):
-            idx = self.select_idx(arm_indices, arm_scores=arm_scores, pos=i, with_prob=with_probs)
+            idx = self.select_idx(arm_indices, arm_scores=arm_scores, pos=i)
 
             ranked_arms.append(arm_indices[idx])
 
@@ -79,8 +74,6 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
             
 
         if with_probs:
-            print("Ranked Arms: " + str(ranked_arms))
-            print("Prob Ranked Arms: " + str(prob_ranked_arms))
             return ranked_arms, prob_ranked_arms
         else:
             return ranked_arms
