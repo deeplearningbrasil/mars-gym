@@ -9,7 +9,7 @@ from pyspark.sql import SparkSession
 import random
 import math
 from recommendation.task.model.base import BaseTorchModelTraining
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy, ExploreThenExploit
 from recommendation.task.data_preparation.ifood import CheckDataset, CleanSessionDataset, GenerateIndicesForAccountsAndMerchantsDataset
 from tqdm import tqdm
 from recommendation.files import get_task_dir, get_task_dir
@@ -25,7 +25,7 @@ import gc
 
 LOCAL_TZ: str = str(get_localzone())
 _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, \
-    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, none=None)
+    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, explore_then_exploit=ExploreThenExploit, model=ModelPolicy, none=None)
 
 class BaseIterationEvaluation(luigi.Task):
     run_type: str = luigi.ChoiceParameter(choices=["supervised", 'reinforcement'], default="supervised")

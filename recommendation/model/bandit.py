@@ -119,6 +119,43 @@ class ModelPolicy(BanditPolicy):
 
         return action
 
+class ExploreThenExploit(BanditPolicy):
+    #TODO: Tune breakpoint parameter
+    def __init__(self, reward_model: nn.Module, breakpoint: int = 2000, seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._breakpoint = breakpoint
+        self._rng = RandomState(seed)
+        self._t = 0
+    
+    def _compute_prob(self, arm_scores):
+        n_arms = len(arm_scores)
+        arm_probs = np.zeros(len(arm_scores))
+        max_score = max(arm_scores)
+        argmax = int(np.argmax(arm_scores))
+        
+        if self._t > self._breakpoint:
+            arm_probs[argmax] = 1.0
+        else:   
+            arm_probs = np.ones(n_arms) / n_arms
+
+        return arm_probs
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
+        n_arms = len(arm_indices)
+        arm_probas = np.ones(n_arms) / n_arms
+        max_score = max(arm_scores)
+
+        if self._t > self._breakpoint:
+            action = int(np.argmax(arm_scores))
+        else:
+            action = self._rng.choice(len(arm_indices), p=arm_probas)
+
+        if pos == 0:
+            self._t += 1
+            
+        return action
 
 class EpsilonGreedy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, epsilon: float = 0.05, epsilon_decay: float = 1.0, seed: int = 42) -> None:
@@ -156,7 +193,7 @@ class EpsilonGreedy(BanditPolicy):
         return action
 
 class AdaptiveGreedy(BanditPolicy):
-    #TODO: Tune these parameters: window_size, exploration_threshold, percentile, percentile_decay
+    #TODO: Tune these parameters: exploration_threshold, decay_rate
     def __init__(self, reward_model: nn.Module, exploration_threshold: float = 0.2, decay_rate: float = 0.9997,
          seed: int = 42) -> None:
         super().__init__(reward_model)
