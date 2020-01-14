@@ -87,14 +87,18 @@ def _sort_merchants_by_merchant_score_with_bandit_policy(merchant_idx_list: List
 def _ps_policy_eval(relevance_list: List[int], prob_merchant_idx_list: List[int]) -> List[int]:
     return np.sum(np.array(relevance_list) * np.array(prob_merchant_idx_list))
 
+
 def _get_rhat_scores(relevance_list: List[int], scores_merchant_idx_list: List[int]) -> List[int]:
     return np.sum(np.array(relevance_list) * np.array(scores_merchant_idx_list))
+
 
 def _get_rhat_rewards(relevance_list: List[int], rewards_merchant_idx_list: List[int]) -> List[int]:
     return rewards_merchant_idx_list[0]
 
+
 def _create_relevance_list(sorted_merchant_idx_list: List[int], ordered_merchant_idx: int) -> List[int]:
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
+
 
 def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, merchant_idx_list: List[int],
                              scores_per_tuple: Dict[Tuple[int, int], float]) -> List[int]:
@@ -103,9 +107,11 @@ def _generate_relevance_list(account_idx: int, ordered_merchant_idx: int, mercha
                                 sorted(zip(scores, merchant_idx_list), reverse=True)]
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
+
 def _generate_random_relevance_list(ordered_merchant_idx: int, merchant_idx_list: List[int]) -> List[int]:
     np.random.shuffle(merchant_idx_list)
     return _create_relevance_list(merchant_idx_list, ordered_merchant_idx)
+
 
 def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, merchant_idx_list: List[int],
                                                   scores_per_merchant: Dict[int, float]) -> List[int]:
@@ -141,9 +147,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                CreateInteractionDataset(**train_dataset_split)               
 
     def output(self):
-        return luigi.LocalTarget(
-            os.path.join("output", "evaluation", self.__class__.__name__, "results",
-                         self.task_name, "orders_with_sorted_merchants.csv"))
+        return luigi.LocalTarget(os.path.join("output", "evaluation", self.__class__.__name__, "results", self.task_name))
 
     def load_direct_estimator(self) -> DirectEstimatorTraining:
         test_size            = self.model_training.requires().session_test_size
@@ -284,7 +288,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                         total=len(self.dataset))}
 
     def run(self):
-        os.makedirs(os.path.split(self.output().path)[0], exist_ok=True)
+        os.makedirs(self.output().path, exist_ok=True)
 
         scores_per_tuple     = self._evaluate_account_merchant_tuples()
 
@@ -315,6 +319,9 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             # BanditPolicy
             bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
             bandit_policy.fit(self.train_dataset)
+
+            with open(os.path.join(self.output().path, "bandit.pkl"), 'wb') as bandit_file:
+                pickle.dump(bandit_policy, bandit_file)
 
             # DirectEstimator
             de_rewards_per_tuple = self._direct_estimator_rewards_merchant_tuples()
@@ -377,16 +384,16 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         print("Saving the output file...")
         if self.plot_histogram:
             plot_histogram(de_rewards_per_tuple.values()).savefig(
-               os.path.join(os.path.split(self.output().path)[0], "DE_rewards_histogram.jpg"))
+               os.path.join(self.output().path, "DE_rewards_histogram.jpg"))
 
             plot_histogram(scores_per_tuple.values()).savefig(
-               os.path.join(os.path.split(self.output().path)[0], "scores_histogram.jpg"))
+               os.path.join(self.output().path, "scores_histogram.jpg"))
             
             plot_histogram(orders_df["ps_eval"].values).savefig(
-                os.path.join(os.path.split(self.output().path)[0], "ps_eval.jpg"))
+                os.path.join(self.output().path, "ps_eval.jpg"))
 
             plot_histogram(orders_df["ps"].values).savefig(
-                os.path.join(os.path.split(self.output().path)[0], "ps.jpg"))
+                os.path.join(self.output().path, "ps.jpg"))
 
         orders_df[["session_id", "account_idx", "merchant_idx", "rhat_merchant_idx", "shift_idx", "day_of_week", 
                    "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
@@ -459,8 +466,28 @@ class EvaluateIfoodModel(BaseEvaluationTask):
         return luigi.LocalTarget(os.path.join(self.output_path, "orders_with_metrics.csv")), \
                luigi.LocalTarget(os.path.join(self.output_path, "metrics.json")),
 
+    @property
+    def sort_merchant_list_path(self):
+        return self.input().path
+
+    @property
+    def evaluation_data_frame_path(self):
+        return os.path.join(self.sort_merchant_list_path, "orders_with_sorted_merchants.csv")
+
+    @property
+    def bandit_path(self):
+        return os.path.join(self.sort_merchant_list_path, "bandit.pkl")
+
     def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input().path)
+        return pd.read_csv(self.evaluation_data_frame_path)
+
+    def load_bandit(self) -> BanditPolicy:
+        if self.bandit_policy != "none":
+            with open(self.bandit_path, 'rb') as bandit_file:
+                return pickle.load(bandit_file, bandit_file)
+        else:
+            return None
+
 
     def _mean_personalization(self, df: pd.DataFrame, k: int):
         grouped_df = df.groupby(["shift_idx", "day_of_week"])
@@ -637,8 +664,9 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
                                         minimum_interactions=self.minimum_interactions, 
                                         sample_size=self.sample_size)
 
-    def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
+    @property
+    def sort_merchant_list_path(self):
+        return self.input()[0].path
 
     @property
     def n_items(self):
@@ -717,8 +745,9 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
                                             sample_size=self.sample_size,
                                             minimum_interactions=self.minimum_interactions)
 
-    def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
+    @property
+    def sort_merchant_list_path(self):
+        return self.input()[0].path
 
     @property
     def n_items(self):
@@ -805,8 +834,9 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
                                                     sample_size=self.sample_size,
                                                     minimum_interactions=self.minimum_interactions)
 
-    def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
+    @property
+    def sort_merchant_list_path(self):
+        return self.input()[0].path
 
     @property
     def n_items(self):
@@ -1139,8 +1169,9 @@ class EvaluateIfoodTripletNetInfoContent(EvaluateIfoodModel):
         with open(self.output()[1].path, "w") as metrics_file:
             json.dump(metrics, metrics_file, indent=4)
 
-    def read_evaluation_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
+    @property
+    def sort_merchant_list_path(self):
+        return self.input()[0].path
 
 
 class EvaluateIfoodFullContentModel(EvaluateIfoodModel):

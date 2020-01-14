@@ -8,6 +8,8 @@ from typing import Dict, Tuple, List, Any, Type, Union
 from torch.utils.data.dataset import Dataset
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
+
+from recommendation.task.ifood import EvaluateIfoodModel
 from recommendation.task.model.base import BaseTorchModelTraining, load_torch_model_training_from_task_id
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
@@ -75,7 +77,7 @@ class IterationEvaluationTask(luigi.Task): #WrapperTask
 
         return self._model_training
 
-    def model_evaluate(self, task_id) -> BaseEvaluationTask:
+    def model_evaluate(self, task_id) -> EvaluateIfoodModel:
         module = importlib.import_module(self.model_module_eval)
         class_ = getattr(module, self.model_cls_eval)
 
@@ -111,6 +113,8 @@ class IterationEvaluationTask(luigi.Task): #WrapperTask
 
             yield task_train
             yield task_eval
+
+            #bandit = task_eval.load_bandit()
 
             log.append({'i': i,
                         'train_path':   task_train.output().path, 
