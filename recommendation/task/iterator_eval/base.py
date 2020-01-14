@@ -8,10 +8,12 @@ from typing import Dict, Tuple, List, Any, Type, Union
 from torch.utils.data.dataset import Dataset
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
+
+from recommendation.task.ifood import EvaluateIfoodModel
 from recommendation.task.model.base import BaseTorchModelTraining, load_torch_model_training_from_task_id
 from recommendation.task.evaluation import BaseEvaluationTask
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy
-from recommendation.task.data_preparation.ifood import GlobalConfig, SplitSessionDataset, CheckDataset, PrepareIfoodSessionsDataFrames, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
+from recommendation.task.data_preparation.ifood import SplitSessionDataset, CheckDataset, PrepareIfoodSessionsDataFrames
 from recommendation.utils import chunks, parallel_literal_eval
 from tqdm import tqdm
 import math
@@ -34,7 +36,8 @@ from tzlocal import get_localzone
 LOCAL_TZ: str = str(get_localzone())
 BASE_DIR: str = os.path.join("output", "ifood")
 
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, model=ModelPolicy, none=None)
+_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, \
+    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, none=None)
 
 
 # PYTHONPATH="." luigi \
@@ -82,7 +85,7 @@ class IterationEvaluationTask(luigi.Task): #WrapperTask
 
         return self._model_training
 
-    def model_evaluate(self, task_id) -> BaseEvaluationTask:
+    def model_evaluate(self, task_id) -> EvaluateIfoodModel:
         module = importlib.import_module(self.model_module_eval)
         class_ = getattr(module, self.model_cls_eval)
 
@@ -140,14 +143,13 @@ class IterationEvaluationTask(luigi.Task): #WrapperTask
             # Evalution Model
             yield task_eval
 
-            # Merge Dataset
-            yield task_merge
+            #bandit = task_eval.load_bandit()
 
-            logs.append({'i': i,
-                    'train_path':   task_train.output().path, 
-                    'eval_path':    task_eval.output_path, 
-                    'sample_size':  sample_size,
-                    'test_size':    test_size})
+            log.append({'i': i,
+                        'train_path':   task_train.output().path, 
+                        'eval_path':    task_eval.output_path, 
+                        'sample_size':  sample_size,
+                        'test_size':    test_size})
 
         # Save logs
         self.save_logs(logs)    
