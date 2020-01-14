@@ -387,7 +387,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             plot_histogram(orders_df["ps"].values).savefig(
                 os.path.join(os.path.split(self.output().path)[0], "ps.jpg"))
 
-        orders_df[["session_id", "account_idx", "merchant_idx", "rhat_merchant_idx", "shift_idx", "day_of_week", 
+        orders_df[["session_id", "account_id", "click_timestamp", "account_idx", "merchant_idx", 
+                   "rhat_merchant_idx", "shift_idx", "day_of_week", 
                    "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
                    "rewards_merchant_idx_list", "prob_merchant_idx_list", "relevance_list", 
                    "ps", "ps_eval", "count_visits", "count_buys", "rhat_rewards", "rewards"]].to_csv(

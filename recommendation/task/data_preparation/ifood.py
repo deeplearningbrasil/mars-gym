@@ -29,7 +29,13 @@ BASE_DIR: str = os.path.join("output", "ifood")
 DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
 EMBEDDING_DIR: str = os.path.join("output", "embeddings")
 
+import luigi
+
+# class GlobalConfig(luigi.Config):
+#     path_info_session = luigi.Parameter(default='info_availability', is_global=True)
+
 class CheckDataset(luigi.Task):
+
     def output(self):
         return luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_availability")), \
                luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_delivery_time")), \
@@ -42,6 +48,7 @@ class CheckDataset(luigi.Task):
     def run(self):
         raise AssertionError(
             f"As seguintes pastas são esperadas com o dataset: {[output.path for output in self.output()]}")
+
 
 
 def date_to_day_of_week(date: str) -> int:
@@ -71,6 +78,7 @@ def datetime_to_shift(datetime_: str) -> str:
 
 
 class CreateShiftIndices(BasePySparkTask):
+
     def requires(self):
         return CheckDataset()
 
@@ -1055,9 +1063,6 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         merchant_df  = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
                                     .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
         
-        session_train  = spark.read.parquet(self.input()[0][0].path)
-        session_eval   = spark.read.parquet(self.input()[0][1].path)
-
         count_visits   = session_df.filter(session_df.buy == 0).count()
         count_buys     = session_df.filter(session_df.buy == 1).count()
 
@@ -1083,17 +1088,20 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                     .withColumn("count_buys", lit(count_buys)) \
                     .join(account_df, "account_id", how="inner") \
                     .join(merchant_df, "merchant_id", how="inner") \
-                    .select("session_id", "account_idx", "merchant_idx",
-                            "merchant_idx_list", "shift", "shift_idx",
-                            "mode_shift_idx", "mode_day_of_week",
-                            "day_of_week", "count_buys", "count_visits", "buy").dropDuplicates()
+                    .select("session_id", "account_id", "click_timestamp",  
+                            "account_idx", "merchant_idx", "shift", "shift_idx",
+                            "mode_shift_idx", "mode_day_of_week", "day_of_week", 
+                            "count_buys", "count_visits", 
+                            "buy", "merchant_idx_list").dropDuplicates()
 
         test_size = orders_df.count()
         
-        if test_size == 0:
+        if test_size > 0:
+            orders_df.write.parquet(self.output().path)
+        else:
             raise Exception("Test Data Empty after filtered...")
         
-        orders_df.write.parquet(self.output().path)
+        
 
 
 class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
