@@ -153,9 +153,49 @@ class EpsilonGreedy(BanditPolicy):
 
         return action
 
+class AdaptiveGreedy(BanditPolicy):
+    #TODO: Tune these parameters: window_size, exploration_threshold, percentile, percentile_decay
+    def __init__(self, reward_model: nn.Module, exploration_threshold: float = 0.2, decay_rate: float = 0.9997,
+         seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._exploration_threshold = exploration_threshold
+        self._decay_rate = decay_rate
+        self._rng = RandomState(seed)
+
+    def _compute_prob(self, arm_scores):
+        n_arms = len(arm_scores)
+        arm_probs = np.zeros(len(arm_scores))
+        max_score = max(arm_scores)
+        argmax = int(np.argmax(arm_scores))
+        
+        if max_score > self._exploration_threshold:
+            arm_probs[argmax] = 1.0
+        else:   
+            arm_probs = np.ones(n_arms) / n_arms
+
+        return arm_probs
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
+        n_arms = len(arm_indices)
+        arm_probas = np.ones(n_arms) / n_arms
+        max_score = max(arm_scores)
+
+        if max_score > self._exploration_threshold:
+            action = int(np.argmax(arm_scores))
+        else:
+            action = self._rng.choice(len(arm_indices), p=arm_probas)
+
+        if pos == 0:
+            self._exploration_threshold *= self._decay_rate
+            
+        return action
+
+
 class PercentileAdaptiveGreedy(BanditPolicy):
     #TODO: Tune these parameters: window_size, exploration_threshold, percentile, percentile_decay
-    def __init__(self, reward_model: nn.Module, window_size: int = 500, exploration_threshold: float = 0.9, percentile = 35, percentile_decay: float = 0.9998,
+    def __init__(self, reward_model: nn.Module, window_size: int = 500, exploration_threshold: float = 0.9, percentile = 35, percentile_decay: float = 0.9997,
          seed: int = 42) -> None:
         super().__init__(reward_model)
         self._window_size = window_size
@@ -180,7 +220,7 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         if max_score > exploration_threshold:
             arm_probs[argmax] = 1.0
         else:   
-            arm_probs = exploration_threshold * np.ones(n_arms) / n_arms
+            arm_probs = np.ones(n_arms) / n_arms
 
         return arm_probs
 
@@ -204,11 +244,6 @@ class PercentileAdaptiveGreedy(BanditPolicy):
     
         exploration_threshold = np.percentile(self._best_arm_history[pos], self._percentile) \
             if self._t >= self._window_size else self._initial_exploration_threshold
-
-        print("Pos -> Current History " + str(pos) + " -> " + str(self._best_arm_history[pos]))
-        print("Percentile: " + str(self._percentile))
-        print("Exploration Threshold: " + str(exploration_threshold))
-        print("Max Score: " + str(max_score))
 
         if max_score > exploration_threshold:
             action = int(np.argmax(arm_scores))
