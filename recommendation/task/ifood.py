@@ -12,12 +12,15 @@ from typing import Dict, Tuple, List, Any, Type, Union
 import luigi
 import numpy as np
 import pandas as pd
+
 import scipy
 import torch
 from sklearn import manifold
 from torch.utils.data.dataset import Dataset
 from torchbearer import Trial
 from tqdm import tqdm
+tqdm.pandas()
+
 
 from recommendation.data import literal_eval_array_columns
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
@@ -128,7 +131,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     limit_list_size: int = luigi.IntParameter(default=50)
     pin_memory: bool = luigi.BoolParameter(default=False)
-    # num_processes: int = luigi.IntParameter(default=os.cpu_count())
+    num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     def requires(self):
         test_size            = self.model_training.requires().session_test_size
@@ -288,22 +291,25 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                         total=len(self.dataset))}
 
     def run(self):
-        os.makedirs(self.output().path, exist_ok=True)
-
         scores_per_tuple     = self._evaluate_account_merchant_tuples()
 
         de_rewards_per_tuple = scores_per_tuple.copy()
 
         print("Reading the orders DataFrame...")
-        orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path)
+        orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path, 
+                                        columns=['session_id', 'account_id', 'click_timestamp', 'account_idx', 'merchant_idx', 
+                                                'shift_idx', 'day_of_week', 'count_buys', 'count_visits', 'buy', 'merchant_idx_list'])
 
+  
         print("Join with LogPolicyProb...")
         logpolicy_df: pd.DataFrame = pd.read_csv(self.input()[2].path)
+
         orders_df = orders_df.merge(logpolicy_df, how='left', on=['merchant_idx', 'account_idx']).fillna(0)
 
         print("Filtering orders where the ordered merchant isn't in the list...")
-        orders_df = orders_df[orders_df.apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
+        orders_df = orders_df[orders_df.progress_apply(lambda row: row["merchant_idx"] in row["merchant_idx_list"], axis=1)]
 
+        print("Sorting merchnat_idx_list per user.")
         if self.bandit_policy == "none":
             sort_function = functools.partial(_sort_merchants_by_tuple_score, scores_per_tuple=scores_per_tuple,
                                               limit=self.limit_list_size)
@@ -319,9 +325,6 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             # BanditPolicy
             bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
             bandit_policy.fit(self.train_dataset)
-
-            with open(os.path.join(self.output().path, "bandit.pkl"), 'wb') as bandit_file:
-                pickle.dump(bandit_policy, bandit_file)
 
             # DirectEstimator
             de_rewards_per_tuple = self._direct_estimator_rewards_merchant_tuples()
@@ -343,6 +346,10 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
             orders_df["sorted_merchant_idx_list"] = sorted
             orders_df["prob_merchant_idx_list"]   = prob
+
+            # Save Bandit Object
+            with open(os.path.join(self.output().path, "bandit.pkl"), 'wb') as bandit_file:
+                pickle.dump(bandit_policy, bandit_file)
 
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
@@ -382,6 +389,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
         orders_df["rewards"] = orders_df["buy"]
 
         print("Saving the output file...")
+        os.makedirs(self.output().path, exist_ok=True)
+
         if self.plot_histogram:
             plot_histogram(de_rewards_per_tuple.values()).savefig(
                os.path.join(self.output().path, "DE_rewards_histogram.jpg"))
@@ -400,7 +409,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                    "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
                    "rewards_merchant_idx_list", "prob_merchant_idx_list", "relevance_list", 
                    "ps", "ps_eval", "count_visits", "count_buys", "rhat_rewards", "rewards"]].to_csv(
-            self.output().path, index=False)
+            os.path.join(self.output().path, "orders_with_sorted_merchants.csv"), index=False)
 
 
 class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
@@ -795,18 +804,23 @@ class SortMerchantListsByMostPopularPerUser(SortMerchantListsForIfoodModel):
 
 
     def _evaluate_account_merchant_tuples(self) -> Dict[Tuple[int, int], float]:
-        interactions_df = pd.read_parquet(self.input()[-1].path)
-        test_df         = self.test_data_frame
+        print("Evaluate account X merchant tuples...")
 
-        grouped_interactions          = interactions_df.groupby(["account_idx", "merchant_idx"])\
+        interactions_df    = pd.read_parquet(self.input()[-1].path, 
+                                columns=["account_idx", "merchant_idx", "buys", "visits"])
+
+        test_df            = self.test_data_frame
+
+        count_buys_visits  = interactions_df.groupby(["account_idx", "merchant_idx"])\
                                         .agg({'buys': 'sum', 'visits': 'sum'}).reset_index()
 
-        grouped_interactions['score'] = grouped_interactions.apply(lambda row: row['buys'] * self.buy_importance + row['visits']*self.visit_importance, axis=1) 
+        count_buys_visits['score'] = count_buys_visits.progress_apply(lambda row: row['buys'] * self.buy_importance + row['visits']*self.visit_importance, axis=1) 
 
-        merchant_tuples_scores: pd.DataFrame = test_df.merge(grouped_interactions, how='left', 
-                                                                on=['account_idx', 'merchant_idx']).fillna(-1)
+        merchant_tuples_scores: pd.DataFrame = test_df.merge(count_buys_visits, how='left', 
+                                                            on=['account_idx', 'merchant_idx']).fillna(-1)
 
         return self._create_dictionary_of_scores(merchant_tuples_scores['score'])
+
 
 
 class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):

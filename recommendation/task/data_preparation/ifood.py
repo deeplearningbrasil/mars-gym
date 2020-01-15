@@ -31,9 +31,6 @@ EMBEDDING_DIR: str = os.path.join("output", "embeddings")
 
 import luigi
 
-# class GlobalConfig(luigi.Config):
-#     path_info_session = luigi.Parameter(default='info_availability', is_global=True)
-
 class CheckDataset(luigi.Task):
 
     def output(self):
@@ -43,12 +40,11 @@ class CheckDataset(luigi.Task):
                luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_menu")), \
                luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_restaurant")), \
                luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_review")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_session"))
+               luigi.LocalTarget(os.environ['DATASET_INFO_SESSION'] if 'DATASET_INFO_SESSION' in os.environ else os.path.join(BASE_DIR, "ufg_dataset_all", "info_session"))
 
     def run(self):
         raise AssertionError(
             f"As seguintes pastas são esperadas com o dataset: {[output.path for output in self.output()]}")
-
 
 
 def date_to_day_of_week(date: str) -> int:
@@ -464,11 +460,8 @@ class AddVisitsBuysForInteractionDataset(luigi.Task):
         return df                                                                                
 
     def run(self):
-        #spark = SparkSession(sc)
-
         train_df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
         test_df  = pd.read_parquet(self.input()[1].path).sort_values("click_timestamp")
-        #df = df.filter(df.account_id.isNotNull()).dropDuplicates()
 
         train_df = self.add_visits_buys(train_df)
         test_df  = self.add_visits_buys(test_df)
@@ -538,10 +531,10 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
 
         spark = SparkSession(sc)
 
-        train_df = spark.read.parquet(self.input()[0][0].path)
-        account_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+        train_df    = spark.read.parquet(self.input()[0][0].path)
+        account_df  = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
-            .select("merchant_idx", "merchant_id")
+                        .select("merchant_idx", "merchant_id")
 
         train_df = train_df.join(account_df, "account_id")
         train_df = train_df.join(merchant_df, "merchant_id")
@@ -1056,16 +1049,14 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         session_df  = spark.read.parquet(self.input()[0][1].path)
         print("session_df size: ", session_df.count())
 
-        session_df   = session_df.withColumn("mode_shift_idx", session_df.shift_idx)
-        session_df   = session_df.withColumn("mode_day_of_week", session_df.day_of_week)
+        session_df   = session_df\
+                        .withColumn("mode_shift_idx", session_df.shift_idx)\
+                        .withColumn("mode_day_of_week", session_df.day_of_week).cache()
 
         account_df   = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df  = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
                                     .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
         
-        count_visits   = session_df.filter(session_df.buy == 0).count()
-        count_buys     = session_df.filter(session_df.buy == 1).count()
-
         #PrepareIfoodIndexedSessionTestData
         # Filter session with visits or not
         orders_df = session_df.filter(session_df.buy == 1)
@@ -1074,14 +1065,18 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
         orders_df = orders_df.join(merchant_df, [merchant_df.shifts.contains(orders_df.shift),
                                                  merchant_df.days_of_week.contains(orders_df.day_of_week)]) \
                     .drop(merchant_df.merchant_id) \
-                    .select(session_df.columns + ["merchant_idx"])
+                    .select(session_df.columns + ["merchant_idx"]).cache()
         
 
         # Group and similar merchants list (merchant_idx_list)
         orders_df = orders_df.groupBy(session_df.columns)\
-                    .agg(collect_set("merchant_idx").alias("merchant_idx_list")) \
-                    .drop("merchant_idx")
+                        .agg(collect_set("merchant_idx")\
+                        .alias("merchant_idx_list")) \
+                        .drop("merchant_idx")
 
+
+        count_visits   = session_df.count()
+        count_buys     = orders_df.count()
 
         orders_df = orders_df \
                     .withColumn("count_visits", lit(count_visits)) \
