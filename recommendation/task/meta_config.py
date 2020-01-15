@@ -51,3 +51,7 @@ class ProjectConfig(object):
         self.default_balance_fields = default_balance_fields
         self.metadata_columns = metadata_columns
         self.possible_negative_indices_columns = possible_negative_indices_columns
+
+        @property
+        def input_columns(self):
+            pass

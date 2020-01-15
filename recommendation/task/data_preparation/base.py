@@ -202,6 +202,8 @@ class BasePySparkTask(PySparkTask):
     def setup(self, conf: SparkConf):
         conf.set("spark.local.dir", os.path.join("output", "spark"))
         conf.set("spark.driver.maxResultSize", self._get_available_memory())
+        #conf.set("spark.sql.shuffle.partitions", os.cpu_count())
+        #conf.set("spark.default.parallelism", os.cpu_count())
 
     @property
     def driver_memory(self):

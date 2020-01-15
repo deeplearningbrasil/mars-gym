@@ -13,7 +13,7 @@ from recommendation.task.ifood import EvaluateIfoodModel
 from recommendation.task.model.base import BaseTorchModelTraining, load_torch_model_training_from_task_id
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
-from recommendation.task.data_preparation.ifood import SplitSessionDataset, CheckDataset, PrepareIfoodSessionsDataFrames, GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset
+from recommendation.task.data_preparation.ifood import SplitSessionDataset, CheckDataset, PrepareIfoodSessionsDataFrames, GenerateIndicesForAccountsAndMerchantsDataset
 from recommendation.utils import chunks, parallel_literal_eval
 from tqdm import tqdm
 import math
@@ -275,10 +275,8 @@ class MergeIteractionDatasetTask(BasePySparkTask):
 
     def requires(self):
         return CheckDataset(), \
-                GenerateIndicesForAccountsAndMerchantsOfSessionTrainDataset(
-                    sample_size=self.sample_size,
-                    minimum_interactions=self.minimum_interactions,
-                    test_size=self.test_size
+                GenerateIndicesForAccountsAndMerchantsDataset(
+                    sample_size=self.sample_size
                 )
 
     def output(self):
