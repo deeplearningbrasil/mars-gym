@@ -203,7 +203,6 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     @property
     def test_direct_estimator_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_test_direct_estimator_data_frame"):
-
             tuples_df = self.tuple_data_frame
 
             train_interactions_df = pd.read_parquet(self.input()[-1].path, 
@@ -340,7 +339,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         else:
             # BanditPolicy
-            bandit_policy = self.load_bandit_model()
+            bandit_model = self.load_bandit_model()
 
             # DirectEstimator
             de_rewards_per_tuple = self._direct_estimator_rewards_merchant_tuples()
@@ -350,7 +349,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             sort_function = functools.partial(_sort_merchants_by_tuple_score_with_bandit_policy,
                                               scores_per_tuple=scores_per_tuple,
                                               dataset_indices_per_tuple=dataset_indices_per_tuple,
-                                              dataset=self.dataset, bandit_policy=bandit_policy,
+                                              dataset=self.dataset, bandit_policy=bandit_model,
                                               limit=self.limit_list_size)
 
             sorted_merchant_idx_list =  list(tqdm(starmap(sort_function,
@@ -363,8 +362,6 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             orders_df["sorted_merchant_idx_list"] = sorted
             orders_df["prob_merchant_idx_list"]   = prob
 
-            # Save Bandit Object
-            self.save_bandit_model(bandit_policy)
 
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
@@ -405,6 +402,10 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         print("Saving the output file...")
         os.makedirs(self.output().path, exist_ok=True)
+
+        # Save Bandit Object
+        if bandit_model:
+            self.save_bandit_model(bandit_model)
 
         if self.plot_histogram:
             plot_histogram(de_rewards_per_tuple.values()).savefig(
@@ -453,8 +454,7 @@ class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
 
     @property
     def tuple_data_frame(self) -> pd.DataFrame:
-        tuples_df = pd.read_parquet(self.input()[1].path, 
-                        columns=['account_idx', 'merchant_idx'])
+        tuples_df = pd.read_parquet(self.input()[1].path)
 
         return tuples_df
 

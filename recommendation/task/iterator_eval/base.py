@@ -84,15 +84,10 @@ class BaseIterationEvaluation(luigi.Task):
         return self._model_training
 
     def save_logs(self, log):
-
-        # params.json
-        with open(self.output()[1].path, "w") as params_file:
-            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
-
         # Save logs
         df = pd.DataFrame(log)
         print(df.head())
-        df.to_csv(self.output()[0].path)     
+        df.to_csv(self.output()[0].path, index=False)     
 
     @property
     def is_reinforcement(self):
@@ -127,7 +122,17 @@ class BuildIteractionDatasetTask(BasePySparkTask):
 # --model-module=recommendation.task.model.contextual_bandits \
 # --model-cls=ContextualBanditsTraining \
 # --model-module-eval=recommendation.task.ifood   \
-# --model-cls-eval=EvaluateIfoodFullContentModel 
+# --model-cls-eval=EvaluateIfoodFullContentModel \
+# --run-type=supervised
+
+# PYTHONPATH="." luigi \
+# --module recommendation.task.iterator_eval.base IterationEvaluationTask \
+# --local-scheduler \
+# --model-task-id=VariationalAutoEncoderTraining_selu____500_5eefe0dcd0 \
+# --model-module=recommendation.task.model.auto_encoder \
+# --model-cls=VariationalAutoEncoderTraining \
+# --model-module-eval=recommendation.task.ifood   \
+# --model-cls-eval=EvaluateAutoEncoderIfoodModel \
 # --run-type=supervised
 class IterationEvaluationTask(BaseIterationEvaluation): #WrapperTask
 
@@ -144,23 +149,25 @@ class IterationEvaluationTask(BaseIterationEvaluation): #WrapperTask
                                         'bandit_policy': self.bandit_policy,
                                         'bandit_policy_params': self.bandit_policy_params,
                                         'nofilter_iteractions_test':  self.is_reinforcement}, **params)
-
+                          
         return self._model_evaluate     
 
         
     def run(self):
+        os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
+
         logs         = []
         full_df      = pd.read_parquet(self.input().path).sort_values("click_timestamp")
 
         # set new info_session dataset
         os.environ['DATASET_INFO_SESSION'] = self.input().path
 
-        path_bandit_weights = None
+        path_bandit_weights = 'none'
 
         # each batch
         # i=n, sample-size = batch * (n + 1), session-test-size = sample-size / ( n + 1)
         for i in range(math.ceil(len(full_df)/self.batch_size)):
-            if i == 0 and self.is_reinforcement:
+            if i == 0: #and self.is_reinforcement:
                 continue
 
             sample_size  = self.batch_size * (i + 1)
@@ -173,11 +180,6 @@ class IterationEvaluationTask(BaseIterationEvaluation): #WrapperTask
             task_eval    = self.model_evaluate({'model_task_id': task_train.task_id,
                                                 'bandit_weights': path_bandit_weights})
 
-            task_merge   = MergeIteractionDatasetTask(test_size=test_size, 
-                                                      sample_size=sample_size,
-                                                      minimum_interactions=self.minimum_interactions,
-                                                      evaluation_path=task_eval.output_path)
-
             # Train Model
             yield task_train
 
@@ -185,33 +187,43 @@ class IterationEvaluationTask(BaseIterationEvaluation): #WrapperTask
             yield task_eval
             
             if self.is_reinforcement:
-                # New bandit save
-                path_bandit_weights = task_eval.bandit_path
+
+                task_merge   = MergeIteractionDatasetTask(test_size=test_size, 
+                                                        sample_size=sample_size,
+                                                        minimum_interactions=self.minimum_interactions,
+                                                        evaluation_path=task_eval.output_path)                
 
                 # Merge Dataset
                 yield task_merge
+                # New bandit save
+                path_bandit_weights = task_eval.bandit_path
 
                 # set new info_session dataset
                 os.environ['DATASET_INFO_SESSION'] = task_merge.output_path
                 
-                
 
-            log.append({'i': i,
+            logs.append({'i': i,
+                        'model_task_id': self.model_task_id,
                         'train_path':   task_train.output().path, 
                         'eval_path':    task_eval.output_path, 
+                        'bandit_path':  task_eval.bandit_path,
                         'sample_size':  sample_size,
                         'test_size':    test_size})
 
-        # Save logs
-        self.save_logs(logs)    
+            # Save logs
+            self.save_logs(logs)    
+
+        # params.json
+        with open(self.output()[1].path, "w") as params_file:
+            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
 
 
 # PYTHONPATH="." luigi \
 # --module recommendation.task.iterator_eval.base IterationEvaluationWithoutModelTask \
 # --local-scheduler \
-# --model-module-eval=recommendation.task.ifood   \
-# --model-cls-eval=EvaluateMostPopularPerUserIfoodModel 
-# --run-type=supervised
+# --model-module-eval recommendation.task.ifood   \
+# --model-cls-eval EvaluateMostPopularPerUserIfoodModel \
+# --run-type supervised
 class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
     model_task_id: str = luigi.Parameter(default='none')
     model_module: str = luigi.Parameter(default="none")
@@ -251,8 +263,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
         # each batch
         # i=n, sample-size = batch * (n + 1), session-test-size = sample-size / ( n + 1)
         for i in range(math.ceil(len(full_df)/self.batch_size)):
-            #if i == 0 and not self.is_reinforcement:
-            if i == 0:
+            if i == 0: #and self.is_reinforcement:
                 continue
 
             sample_size  = self.batch_size * (i + 1)
@@ -283,6 +294,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
             
 
             logs.append({'i': i,
+                    'model_task_id': self.model_cls_eval,
                     'train_path':   "", 
                     'eval_path':    task_eval.output_path, 
                     'sample_size':  sample_size,
