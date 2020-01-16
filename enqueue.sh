@@ -30,14 +30,14 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContent
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____500____591fc2ad60 --bandit-policy model --plot-histogram
 
-# MatrixFactorizationTraining____500_False_f22146ed6c
+# MatrixFactorizationTraining____500_False_bdae822b74
 PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationTraining --project ifood_binary_buys_cf --n-factors 100 --binary --loss-function bce --metrics '["loss", "acc"]' --epochs 300 --local-scheduler
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationTraining --model-task-id=MatrixFactorizationTraining____500_False_f22146ed6c --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationTraining --model-task-id=MatrixFactorizationTraining____500_False_bdae822b74 --plot-histogram
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationTraining --model-task-id=MatrixFactorizationTraining____500_False_7fb08b15f7 --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationTraining --model-task-id=MatrixFactorizationTraining____500_False_bdae822b74 --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationTraining --model-task-id=MatrixFactorizationTraining____500_False_7fb08b15f7 --bandit-policy model --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --local-scheduler --model-module=recommendation.task.model.matrix_factorization --model-cls=MatrixFactorizationTraining --model-task-id=MatrixFactorizationTraining____500_False_bdae822b74 --bandit-policy model --plot-histogram
 
 # MatrixFactorizationTraining____500_False_c9dcbcf1c1
 PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationTraining --project ifood_binary_buys_cf_with_random_negative --n-factors 100 --binary --loss-function bce --metrics '["loss", "acc"]' --epochs 300 --local-scheduler
@@ -87,14 +87,14 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateAutoEncoderIfood
 PYTHONPATH="." luigi --module recommendation.task.iterator_eval.base IterationEvaluationTask --local-scheduler --model-task-id=VariationalAutoEncoderTraining_selu____500_6ca7c7f5b2 --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateAutoEncoderIfoodModel --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}'
 
 
-# TripletNetTraining____512____07f142e58b
-PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetTraining --project ifood_binary_buys_triplet_with_random_negative  --batch-size=512 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' --learning-rate=0.001 --epochs=300 --n-factors=100 --loss-function=weighted_triplet --loss-function-params='{"balance_factor": 2500.0}' --local-scheduler
+# TripletNetTraining____512____19e56afb96
+PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetTraining --project ifood_binary_buys_triplet_with_random_negative  --batch-size=512 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' --learning-rate=0.001 --n-factors=100 --loss-function=weighted_triplet --loss-function-params='{"balance_factor": 2500.0}' --local-scheduler --epochs=300 
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetTraining --model-task-id=TripletNetTraining____512____07f142e58b --local-scheduler  --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetTraining --model-task-id=TripletNetTraining____512____19e56afb96 --local-scheduler  --plot-histogram
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetTraining --model-task-id=TripletNetTraining____512____07f142e58b --bandit-policy epsilon_greedy --bandit-policy-params '{"epsilon": 0.1}' --local-scheduler  --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetTraining --model-task-id=TripletNetTraining____512____19e56afb96 --bandit-policy epsilon_greedy --bandit-policy-params '{"epsilon": 0.1}' --local-scheduler  --plot-histogram
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetTraining --model-task-id=TripletNetTraining____512____07f142e58b --bandit-policy model --local-scheduler  --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetTraining --model-task-id=TripletNetTraining____512____19e56afb96 --bandit-policy model --local-scheduler  --plot-histogram
 
 # TripletNetContentTraining_selu____512_0c175685c0
 PYTHONPATH="." luigi --module recommendation.task.model.triplet_net TripletNetContentTraining --project ifood_binary_buys_content_triplet_with_random_negative  --batch-size=512 --optimizer=adam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.8123}' --learning-rate=0.0001 --epochs=300 --n-factors=100 --loss-function=weighted_triplet --loss-function-params='{"balance_factor": 0.9}' --content-layers="[64,10]" --local-scheduler
