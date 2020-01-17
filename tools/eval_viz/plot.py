@@ -18,14 +18,20 @@ def plot_bar(df, title=""):
   fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
   st.plotly_chart(fig)
 
-def plot_line(df, title=""):
+def plot_line(df, title="", yrange=[0, 1], cum=False):
   data = []
+  ymax = yrange[1]
+  
   for i, row in df.iterrows():
-    data.append(go.Scatter(name=row.name, x=row.keys(), y=row.values))
+    values = np.cumsum(row.values) if cum else row.values
+    ymax   = np.max([np.max(values), ymax])
+    data.append(go.Scatter(name=row.name, x=row.keys(), y=values))
   
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
+  if yrange is not None:
+    fig.update_yaxes(range=yrange)
 
   st.plotly_chart(fig)
 
@@ -81,3 +87,27 @@ def plot_history(df, title=""):
   fig.update_layout(template=TEMPLATE, legend_orientation="h",  title=title)
 
   st.plotly_chart(fig)
+
+def plot_metrics(df, title=""):
+  data   = []
+
+  for i, row in df.iterrows():
+    data.append(go.Bar(name=row.name, x=row.keys(), y=row.values, 
+                    marker_color=[_color_by_metric(m) for m in row.keys()]))
+  fig = go.Figure(data=data)
+  # Change the bar mode
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
+
+  st.plotly_chart(fig)
+
+def _color_by_metric(metric):
+  if "ndcg" in metric:
+    return '#DD8452'
+  elif "coverage" in metric:
+    return '#55A868'
+  elif "personalization" in metric:
+    return '#C44E51'
+  elif "count" in metric:    
+    return '#8C8C8C'
+  else:    
+    return '#CCB974'

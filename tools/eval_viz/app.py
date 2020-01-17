@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import os
 from plot import *
 from util import *
+pd.set_option('display.max_colwidth', -1)
 
 PATH_EVALUATION = 'output/evaluation/'
 PATH_TRAIN      = 'output/models/'
@@ -52,6 +53,18 @@ def fetch_results_path():
     return dict(zip(models, paths))
 
 @st.cache
+def fetch_iteraction_results_path():
+    paths  = []
+    models = []
+    for root, dirs, files in os.walk(PATH_EVALUATION):
+      if '/results' in root and 'IterationEvaluation' in root:
+        for d in dirs:
+          paths.append(os.path.join(root, d))
+          models.append(d) #.replace("_"+d.split("_")[-1], "")
+              
+    return dict(zip(models, paths))  
+
+@st.cache
 def load_data_metrics():
   return json2df(fetch_results_path(), 'metrics.json', 'path')
 
@@ -63,11 +76,45 @@ def load_eval_params():
 def load_train_params():
   return json2df(fetch_training_path(), 'params.json', 'path')
 
+@st.cache(allow_output_mutation=True)
+def load_iteractions_params(model):
+  file_path = os.path.join(fetch_iteraction_results_path()[model], 'params.json')
+  data      = []
+
+  try:
+    with open(file_path) as json_file:
+      d = json.load(json_file)
+      data.append(d)
+
+    df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
+  except:
+    df = pd.DataFrame()
+
+  return df
+
+@st.cache(allow_output_mutation=True)
+def load_data_iteractions_metrics(model):
+  return pd.read_csv(os.path.join(fetch_iteraction_results_path()[model],'history.csv'))
+
+@st.cache(allow_output_mutation=True)
 def load_data_orders_metrics(model):
   return pd.read_csv(os.path.join(fetch_results_path()[model],'orders_with_metrics.csv'))
 
+@st.cache(allow_output_mutation=True)
 def load_history_train(model):
   return pd.read_csv(os.path.join(fetch_training_path()[model],'history.csv')).set_index('epoch')
+
+@st.cache(allow_output_mutation=True)
+def load_all_iteraction_metrics(iteraction):
+  models = [row.train_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
+  paths  = [row.eval_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
+  df = json2df(dict(zip(models, paths)), 'metrics.json', 'path')
+
+  metrics = load_data_iteractions_metrics(iteraction).join(
+    df.reset_index()
+  )
+
+  return metrics
 
 def display_compare_results():
   st.title("[Compare Results]")
@@ -131,6 +178,10 @@ def display_one_result():
     st.markdown('## Train Logs')
     plot_history(df_hist[input_coluns_tl], "History")
 
+  st.markdown('## Metrics')
+  plot_metrics(df_metrics.loc[~df_metrics.index.isin(['count', 'model','model_task'])].transpose(), "Metrics")
+  st.dataframe(df_metrics)
+
   st.markdown('''
     ## Orders with Metrics
     ### orders_with_metrics.csv
@@ -140,15 +191,36 @@ def display_one_result():
   if len(input_column) > 0:
     GRAPH_METRIC_MODEL[input_graph](df_orders[input_column], "Distribution Variables")
 
-  st.markdown('## Metrics')
-  st.dataframe(df_metrics)
-
   if df_train_params is not None:
     st.markdown('## Params (Train)')
     st.dataframe(df_train_params)
 
   st.markdown('## Params (Eval)')
   st.dataframe(df_eval_params)
+
+
+def display_iteraction_result():
+  st.sidebar.markdown("## Filter Options")
+  input_iteraction = st.sidebar.selectbox("Results", sorted(fetch_iteraction_results_path().keys()))
+
+
+  st.title("[Iteraction Results]")
+  st.write(input_iteraction)
+
+  metrics          = load_all_iteraction_metrics(input_iteraction)
+  input_metrics    = st.sidebar.multiselect("Metrics", sorted(metrics.columns), default=['precision_at_1'])
+  input_cum        = st.sidebar.checkbox('Cumulative')
+
+  st.markdown('## Metrics')
+
+  plot_line(metrics[input_metrics].transpose(), "Metrics", yrange=[0,1], cum=input_cum)
+
+  st.dataframe(metrics)
+  
+  st.markdown('## Params')
+  st.dataframe(load_iteractions_params(input_iteraction).transpose())
+
+
 
 def main():
     """Main function of the App"""
@@ -161,12 +233,14 @@ def main():
 
     st.sidebar.markdown("## Navigation")
     
-    input_page        = st.sidebar.radio("Choose a page", ["[Model Result]", "[Compare Results]"])
+    input_page        = st.sidebar.radio("Choose a page", ["[Model Result]", "[Compare Results]", "[Iteraction Results]"])
 
     if input_page == "[Compare Results]":
       display_compare_results()
-    else:
+    elif input_page == "[Model Result]":
       display_one_result()
+    else:
+      display_iteraction_result()
 
     st.sidebar.title("About")
     st.sidebar.info(
