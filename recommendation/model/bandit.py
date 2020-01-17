@@ -346,7 +346,9 @@ class LinUCB(_LinBanditPolicy):
         self._alpha = alpha
 
     def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
-        Ainv = self._Ainv_per_arm.get(arm) or np.eye(x.shape[0])
+        Ainv = self._Ainv_per_arm.get(arm)
+        if Ainv is None:
+            Ainv = np.eye(x.shape[0])
         confidence_bound = self._alpha * np.sqrt(np.linalg.multi_dot([x.T, Ainv, x]))
         return original_score + confidence_bound
 
@@ -360,7 +362,9 @@ class LinThompsonSampling(_LinBanditPolicy):
         self._v_sq = v_sq
 
     def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
-        Ainv = self._Ainv_per_arm.get(arm) or np.eye(x.shape[0])
+        Ainv = self._Ainv_per_arm.get(arm)
+        if Ainv is None:
+            Ainv = np.eye(x.shape[0])
 
         mu = np.random.multivariate_normal(original_score, self._v_sq * Ainv)
         return x.dot(mu)

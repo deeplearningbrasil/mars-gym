@@ -20,7 +20,8 @@ from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.data import literal_eval_array_columns
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
+    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling
 from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.offpolicy_metrics import DirectEstimator, eval_IPS, eval_CIPS, eval_SNIPS, eval_doubly_robust
 from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k, precision_at_k
@@ -35,7 +36,8 @@ from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import chunks, parallel_literal_eval
 from recommendation.task.model.contextual_bandits import DirectEstimatorTraining
 
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, \
+_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
+    epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
     percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, none=None)
 
 
@@ -85,11 +87,11 @@ def _sort_merchants_by_merchant_score_with_bandit_policy(merchant_idx_list: List
 
 
 def _ps_policy_eval(relevance_list: List[int], prob_merchant_idx_list: List[int]) -> List[int]:
-    return np.sum(np.array(relevance_list) * np.array(prob_merchant_idx_list))
+    return np.sum(np.array(relevance_list) * np.array(prob_merchant_idx_list[:len(relevance_list)]))
 
 
 def _get_rhat_scores(relevance_list: List[int], scores_merchant_idx_list: List[int]) -> List[int]:
-    return np.sum(np.array(relevance_list) * np.array(scores_merchant_idx_list))
+    return np.sum(np.array(relevance_list) * np.array(scores_merchant_idx_list[:len(relevance_list)]))
 
 
 def _get_rhat_rewards(relevance_list: List[int], rewards_merchant_idx_list: List[int]) -> List[int]:
@@ -399,7 +401,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                    "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
                    "rewards_merchant_idx_list", "prob_merchant_idx_list", "relevance_list", 
                    "ps", "ps_eval", "count_visits", "count_buys", "rhat_rewards", "rewards"]].to_csv(
-            self.output().path, index=False)
+            os.path.join(self.output().path, "orders_with_sorted_merchants.csv"), index=False)
 
 
 class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
