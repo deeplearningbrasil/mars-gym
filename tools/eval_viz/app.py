@@ -204,7 +204,7 @@ def display_iteraction_result():
 
   st.markdown('## Metrics')
 
-  plot_line(metrics[input_metrics].transpose(), "Metrics")
+  plot_line(metrics[input_metrics].transpose(), "Metrics", yrange=[0,1])
 
   st.dataframe(metrics)
   

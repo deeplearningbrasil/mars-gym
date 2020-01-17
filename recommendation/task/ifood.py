@@ -1134,6 +1134,12 @@ class SortMerchantListsTripletNetInfoContent(SortMerchantListsForIfoodModel):
 class SortMerchantListsFullContentModel(SortMerchantListsForIfoodModel):
     batch_size: int = luigi.IntParameter(default=10000)
 
+    @property
+    def tuple_data_frame(self) -> pd.DataFrame:
+        tuples_df = pd.read_parquet(self.input()[1].path)
+
+        return tuples_df
+        
     def _read_test_data_frame(self) -> pd.DataFrame:
         tuples_df = pd.read_parquet(self.input()[1].path)#.sample(100)
         #print(tuples_df.info(memory_usage='deep'))

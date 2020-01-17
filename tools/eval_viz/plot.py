@@ -18,14 +18,16 @@ def plot_bar(df, title=""):
   fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
   st.plotly_chart(fig)
 
-def plot_line(df, title=""):
+def plot_line(df, title="", yrange=None):
   data = []
   for i, row in df.iterrows():
     data.append(go.Scatter(name=row.name, x=row.keys(), y=row.values))
   
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
+  if yrange is not None:
+    fig.update_yaxes(range=yrange)
 
   st.plotly_chart(fig)
 
@@ -91,7 +93,6 @@ def plot_metrics(df, title=""):
   fig = go.Figure(data=data)
   # Change the bar mode
   fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
-  fig.update_layout(scene = dict(yaxis = dict(nticks=4, range=[-50,100],),))
 
   st.plotly_chart(fig)
 
