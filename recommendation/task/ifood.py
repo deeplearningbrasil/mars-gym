@@ -339,8 +339,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                                             total=len(orders_df)))
 
             orders_df["sorted_merchant_idx_list"] = sorted_merchant_idx_list
-            orders_df["prob_merchant_idx_list"]   = list(np.ones(len(sorted_merchant_idx_list)))
-
+            orders_df["prob_merchant_idx_list"]   = [list(np.ones(self.limit_list_size)) for _ in range(len(orders_df))] 
         else:
             # BanditPolicy
             bandit_model = self.load_bandit_model()
@@ -365,7 +364,6 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
             orders_df["sorted_merchant_idx_list"] = sorted
             orders_df["prob_merchant_idx_list"]   = prob
-
 
         print("Creating the relevance lists...")
         orders_df["relevance_list"] = list(tqdm(
