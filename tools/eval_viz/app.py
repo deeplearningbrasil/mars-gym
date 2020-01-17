@@ -76,33 +76,40 @@ def load_eval_params():
 def load_train_params():
   return json2df(fetch_training_path(), 'params.json', 'path')
 
-@st.cache
+@st.cache(allow_output_mutation=True)
 def load_iteractions_params(model):
   file_path = os.path.join(fetch_iteraction_results_path()[model], 'params.json')
-  data = []
-  with open(file_path) as json_file:
-    d = json.load(json_file)
-    data.append(d)
+  data      = []
 
-  df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
+  try:
+    with open(file_path) as json_file:
+      d = json.load(json_file)
+      data.append(d)
+
+    df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
+  except:
+    df = pd.DataFrame()
 
   return df
 
+@st.cache(allow_output_mutation=True)
 def load_data_iteractions_metrics(model):
   return pd.read_csv(os.path.join(fetch_iteraction_results_path()[model],'history.csv'))
 
+@st.cache(allow_output_mutation=True)
 def load_data_orders_metrics(model):
   return pd.read_csv(os.path.join(fetch_results_path()[model],'orders_with_metrics.csv'))
 
+@st.cache(allow_output_mutation=True)
 def load_history_train(model):
   return pd.read_csv(os.path.join(fetch_training_path()[model],'history.csv')).set_index('epoch')
 
+@st.cache(allow_output_mutation=True)
 def load_all_iteraction_metrics(iteraction):
   models = [row.train_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
   paths  = [row.eval_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
   df = json2df(dict(zip(models, paths)), 'metrics.json', 'path')
-  print(models)
-  print(paths)
+
   metrics = load_data_iteractions_metrics(iteraction).join(
     df.reset_index()
   )
@@ -196,15 +203,17 @@ def display_iteraction_result():
   st.sidebar.markdown("## Filter Options")
   input_iteraction = st.sidebar.selectbox("Results", sorted(fetch_iteraction_results_path().keys()))
 
+
   st.title("[Iteraction Results]")
   st.write(input_iteraction)
 
   metrics          = load_all_iteraction_metrics(input_iteraction)
-  input_metrics    = st.sidebar.multiselect("Metrics", sorted(metrics.columns), default=['ndcg_at_5', 'mean_average_precision'])
+  input_metrics    = st.sidebar.multiselect("Metrics", sorted(metrics.columns), default=['precision_at_1'])
+  input_cum        = st.sidebar.checkbox('Cumulative')
 
   st.markdown('## Metrics')
 
-  plot_line(metrics[input_metrics].transpose(), "Metrics", yrange=[0,1])
+  plot_line(metrics[input_metrics].transpose(), "Metrics", yrange=[0,1], cum=input_cum)
 
   st.dataframe(metrics)
   

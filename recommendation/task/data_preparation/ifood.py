@@ -973,6 +973,7 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
         df = df[df["buys"] > 0]
         df = df[["account_idx", "merchant_idx", "buys"]]
         df = df.groupby('account_idx')[['merchant_idx', 'buys']].apply(lambda x: x.values.tolist()).reset_index()
+
         df.columns = ["account_idx", "buys_per_merchant"]
 
         df["n_users"] = self.num_users

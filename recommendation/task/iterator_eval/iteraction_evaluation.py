@@ -21,6 +21,7 @@ from recommendation.task.data_preparation.ifood import BaseDir
 import pyspark.sql.functions as F
 from tzlocal import get_localzone
 import gc
+import timeit
 
 from recommendation.task.iterator_eval.base import BaseIterationEvaluation, BuildIteractionDatasetTask, MergeIteractionDatasetTask
 from recommendation.task.ifood import EvaluateIfoodModel
@@ -28,17 +29,16 @@ from recommendation.task.evaluation import BaseEvaluationTask
 
 
 
-# PYTHONPATH="." luigi \
-# --module recommendation.task.iterator_eval.base IterationEvaluationTask \
-# --local-scheduler \
-# --model-task-id=ContextualBanditsTraining_selu____512_b3940c3ec7 \
+# DATASET_PROCESSED_PATH="./output/ifood/dataset_5" PYTHONPATH="." nohup luigi \
+# --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask \
+# --local-scheduler --model-task-id=ContextualBanditsTraining_selu____512_0771f4fe24 \
 # --model-module=recommendation.task.model.contextual_bandits \
-# --model-cls=ContextualBanditsTraining \
-# --model-module-eval=recommendation.task.ifood   \
+# --model-cls=ContextualBanditsTraining --model-module-eval=recommendation.task.ifood   \
 # --model-cls-eval=EvaluateIfoodFullContentModel \
-# --run-type=supervised
-
-# DATASET_PROCESSED_PATH="./output/ifood/dataset_2" DATASET_INFO_SESSION="./output/ifood/ufg_dataset_all/info_session_100m_buy" PYTHONPATH="." luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=VariationalAutoEncoderTraining_selu____500_16c1ac2def --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateAutoEncoderIfoodModel --run-type=reinforcement --bandit-policy random --batch-size 10000
+# --run-type=reinforcement \
+# --bandit-policy epsilon_greedy  \
+# --bandit-policy-params '{"epsilon": 0.1}' \
+# --batch-size 55000 > nohup_dt5 &
 class IterationEvaluationTask(BaseIterationEvaluation): 
 
     @property
@@ -74,15 +74,24 @@ class IterationEvaluationTask(BaseIterationEvaluation):
         # each batch
         # i=n, sample-size = batch * (n + 1), session-test-size = sample-size / ( n + 1)
         for i in range(math.ceil(len(full_df)/self.batch_size)):
-            if i == 0: #and self.is_reinforcement:
-                continue
+            start = timeit.default_timer()
 
-            sample_size  = self.batch_size * (i + 1)
-            test_size    = 1 / (i + 1)
+            sample_size           = self.batch_size * (i + 1)
+            test_size             = 1 / (i + 1)  
+            minimum_interactions  = self.minimum_interactions
+
+            #  If reinforcement the first interaction dont have train data
+            #  fix test_size and add only necessery to run (5 examples)
+            if i == 0:
+              if self.is_reinforcement:
+                minimum_interactions  = 0
+                test_size             = test_size - (5/sample_size)
+              else: continue
+
 
             task_train   = self.model_training({'sample_size': sample_size, 
                                                 'session_test_size': test_size, 
-                                                'minimum_interactions': self.minimum_interactions})
+                                                'minimum_interactions': minimum_interactions})
 
             task_eval    = self.model_evaluate({'model_task_id': task_train.task_id,
                                                 'bandit_weights': path_bandit_weights})
@@ -97,7 +106,7 @@ class IterationEvaluationTask(BaseIterationEvaluation):
 
                 task_merge   = MergeIteractionDatasetTask(test_size=test_size, 
                                                         sample_size=sample_size,
-                                                        minimum_interactions=self.minimum_interactions,
+                                                        minimum_interactions=minimum_interactions,
                                                         evaluation_path=task_eval.output_path)                
 
                 # Merge Dataset
@@ -110,6 +119,7 @@ class IterationEvaluationTask(BaseIterationEvaluation):
                 
 
             logs.append({'i': i,
+                        'time': int((timeit.default_timer() - start)/60),
                         'model_task_id': self.model_task_id,
                         'train_path':   task_train.output().path, 
                         'eval_path':    task_eval.output_path, 
@@ -125,12 +135,13 @@ class IterationEvaluationTask(BaseIterationEvaluation):
             json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
 
 
-# PYTHONPATH="." luigi \
-# --module recommendation.task.iterator_eval.base IterationEvaluationWithoutModelTask \
+# DATASET_PROCESSED_PATH="./output/ifood/dataset_6" PYTHONPATH="." luigi \
+# --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationWithoutModelTask \
 # --local-scheduler \
 # --model-module-eval recommendation.task.ifood   \
 # --model-cls-eval EvaluateMostPopularPerUserIfoodModel \
-# --run-type supervised
+# --run-type=reinforcement --bandit-policy epsilon_greedy  \
+#   --bandit-policy-params '{"epsilon": 0.1}' --batch-size 55000
 class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
     model_task_id: str = luigi.Parameter(default='none')
     model_module: str = luigi.Parameter(default="none")
@@ -171,15 +182,23 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
         # each batch
         # i=n, sample-size = batch * (n + 1), session-test-size = sample-size / ( n + 1)
         for i in range(math.ceil(len(full_df)/self.batch_size)):
-            if i == 0: #and self.is_reinforcement:
-                continue
+            start = timeit.default_timer()
 
-            sample_size  = self.batch_size * (i + 1)
-            test_size    = 1 / (i + 1)
+            sample_size           = self.batch_size * (i + 1)
+            test_size             = 1 / (i + 1)  
+            minimum_interactions  = self.minimum_interactions
+
+            #  If reinforcement the first interaction dont have train data
+            #  fix test_size and add only necessery to run (5 examples)
+            if i == 0:
+              if self.is_reinforcement:
+                minimum_interactions  = 0
+                test_size             = test_size - (5/sample_size)
+              else: continue
 
             task_eval    = self.model_evaluate({'sample_size': sample_size, 
                                                 'test_size': test_size, 
-                                                'minimum_interactions': self.minimum_interactions,
+                                                'minimum_interactions': minimum_interactions,
                                                 'bandit_weights': path_bandit_weights})
 
             # Evalution Model
@@ -188,7 +207,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
             if self.is_reinforcement:
                 task_merge   = MergeIteractionDatasetTask(test_size=test_size, 
                                                           sample_size=sample_size,
-                                                          minimum_interactions=self.minimum_interactions,
+                                                          minimum_interactions=minimum_interactions,
                                                           evaluation_path=task_eval.output_path)
 
                 # Merge Dataset
@@ -202,12 +221,13 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
             
 
             logs.append({'i': i,
-                    'model_task_id': self.model_cls_eval,
-                    'train_path':   "", 
-                    'eval_path':    task_eval.output_path, 
-                    'sample_size':  sample_size,
-                    'sample_percent': len(full_df)/sample_size,
-                    'test_size':    test_size})
+                        'time': int((timeit.default_timer() - start)/60),
+                        'model_task_id': self.model_cls_eval,
+                        'train_path':   "", 
+                        'eval_path':    task_eval.output_path, 
+                        'sample_size':  sample_size,
+                        'sample_percent': len(full_df)/sample_size,
+                        'test_size':    test_size})
             # Save logs
             self.save_logs(logs)    
 
