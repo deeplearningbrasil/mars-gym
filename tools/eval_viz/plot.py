@@ -31,7 +31,7 @@ def plot_line(df, title="", yrange=[0, 1], cum=False):
   # Change the bar mode
   fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
   if yrange is not None:
-    fig.update_yaxes(range=yrange)
+    fig.update_yaxes(range=[yrange[0], ymax+(ymax*0.1)])
 
   st.plotly_chart(fig)
 
