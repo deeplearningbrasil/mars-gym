@@ -1,48 +1,31 @@
-import abc
 import importlib
 import os
 import luigi
-import json
 import pandas as pd
 from typing import Dict, Tuple, List, Any, Type, Union
 from torch.utils.data.dataset import Dataset
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
+import random
 
-from recommendation.task.ifood import EvaluateIfoodModel
-from recommendation.task.model.base import BaseTorchModelTraining, load_torch_model_training_from_task_id
-from recommendation.task.evaluation import BaseEvaluationTask
+from recommendation.task.model.base import BaseTorchModelTraining
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
-from recommendation.task.data_preparation.ifood import SplitSessionDataset, CheckDataset, PrepareIfoodSessionsDataFrames, GenerateIndicesForAccountsAndMerchantsDataset
-from recommendation.utils import chunks, parallel_literal_eval
+from recommendation.task.data_preparation.ifood import CheckDataset, GenerateIndicesForAccountsAndMerchantsDataset
 from tqdm import tqdm
-import math
-import shutil  
-from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
-    get_tensorboard_logdir, get_task_dir
-import os
-from recommendation.torch import NoAutoCollationDataLoader
-from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames, BaseDownloadDataset
-from luigi.contrib.external_program import ExternalProgramTask, ExternalPythonProgramTask
-from luigi.contrib.external_program import ExternalProgramRunError
+from recommendation.files import get_task_dir, get_task_dir
 from recommendation.task.data_preparation.base import BasePySparkTask
-from pyspark import SparkContext
-from pyspark.sql import SparkSession
 from pyspark.sql.functions import when, lit
 from pyspark.sql.types import IntegerType
-
+from recommendation.task.data_preparation.ifood import BaseDir
 import pyspark.sql.functions as F
+from recommendation.files import get_params, get_task_dir
+
 from tzlocal import get_localzone
 import gc
 
 LOCAL_TZ: str = str(get_localzone())
-BASE_DIR: str = os.path.join("output", "ifood")
-DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
-EMBEDDING_DIR: str = os.path.join("output", "embeddings")
-
 _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, random=RandomPolicy, \
     percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, none=None)
-
 
 class BaseIterationEvaluation(luigi.Task):
     run_type: str = luigi.ChoiceParameter(choices=["supervised", 'reinforcement'], default="supervised")
@@ -78,6 +61,7 @@ class BaseIterationEvaluation(luigi.Task):
 
         train_params = get_params(task_dir)
         train_params = {**train_params, **params}
+        train_params['seed'] = self.seed
 
         self._model_training = class_(**train_params)
 
@@ -88,6 +72,12 @@ class BaseIterationEvaluation(luigi.Task):
         df = pd.DataFrame(log)
         print(df.head())
         df.to_csv(self.output()[0].path, index=False)     
+
+    @property
+    def seed(self):
+        if not hasattr(self, "_seed"):
+            self._seed = random.randint(0, 1000) if self.is_reinforcement else 42
+        return self._seed        
 
     @property
     def is_reinforcement(self):
@@ -102,209 +92,18 @@ class BuildIteractionDatasetTask(BasePySparkTask):
         return CheckDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "info_session", "ground_truth"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "info_session", "ground_truth"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        #os.makedirs(os.path.join(BaseDir().dataset_processed, exist_ok=True)
         spark = SparkSession(sc)
+        
         df = spark.read.parquet(self.input()[6].path)
 
         if self.run_type == "reinforcement":
             df = df.filter(df.buy == 1)
 
         df.write.parquet(self.output().path)
-
-
-# PYTHONPATH="." luigi \
-# --module recommendation.task.iterator_eval.base IterationEvaluationTask \
-# --local-scheduler \
-# --model-task-id=ContextualBanditsTraining_selu____512_b3940c3ec7 \
-# --model-module=recommendation.task.model.contextual_bandits \
-# --model-cls=ContextualBanditsTraining \
-# --model-module-eval=recommendation.task.ifood   \
-# --model-cls-eval=EvaluateIfoodFullContentModel \
-# --run-type=supervised
-
-# PYTHONPATH="." luigi \
-# --module recommendation.task.iterator_eval.base IterationEvaluationTask \
-# --local-scheduler \
-# --model-task-id=VariationalAutoEncoderTraining_selu____500_5eefe0dcd0 \
-# --model-module=recommendation.task.model.auto_encoder \
-# --model-cls=VariationalAutoEncoderTraining \
-# --model-module-eval=recommendation.task.ifood   \
-# --model-cls-eval=EvaluateAutoEncoderIfoodModel \
-# --run-type=supervised
-class IterationEvaluationTask(BaseIterationEvaluation): #WrapperTask
-
-    @property
-    def task_name(self):
-        return self.model_task_id + "_" + self.task_id.split("_")[-1]
-
-    def model_evaluate(self, params) -> EvaluateIfoodModel:
-        module = importlib.import_module(self.model_module_eval)
-        class_ = getattr(module, self.model_cls_eval)
-
-        self._model_evaluate = class_(**{'model_module': self.model_module, 
-                                        'model_cls': self.model_cls,
-                                        'bandit_policy': self.bandit_policy,
-                                        'bandit_policy_params': self.bandit_policy_params,
-                                        'nofilter_iteractions_test':  self.is_reinforcement}, **params)
-                          
-        return self._model_evaluate     
-
-        
-    def run(self):
-        os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
-
-        logs         = []
-        full_df      = pd.read_parquet(self.input().path).sort_values("click_timestamp")
-
-        # set new info_session dataset
-        os.environ['DATASET_INFO_SESSION'] = self.input().path
-
-        path_bandit_weights = 'none'
-
-        # each batch
-        # i=n, sample-size = batch * (n + 1), session-test-size = sample-size / ( n + 1)
-        for i in range(math.ceil(len(full_df)/self.batch_size)):
-            if i == 0: #and self.is_reinforcement:
-                continue
-
-            sample_size  = self.batch_size * (i + 1)
-            test_size    = 1 / (i + 1)
-
-            task_train   = self.model_training({'sample_size': sample_size, 
-                                                'session_test_size': test_size, 
-                                                'minimum_interactions': self.minimum_interactions})
-
-            task_eval    = self.model_evaluate({'model_task_id': task_train.task_id,
-                                                'bandit_weights': path_bandit_weights})
-
-            # Train Model
-            yield task_train
-
-            # Evalution Model
-            yield task_eval
-            
-            if self.is_reinforcement:
-
-                task_merge   = MergeIteractionDatasetTask(test_size=test_size, 
-                                                        sample_size=sample_size,
-                                                        minimum_interactions=self.minimum_interactions,
-                                                        evaluation_path=task_eval.output_path)                
-
-                # Merge Dataset
-                yield task_merge
-                # New bandit save
-                path_bandit_weights = task_eval.bandit_path
-
-                # set new info_session dataset
-                os.environ['DATASET_INFO_SESSION'] = task_merge.output_path
-                
-
-            logs.append({'i': i,
-                        'model_task_id': self.model_task_id,
-                        'train_path':   task_train.output().path, 
-                        'eval_path':    task_eval.output_path, 
-                        'bandit_path':  task_eval.bandit_path,
-                        'sample_size':  sample_size,
-                        'test_size':    test_size})
-
-            # Save logs
-            self.save_logs(logs)    
-
-        # params.json
-        with open(self.output()[1].path, "w") as params_file:
-            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
-
-
-# PYTHONPATH="." luigi \
-# --module recommendation.task.iterator_eval.base IterationEvaluationWithoutModelTask \
-# --local-scheduler \
-# --model-module-eval recommendation.task.ifood   \
-# --model-cls-eval EvaluateMostPopularPerUserIfoodModel \
-# --run-type supervised
-class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
-    model_task_id: str = luigi.Parameter(default='none')
-    model_module: str = luigi.Parameter(default="none")
-    model_cls: str = luigi.Parameter(default="none")
-    model_module_eval: str = luigi.Parameter(default="recommendation.task.ifood")    
-    model_cls_eval: str = luigi.Parameter(default="EvaluateMostPopularPerUserIfoodModel")
-    
-    @property
-    def task_name(self):
-        return self.model_cls_eval + "_" + self.task_id.split("_")[-1]
-
-    def model_evaluate(self, params) -> BaseEvaluationTask:
-        module = importlib.import_module(self.model_module_eval)
-        class_ = getattr(module, self.model_cls_eval)
-
-        eval_params = {**{'model_module': self.model_module, 
-                          'model_cls': self.model_cls,
-                          'bandit_policy': self.bandit_policy,
-                          'bandit_policy_params': self.bandit_policy_params,
-                          'nofilter_iteractions_test':  self.is_reinforcement}, **params}
-
-        self._model_evaluate = class_(**eval_params)
-
-        return self._model_evaluate     
-
-    def run(self):
-        os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
-
-        logs         = []
-        full_df      = pd.read_parquet(self.input().path).sort_values("click_timestamp")
-
-        # set new info_session dataset
-        os.environ['DATASET_INFO_SESSION'] = self.input().path
-
-        path_bandit_weights = 'none'
-
-        # each batch
-        # i=n, sample-size = batch * (n + 1), session-test-size = sample-size / ( n + 1)
-        for i in range(math.ceil(len(full_df)/self.batch_size)):
-            if i == 0: #and self.is_reinforcement:
-                continue
-
-            sample_size  = self.batch_size * (i + 1)
-            test_size    = 1 / (i + 1)
-
-            task_eval    = self.model_evaluate({'sample_size': sample_size, 
-                                                'test_size': test_size, 
-                                                'minimum_interactions': self.minimum_interactions,
-                                                'bandit_weights': path_bandit_weights})
-
-            # Evalution Model
-            yield task_eval
-
-            if self.is_reinforcement:
-                task_merge   = MergeIteractionDatasetTask(test_size=test_size, 
-                                                          sample_size=sample_size,
-                                                          minimum_interactions=self.minimum_interactions,
-                                                          evaluation_path=task_eval.output_path)
-
-                # Merge Dataset
-                yield task_merge
-
-                # New bandit save
-                path_bandit_weights = task_eval.bandit_path
-
-                # set new info_session dataset
-                os.environ['DATASET_INFO_SESSION'] = task_merge.output_path
-            
-
-            logs.append({'i': i,
-                    'model_task_id': self.model_cls_eval,
-                    'train_path':   "", 
-                    'eval_path':    task_eval.output_path, 
-                    'sample_size':  sample_size,
-                    'sample_percent': len(full_df)/sample_size,
-                    'test_size':    test_size})
-            if i>2:
-                break
-        # Save logs
-        self.save_logs(logs)  
-
 
 # PYTHONPATH="." luigi \
 # --module recommendation.task.iterator_eval.base MergeIteractionDatasetTask \
@@ -325,7 +124,7 @@ class MergeIteractionDatasetTask(BasePySparkTask):
 
     @property
     def output_path(self):
-        return os.path.join(DATASET_DIR, "info_session", "merged", self.task_id)
+       return os.path.join(BaseDir().dataset_processed, "info_session", "merged", self.task_id)
 
     def main(self, sc: SparkContext, *args):
         #os.makedirs(self.output_path, exist_ok=True)

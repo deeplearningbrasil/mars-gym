@@ -24,23 +24,46 @@ from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepa
 from recommendation.utils import parallel_literal_eval
 from collections import Counter
 import requests
+import luigi
+from recommendation.files import get_params, get_task_dir
 
 BASE_DIR: str = os.path.join("output", "ifood")
-DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
-EMBEDDING_DIR: str = os.path.join("output", "embeddings")
+#EMBEDDING_DIR: str = os.path.join("output", "embeddings")
+#DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
 
-import luigi
+# 
+class BaseDir(luigi.Config):
+    dataset_processed_path  = luigi.Parameter(default=os.path.join(BASE_DIR, "dataset"), is_global=True)
+    dataset_raw_path        = luigi.Parameter(default=os.path.join(BASE_DIR, "ufg_dataset_all"), is_global=True)
+    embedding               = luigi.IntParameter(default=os.path.join("output", "embeddings"), is_global=True)
+
+    @property
+    def dataset_info_session(self):
+        if 'DATASET_INFO_SESSION' in os.environ:
+            return os.environ['DATASET_INFO_SESSION'] 
+        else: 
+            return os.path.join(self.dataset_raw_path, "info_session")
+
+    @property
+    def dataset_processed(self):
+        if 'DATASET_PROCESSED_PATH' in os.environ:
+            return os.environ['DATASET_PROCESSED_PATH'] 
+        else: 
+            return self.dataset_processed_path
+
 
 class CheckDataset(luigi.Task):
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_availability")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_delivery_time")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_items")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_menu")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_restaurant")), \
-               luigi.LocalTarget(os.path.join(BASE_DIR, "ufg_dataset_all", "info_review")), \
-               luigi.LocalTarget(os.environ['DATASET_INFO_SESSION'] if 'DATASET_INFO_SESSION' in os.environ else os.path.join(BASE_DIR, "ufg_dataset_all", "info_session"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_raw_path, "info_availability")), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_raw_path, "info_delivery_time")), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_raw_path, "info_items")), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_raw_path, "info_menu")), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_raw_path, "info_restaurant")), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_raw_path, "info_review")), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_info_session)), \
+
+               #luigi.LocalTarget(BaseDir().dataset_info_session)
 
     def run(self):
         raise AssertionError(
@@ -78,11 +101,12 @@ class CreateShiftIndices(BasePySparkTask):
     def requires(self):
         return CheckDataset()
 
+
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "shifts.csv"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "shifts.csv"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
 
         spark = SparkSession(sc)
 
@@ -98,10 +122,10 @@ class AddShiftIdxAndFixWeekDayForAvailabilityDataset(BasePySparkTask):
         return CheckDataset(), CreateShiftIndices()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "availability"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "availability"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
 
         spark = SparkSession(sc)
 
@@ -120,10 +144,10 @@ class AddShiftAndWeekDayToSessionDataset(BasePySparkTask):
         return CheckDataset(), CreateShiftIndices()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session"))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
 
         spark = SparkSession(sc)
 
@@ -146,7 +170,7 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
         return CheckDataset(), AddShiftIdxAndFixWeekDayForAvailabilityDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurants_with_contents.csv"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurants_with_contents.csv"))
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
@@ -180,10 +204,10 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
 
 class DownloadStopWords(luigi.Task):
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "stopwords_pt.txt"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "stopwords_pt.txt"))
 
     def run(self):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
 
         url  = "https://raw.githubusercontent.com/stopwords-iso/stopwords-pt/master/stopwords-pt.txt"
         file = requests.get(url)
@@ -202,8 +226,8 @@ class ProcessRestaurantContentDataset(luigi.Task):
         return PrepareRestaurantContentDataset(), DownloadStopWords()
     
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurants_with_processed_contents.csv")), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurant_text_vocabulary.csv"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurants_with_processed_contents.csv")), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurant_text_vocabulary.csv"))
 
     def tokenizer(self, text):
         # print(text)
@@ -311,13 +335,13 @@ class BuildEmbeddingVocabulary(luigi.Task):
                                                 category_text_length=self.category_text_length)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "restaurant_text_vocabulary_vec.npy"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurant_text_vocabulary_vec.npy"))
 
     def load_embvec(self):
         word2vec    = {}
         words_count = 0
 
-        with open(f'{EMBEDDING_DIR}/{self.filename}', 'rb') as f:
+        with open(f'{BaseDir().embedding}/{self.filename}', 'rb') as f:
             for l in f:
                 line = l.decode().split()
                 word = line[0]
@@ -360,10 +384,10 @@ class SplitSessionDataset(BasePySparkTask):
         return AddShiftAndWeekDayToSessionDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_%.2f_k=%d_s=%d" % (self.test_size,
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_train_%.2f_k=%d_s=%d" % (self.test_size,
                                                                                              self.minimum_interactions,
                                                                                              self.sample_size))), \
-               luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_%.2f_s=%d" % (self.test_size, self.sample_size)))
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_test_%.2f_s=%d" % (self.test_size, self.sample_size)))
 
     def filter_train_session(self, df: pd.DataFrame, minimum_interactions: int) -> pd.DataFrame:
         df_account_buy    = df.groupBy("account_id").agg(sum(df.buy).alias("count_buy")).cache()
@@ -382,7 +406,7 @@ class SplitSessionDataset(BasePySparkTask):
         spark = SparkSession(sc)
 
         df = spark.read.parquet(self.input().path)
-        df = df.filter(df.account_id.isNotNull()).dropDuplicates()
+        df = df.na.drop().dropDuplicates()
 
         if self.sample_size > 0:
             df = df.sort("click_timestamp").limit(self.sample_size)
@@ -410,9 +434,9 @@ class AddVisitsBuysForInteractionDataset(luigi.Task):
                                     minimum_interactions=self.minimum_interactions)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "session_train_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_train_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
                                                                                         self.minimum_interactions, self.sample_size))), \
-                luigi.LocalTarget(os.path.join(DATASET_DIR, "session_test_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
+                luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_test_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
                                                                                         self.minimum_interactions, self.sample_size)))
 
     def add_visits_buys(self, df):
@@ -483,9 +507,9 @@ class GenerateIndicesForAccountsAndMerchantsDataset(BasePySparkTask):
 
     def output(self):
         return luigi.LocalTarget(
-            os.path.join(DATASET_DIR, "accounts_for_session_train_%d_s=%d.csv" % (self.minimum_interactions, self.sample_size))), \
+            os.path.join(BaseDir().dataset_processed, "accounts_for_session_train_%d_s=%d.csv" % (self.minimum_interactions, self.sample_size))), \
                luigi.LocalTarget(
-                   os.path.join(DATASET_DIR, "merchants_for_session_train_%d_s=%d.csv" % (self.minimum_interactions, self.sample_size)))
+                   os.path.join(BaseDir().dataset_processed, "merchants_for_session_train_%d_s=%d.csv" % (self.minimum_interactions, self.sample_size)))
 
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
@@ -523,13 +547,13 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
                     sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_session_train_%.2f_k=%d_s=%d" % (self.test_size,
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "indexed_session_train_%.2f_k=%d_s=%d" % (self.test_size,
                                                                                                      self.minimum_interactions,
                                                                                                      self.sample_size
                                                                                                     )))
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
 
         spark = SparkSession(sc)
 
@@ -556,7 +580,7 @@ class LoggingPolicyPsDataset(BasePySparkTask):
                             sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "logging_policy_ps_session_train_%.2f_k=%d_s=%d.csv" % (self.test_size,
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "logging_policy_ps_session_train_%.2f_k=%d_s=%d.csv" % (self.test_size,
                                                                                                 self.minimum_interactions, self.sample_size)))
 
     def _evaluate_logging_policy(self, orders_df):
@@ -580,7 +604,7 @@ class LoggingPolicyPsDataset(BasePySparkTask):
         return p0
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
 
         spark    = SparkSession(sc)
         train_df = spark.read.parquet(self.input().path).orderBy(col('click_timestamp'))
@@ -603,7 +627,7 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
                     sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "indexed_intra_session_train_%.2f_k=%d_s=%d" % (self.test_size, self.minimum_interactions, self.sample_size)))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "indexed_intra_session_train_%.2f_k=%d_s=%d" % (self.test_size, self.minimum_interactions, self.sample_size)))
 
 
     def get_df_tuple_probs(self, df):
@@ -623,7 +647,7 @@ class CreateIntraSessionInteractionDataset(BasePySparkTask):
         return df_join
 
     def main(self, sc: SparkContext, *args):
-        os.makedirs(DATASET_DIR, exist_ok=True)
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
         
         #parans
         total_itens_per_session  = 3
@@ -695,7 +719,7 @@ class CreateInteractionDataset(BasePySparkTask):
                                                               sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR, "interactions_train_%.2f_k=%d_s=%d" % (
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "interactions_train_%.2f_k=%d_s=%d" % (
             self.test_size, self.minimum_interactions, self.sample_size)))
 
     def main(self, sc: SparkContext, *args):
@@ -757,7 +781,7 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
 
     @property
     def dataset_dir(self) -> str:
-        return DATASET_DIR
+        return BaseDir().dataset_processed
 
     @property
     def stratification_property(self) -> str:
@@ -812,7 +836,7 @@ class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
 
     @property
     def dataset_dir(self) -> str:
-        return DATASET_DIR
+        return BaseDir().dataset_processed
 
     @property
     def stratification_property(self) -> str:
@@ -860,7 +884,7 @@ class PrepareIfoodInteractionsDataFrames(BasePrepareDataFrames):
 
     @property
     def dataset_dir(self) -> str:
-        return DATASET_DIR
+        return BaseDir().dataset_processed
 
     @property
     def stratification_property(self) -> str:
@@ -925,7 +949,7 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
 
     @property
     def dataset_dir(self) -> str:
-        return DATASET_DIR
+        return BaseDir().dataset_processed
 
     @property
     def stratification_property(self) -> str:
@@ -999,7 +1023,7 @@ class PrepareIfoodIndexedSessionTestData(BasePySparkTask):
                                     sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(DATASET_DIR,
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed,
                                               "indexed_session_test_data_%.2f_k=%d_s=%d.parquet" % (self.test_size,
                                                                                                     self.minimum_interactions,
                                                                                                     self.sample_size)))
@@ -1044,7 +1068,7 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                                     sample_size=self.sample_size)
 
     def output(self):
-        return  luigi.LocalTarget(os.path.join(DATASET_DIR,
+        return  luigi.LocalTarget(os.path.join(BaseDir().dataset_processed,
                                               "indexed_orders_test_data_%.2f_k=%d_s=%d_f=%d.parquet" % (self.test_size,
                                                                                               self.minimum_interactions,
                                                                                               self.sample_size,
@@ -1130,7 +1154,7 @@ class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
 
     def output(self):
         return luigi.LocalTarget(
-            os.path.join(DATASET_DIR, "account_merchant_tuples_from_test_data_%.2f_k=%d_s=%d_f=%d.parquet" % (
+            os.path.join(BaseDir().dataset_processed, "account_merchant_tuples_from_test_data_%.2f_k=%d_s=%d_f=%d.parquet" % (
                 self.test_size, self.minimum_interactions, self.sample_size, self.nofilter_iteractions_test)))
 
     def main(self, sc: SparkContext, *args):

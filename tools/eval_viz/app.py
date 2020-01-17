@@ -98,10 +98,11 @@ def load_history_train(model):
   return pd.read_csv(os.path.join(fetch_training_path()[model],'history.csv')).set_index('epoch')
 
 def load_all_iteraction_metrics(iteraction):
-  models = fetch_iteraction_results_path().keys()
+  models = [row.train_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
   paths  = [row.eval_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
   df = json2df(dict(zip(models, paths)), 'metrics.json', 'path')
-
+  print(models)
+  print(paths)
   metrics = load_data_iteractions_metrics(iteraction).join(
     df.reset_index()
   )
@@ -182,8 +183,6 @@ def display_one_result():
   st.dataframe(df_orders.head())
   if len(input_column) > 0:
     GRAPH_METRIC_MODEL[input_graph](df_orders[input_column], "Distribution Variables")
-
-
 
   if df_train_params is not None:
     st.markdown('## Params (Train)')
