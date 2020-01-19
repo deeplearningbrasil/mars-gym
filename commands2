@@ -1,0 +1,30 @@
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_0" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=ContextualBanditsTraining_selu____512_19dd15e6ab --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateIfoodFullContentModel --run-type=reinforcement --bandit-policy random --batch-size 55000 --minimum-interactions 2 > nohup_dt0 &
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_1" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=ContextualBanditsTraining_selu____512_19dd15e6ab --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateIfoodFullContentModel --run-type=reinforcement --bandit-policy model --batch-size 55000 --minimum-interactions 2 > nohup_dt1 &
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_2" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=ContextualBanditsTraining_selu____512_19dd15e6ab --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateIfoodFullContentModel --run-type=reinforcement --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --batch-size 55000 --minimum-interactions 2 > nohup_dt2 &
+
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_3" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=ContextualBanditsTraining_selu____512_19dd15e6ab --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateIfoodFullContentModel --run-type=reinforcement --bandit-policy adaptive --batch-size 55000 --minimum-interactions 2 > nohup_dt3 &
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_4" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=ContextualBanditsTraining_selu____512_19dd15e6ab --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateIfoodFullContentModel --run-type=reinforcement --bandit-policy percentile_adaptive  --batch-size 55000 --minimum-interactions 2 > nohup_dt4 &
+
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_5" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=ContextualBanditsTraining_selu____512_19dd15e6ab --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateIfoodFullContentModel --run-type=reinforcement --bandit-policy lin_ucb --batch-size 55000 --minimum-interactions 2 > nohup_dt5 &
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_6" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=ContextualBanditsTraining_selu____512_0771f4fe24 --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateIfoodFullContentModel --run-type=reinforcement --bandit-policy lin_ts --batch-size 55000 --minimum-interactions 2 > nohup_dt6 &
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_2" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=VariationalAutoEncoderTraining_selu____500_fc62ac744a --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateAutoEncoderIfoodModel --run-type=supervised --batch-size 250000 > nohup_dt2 &
+
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_6" PYTHONPATH="." nohup luigi --module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationTask --local-scheduler --model-task-id=VariationalAutoEncoderTraining_selu____500_fc62ac744a --model-module=recommendation.task.model.auto_encoder --model-cls=VariationalAutoEncoderTraining --model-module-eval=recommendation.task.ifood   --model-cls-eval=EvaluateAutoEncoderIfoodModel --run-type=reinforcement --bandit-policy random --batch-size 55000 > nohup_dt6 &
+
+
+DATASET_PROCESSED_PATH="./output/ifood/dataset_6" DATASET_INFO_SESSION="./output/ifood/ufg_dataset_all/info_session_10m" PYTHONPATH="." luigi \
+--module recommendation.task.iterator_eval.iteraction_evaluation IterationEvaluationWithoutModelTask \
+--local-scheduler \
+--model-module-eval recommendation.task.ifood   \
+--model-cls-eval EvaluateMostPopularPerUserIfoodModel \
+--run-type=reinforcement --bandit-policy epsilon_greedy  \
+  --bandit-policy-params '{"epsilon": 0.1}' --batch-size 1000

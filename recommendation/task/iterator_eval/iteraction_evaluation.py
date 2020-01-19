@@ -130,6 +130,7 @@ class IterationEvaluationTask(BaseIterationEvaluation):
 
             # Save logs
             self.save_logs(logs)    
+            gc.collect()
 
         # params.json
         with open(self.output()[1].path, "w") as params_file:
@@ -232,6 +233,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
                         'test_size':    test_size})
             # Save logs
             self.save_logs(logs)    
+            gc.collect()
 
         # params.json
         with open(self.output()[1].path, "w") as params_file:

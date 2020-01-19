@@ -135,6 +135,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     limit_list_size: int = luigi.IntParameter(default=50)
     pin_memory: bool = luigi.BoolParameter(default=False)
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
+    no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
 
     def requires(self):
         test_size            = self.model_training.requires().session_test_size
@@ -182,7 +183,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                                        session_test_size=test_size, 
                                        minimum_interactions=minimum_interactions, 
                                        sample_size=sample_size,
-                                       seed=self.seed)        
+                                       seed=self.seed,
+                                       eval_hash=self.task_name)        
 
 
     def _read_test_data_frame(self) -> pd.DataFrame:
@@ -488,6 +490,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
     bandit_weights: str = luigi.Parameter(default='none')
     batch_size: int = luigi.IntParameter(default=100000)
     plot_histogram: bool = luigi.BoolParameter(default=False)
+    no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
 
     def requires(self):
         return SortMerchantListsForIfoodModel(model_module=self.model_module, 
@@ -500,6 +503,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
                                               plot_histogram=self.plot_histogram,
                                               limit_list_size=self.limit_list_size,
                                               nofilter_iteractions_test=self.nofilter_iteractions_test,
+                                              no_offpolicy_eval=self.no_offpolicy_eval,
                                               seed=self.seed)
 
     def output(self):
@@ -596,7 +600,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
             "personalization_at_50": self._mean_personalization(df, 50)
         }
 
-        if self.bandit_policy != "none":
+        if self.bandit_policy != "none" and not self.no_offpolicy_eval:
             rhat_rewards, rewards, ps_eval, ps = self._offpolicy_eval(df)
 
             metrics["IPS"]   = eval_IPS(rewards, ps_eval, ps)
@@ -642,7 +646,8 @@ class SortMerchantListsRandomly(SortMerchantListsForIfoodModel):
         return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
                                        session_test_size=self.test_size, 
                                        minimum_interactions=self.minimum_interactions, 
-                                       sample_size=self.sample_size)    
+                                       sample_size=self.sample_size,
+                                       eval_hash=self.task_name)    
 
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 'minimum_interactions':self.minimum_interactions, 'sample_size':self.sample_size}
@@ -737,7 +742,8 @@ class SortMerchantListsByMostPopular(SortMerchantListsForIfoodModel):
         return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
                                        session_test_size=self.test_size, 
                                        minimum_interactions=self.minimum_interactions, 
-                                       sample_size=self.sample_size)    
+                                       sample_size=self.sample_size,
+                                       eval_hash=self.task_name)    
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 
                                 'minimum_interactions':self.minimum_interactions,
@@ -834,7 +840,8 @@ class SortMerchantListsByMostPopularPerUser(SortMerchantListsForIfoodModel):
         return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
                                        session_test_size=self.test_size, 
                                        minimum_interactions=self.minimum_interactions, 
-                                       sample_size=self.sample_size)       
+                                       sample_size=self.sample_size,
+                                       eval_hash=self.task_name)       
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 'minimum_interactions':self.minimum_interactions, 'sample_size':self.sample_size}
 

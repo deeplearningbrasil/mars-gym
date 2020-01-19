@@ -14,14 +14,16 @@ class DirectEstimatorTraining(BaseTorchModelTraining):
     dropout_prob: float = luigi.FloatParameter(default=0.1)
     learning_rate: float = luigi.FloatParameter(1e-4)
     loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce")
-    n_factors: int = luigi.IntParameter(default=100)
+    epochs: int = luigi.IntParameter(default=10)
+    eval_hash: str = luigi.Parameter(default='none')
 
     def create_module(self) -> nn.Module:
         return DirectEstimator(
             n_users=self.n_users,
             n_items=self.n_items,
             n_factors=self.n_factors,
-            dropout_prob=self.dropout_prob)
+            dropout_prob=self.dropout_prob,
+            epochs=self.epochs)
 
 class ContextualBanditsTraining(BaseTorchModelTraining):
     loss_function: str = luigi.ChoiceParameter(choices=["crm"], default="crm")
