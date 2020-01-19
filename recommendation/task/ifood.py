@@ -347,7 +347,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             bandit_model = self.load_bandit_model()
 
             # DirectEstimator
-            de_rewards_per_tuple = self._direct_estimator_rewards_merchant_tuples()
+            if not no_offpolicy_eval:
+                de_rewards_per_tuple = self._direct_estimator_rewards_merchant_tuples()
 
             # Sort Function
             dataset_indices_per_tuple = self._create_dictionary_of_dataset_indices()
