@@ -20,7 +20,7 @@ def plot_bar(df, title=""):
 
 def plot_line(df, title="", yrange=[0, 1], cum=False):
   data = []
-  ymax = yrange[1]
+  ymax = yrange[1] if yrange else 1
   
   for i, row in df.iterrows():
     values = np.cumsum(row.values) if cum else row.values

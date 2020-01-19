@@ -213,7 +213,7 @@ def display_iteraction_result():
 
   st.markdown('## Metrics')
 
-  plot_line(metrics[input_metrics].transpose(), "Metrics", yrange=[0,1], cum=input_cum)
+  plot_line(metrics[input_metrics].transpose(), "Metrics", yrange=None, cum=input_cum)
 
   st.dataframe(metrics)
   
