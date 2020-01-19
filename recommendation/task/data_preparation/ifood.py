@@ -19,15 +19,18 @@ from torchnlp.encoders import LabelEncoder
 from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncoder
 from unidecode import unidecode
 from pyspark.sql.functions import when   
+from pyspark.sql.window import Window
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames, BaseDownloadDataset
-from recommendation.utils import parallel_literal_eval
+from recommendation.utils import parallel_literal_eval, datetime_to_shift, date_to_day_of_week, date_to_day_of_month
 from collections import Counter
 import requests
 import luigi
 from recommendation.files import get_params, get_task_dir
 
 BASE_DIR: str = os.path.join("output", "ifood")
+FILES_DIR: str = os.path.join("files")
+
 #EMBEDDING_DIR: str = os.path.join("output", "embeddings")
 #DATASET_DIR: str = os.path.join(BASE_DIR, "dataset")
 
@@ -70,104 +73,181 @@ class CheckDataset(luigi.Task):
             f"As seguintes pastas são esperadas com o dataset: {[output.path for output in self.output()]}")
 
 
-def date_to_day_of_week(date: str) -> int:
-    return int(datetime.strptime(date, '%Y-%m-%d').strftime('%w'))
 
-
-def datetime_to_shift(datetime_: str) -> str:
-    datetime_: datetime = datetime_ if isinstance(datetime_, datetime) else datetime.strptime(datetime_,
-                                                                                              '%Y-%m-%d %H:%M:%S')
-    day_of_week = int(datetime_.strftime('%w'))
-    # 0 - 4:59h - dawn
-    # 5 - 9:59h - breakfast
-    # 10 - 13:59h - lunch
-    # 14 - 16:59h - snack
-    # 17 - 23:59h - dinner
-    if 0 <= datetime_.hour <= 4:
-        shift = "dawn"
-    elif 5 <= datetime_.hour <= 9:
-        shift = "breakfast"
-    elif 10 <= datetime_.hour <= 13:
-        shift = "lunch"
-    elif 14 <= datetime_.hour <= 16:
-        shift = "snack"
-    else:
-        shift = "dinner"
-    return "%s %s" % ("weekday" if day_of_week < 4 else "weekend", shift)
-
-
-class CreateShiftIndices(BasePySparkTask):
+class CleanSessionDataset(BasePySparkTask):
 
     def requires(self):
         return CheckDataset()
 
-
     def output(self):
-        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "shifts.csv"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "info_session_cleaned"))
 
     def main(self, sc: SparkContext, *args):
         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
 
         spark = SparkSession(sc)
 
-        availability_df = spark.read.parquet(self.input()[0].path)
+        df = spark.read.parquet(self.input()[6].path)
 
+        # Drop nan and duplicates
+        df = df.na.drop().dropDuplicates()
+
+        # filters only the purchase iteration when you have both (purchase and visit) 
+        # at the same time
+        df_buy        = df.filter(df.buy==1)
+
+        df_only_visit = df.groupBy(['session_id','account_id','merchant_id', 
+                                'click_timestamp', 'dt_partition'])\
+                        .sum().withColumnRenamed("sum(buy)", "buy").filter(col("buy") == 0)
+
+            # union buys with visits without visitsBuy
+        df = df_buy.select(df.columns)\
+                .union(df_only_visit.select(df.columns))
+
+        # Save
+        df.write.parquet(self.output().path)
+
+
+class AddAdditionallInformationDataset(BasePySparkTask):
+    def requires(self):
+        return CheckDataset(), CleanSessionDataset()
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "shifts.csv")), \
+                    luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "availability")), \
+                        luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session"))
+
+
+    def add_history_buy_visits(self, df):
+        win_user_total = Window.partitionBy('account_id').orderBy('click_timestamp')\
+                            .rangeBetween(Window.unboundedPreceding, 0)
+
+        win_item_total = Window.partitionBy('merchant_id').orderBy('click_timestamp')\
+                            .rangeBetween(Window.unboundedPreceding, 0)
+
+        win_total      = Window.partitionBy('merchant_id', 'account_id').orderBy('click_timestamp')\
+                            .rangeBetween(Window.unboundedPreceding, 0)
+
+
+        df = df.withColumn('visit', lit(1))
+        df = df.withColumn("user_total_buys", F.sum(col("buy")).over(win_user_total)-col("buy"))\
+                .withColumn("user_total_visits", F.sum(col("visit")).over(win_user_total)-col("visit"))\
+                .withColumn("item_total_buys", F.sum(col("buy")).over(win_item_total)-col("buy"))\
+                .withColumn("item_total_visits", F.sum(col("visit")).over(win_item_total)-col("visit"))\
+                .withColumn("hist_buys", F.sum(col("buy")).over(win_total)-col("buy"))\
+                .withColumn("hist_visits", F.sum(col("visit")).over(win_total)-col("visit"))
+
+        return df
+
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
+
+        spark           = SparkSession(sc)
+        
+        session_df      = spark.read.parquet(self.input()[1].path).orderBy("click_timestamp")
+        availability_df = spark.read.parquet(self.input()[0][0].path)
+
+
+        # Save shift_idx
         shift_df = availability_df.select("shift").distinct().toPandas()
+        shift_df.to_csv(self.output()[0].path, index_label="shift_idx")
+        shift_df = spark.read.csv(self.output()[0].path, header=True, inferSchema=True)
 
-        shift_df.to_csv(self.output().path, index_label="shift_idx")
+        # Save availability information
+        availability_df = availability_df.withColumn("day_of_week", availability_df["day_of_week"] - 1)
+        availability_df = availability_df.join(shift_df, "shift")
 
+        # Session
+        date_to_day_of_week_udf  = udf(date_to_day_of_week, IntegerType())
+        datetime_to_shift_udf    = udf(datetime_to_shift, StringType())
+        date_to_day_of_month_udf = udf(date_to_day_of_month, IntegerType())
 
-class AddShiftIdxAndFixWeekDayForAvailabilityDataset(BasePySparkTask):
-    def requires(self):
-        return CheckDataset(), CreateShiftIndices()
+        session_df = session_df.withColumn("day_of_week", date_to_day_of_week_udf(session_df.dt_partition))
+        session_df = session_df.withColumn("day_of_month", date_to_day_of_month_udf(session_df.dt_partition))
+        session_df = session_df.withColumn("shift", datetime_to_shift_udf(session_df.click_timestamp))
+        session_df = session_df.join(shift_df, "shift")
 
-    def output(self):
-        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "availability"))
+        session_df = self.add_history_buy_visits(session_df)
 
-    def main(self, sc: SparkContext, *args):
-        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
-
-        spark = SparkSession(sc)
-
-        df = spark.read.parquet(self.input()[0][0].path)
-
-        df = df.withColumn("day_of_week", df["day_of_week"] - 1)
-
-        shift_df = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
-        df = df.join(shift_df, "shift")
-
-        df.write.parquet(self.output().path)
+        # Save files
+        availability_df.write.parquet(self.output()[1].path)
+        session_df.write.parquet(self.output()[2].path)
 
 
-class AddShiftAndWeekDayToSessionDataset(BasePySparkTask):
-    def requires(self):
-        return CheckDataset(), CreateShiftIndices()
 
-    def output(self):
-        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session"))
+# class CreateShiftIndices(BasePySparkTask):
 
-    def main(self, sc: SparkContext, *args):
-        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
+#     def requires(self):
+#         return CheckDataset()
 
-        spark = SparkSession(sc)
 
-        date_to_day_of_week_udf = udf(date_to_day_of_week, IntegerType())
-        datetime_to_shift_udf = udf(datetime_to_shift, StringType())
+#     def output(self):
+#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "shifts.csv"))
 
-        df = spark.read.parquet(self.input()[0][6].path)
+#     def main(self, sc: SparkContext, *args):
+#         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
 
-        df = df.withColumn("day_of_week", date_to_day_of_week_udf(df.dt_partition))
-        df = df.withColumn("shift", datetime_to_shift_udf(df.click_timestamp))
+#         spark = SparkSession(sc)
 
-        shift_df = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
-        df = df.join(shift_df, "shift")
+#         availability_df = spark.read.parquet(self.input()[0].path)
 
-        df.write.parquet(self.output().path)
+#         shift_df = availability_df.select("shift").distinct().toPandas()
+
+#         shift_df.to_csv(self.output().path, index_label="shift_idx")
+
+
+# class AddShiftIdxAndFixWeekDayForAvailabilityDataset(BasePySparkTask):
+#     def requires(self):
+#         return CheckDataset(), CreateShiftIndices()
+
+#     def output(self):
+#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "availability"))
+
+#     def main(self, sc: SparkContext, *args):
+#         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
+
+#         spark = SparkSession(sc)
+
+#         df = spark.read.parquet(self.input()[0][0].path)
+
+#         df = df.withColumn("day_of_week", df["day_of_week"] - 1)
+
+#         shift_df = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
+#         df = df.join(shift_df, "shift")
+
+#         df.write.parquet(self.output().path)
+
+
+# class AddShiftAndWeekDayToSessionDataset(BasePySparkTask):
+#     def requires(self):
+#         return CheckDataset(), CreateShiftIndices()
+
+#     def output(self):
+#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session"))
+
+#     def main(self, sc: SparkContext, *args):
+#         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
+
+#         spark = SparkSession(sc)
+
+#         date_to_day_of_week_udf = udf(date_to_day_of_week, IntegerType())
+#         datetime_to_shift_udf = udf(datetime_to_shift, StringType())
+
+#         df = spark.read.parquet(self.input()[0][6].path)
+
+#         df = df.withColumn("day_of_week", date_to_day_of_week_udf(df.dt_partition))
+#         df = df.withColumn("shift", datetime_to_shift_udf(df.click_timestamp))
+
+#         shift_df = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
+#         df = df.join(shift_df, "shift")
+
+#         df.write.parquet(self.output().path)
 
 
 class PrepareRestaurantContentDataset(BasePySparkTask):
     def requires(self):
-        return CheckDataset(), AddShiftIdxAndFixWeekDayForAvailabilityDataset()
+        return CheckDataset(), AddAdditionallInformationDataset()
 
     def output(self):
         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurants_with_contents.csv"))
@@ -176,9 +256,9 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
         spark = SparkSession(sc)
 
         restaurant_df = spark.read.parquet(self.input()[0][4].path)
-        availability_df = spark.read.parquet(self.input()[1].path)
         menu_df = spark.read.parquet(self.input()[0][3].path)
         item_df = spark.read.parquet(self.input()[0][2].path)
+        availability_df = spark.read.parquet(self.input()[1][1].path)
 
         availability_df = availability_df.groupBy("merchant_id") \
             .agg(collect_set("day_of_week").alias("days_of_week"), collect_set("shift").alias("shifts"),
@@ -200,30 +280,13 @@ class PrepareRestaurantContentDataset(BasePySparkTask):
 
         restaurant_df.toPandas().to_csv(self.output().path, index=False)
 
-
-
-class DownloadStopWords(luigi.Task):
-    def output(self):
-        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "stopwords_pt.txt"))
-
-    def run(self):
-        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
-
-        url  = "https://raw.githubusercontent.com/stopwords-iso/stopwords-pt/master/stopwords-pt.txt"
-        file = requests.get(url)
-
-        with open(self.output().path, 'wb') as output:
-            output.write(file.content)
-
-        print(self.output().path)
-
 class ProcessRestaurantContentDataset(luigi.Task):
     menu_text_length: int = luigi.IntParameter(default=5000)
     description_text_length: int = luigi.IntParameter(default=200)
     category_text_length: int = luigi.IntParameter(default=250)
 
     def requires(self):
-        return PrepareRestaurantContentDataset(), DownloadStopWords()
+        return PrepareRestaurantContentDataset()
     
     def output(self):
         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurants_with_processed_contents.csv")), \
@@ -268,14 +331,14 @@ class ProcessRestaurantContentDataset(luigi.Task):
 
     def load_stopwords(self):
         if not hasattr(self, "_stopwords"):
-            with open(self.input()[1].path, "r") as file_handler:
+            with open(os.path.join(FILES_DIR, "stopwords-pt.txt"), "r") as file_handler:
                 self._stopwords = [unidecode(line.strip()) for line in file_handler.readlines()]
 
         return self._stopwords
 
     def run(self):
         #spark = SparkSession(sc)
-        context = pd.read_csv(self.input()[0].path)
+        context = pd.read_csv(self.input().path)
 
         del context['item_imagesurl']
         context['menu_full_text']   = context['menu_full_text'].str[:self.menu_text_length].replace(',', ' ')
@@ -322,6 +385,20 @@ class ProcessRestaurantContentDataset(luigi.Task):
         pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
 
 
+# class DownloadStopWords(luigi.Task):
+#     def output(self):
+#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "stopwords_pt.txt"))
+
+#     def run(self):
+#         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
+
+#         url  = "https://raw.githubusercontent.com/stopwords-iso/stopwords-pt/master/stopwords-pt.txt"
+#         file = requests.get(url)
+
+#         with open(self.output().path, 'wb') as output:
+#             output.write(file.content)
+
+#         print(self.output().path)
 
 class BuildEmbeddingVocabulary(luigi.Task):
     menu_text_length: int = luigi.IntParameter(default=5000)
@@ -381,7 +458,7 @@ class SplitSessionDataset(BasePySparkTask):
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return AddShiftAndWeekDayToSessionDataset()
+        return AddAdditionallInformationDataset()
 
     def output(self):
         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_train_%.2f_k=%d_s=%d" % (self.test_size,
@@ -405,17 +482,17 @@ class SplitSessionDataset(BasePySparkTask):
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
 
-        df = spark.read.parquet(self.input().path)
-        df = df.na.drop().dropDuplicates()
+        df = spark.read.parquet(self.input()[2].path)
 
+        # Filter dataset
         if self.sample_size > 0:
             df = df.sort("click_timestamp").limit(self.sample_size)
 
         count  = df.count()
         n_test = math.ceil(self.test_size * count)
 
-        train_df = df.sort("click_timestamp").limit(count - n_test).cache()
-        test_df  = df.sort("click_timestamp", ascending=False).limit(n_test).cache()
+        train_df = df.sort("click_timestamp").limit(count - n_test)
+        test_df  = df.sort("click_timestamp", ascending=False).limit(n_test)
 
         train_df = self.filter_train_session(train_df, self.minimum_interactions)
 
@@ -423,75 +500,75 @@ class SplitSessionDataset(BasePySparkTask):
         test_df.write.parquet(self.output()[1].path)
 
 
-class AddVisitsBuysForInteractionDataset(luigi.Task):
-    test_size: float = luigi.FloatParameter(default=0.10)
-    sample_size: int = luigi.IntParameter(default=-1)
-    minimum_interactions: int = luigi.FloatParameter(default=5)
+# class AddVisitsBuysForInteractionDataset(luigi.Task):
+#     test_size: float = luigi.FloatParameter(default=0.10)
+#     sample_size: int = luigi.IntParameter(default=-1)
+#     minimum_interactions: int = luigi.FloatParameter(default=5)
 
-    def requires(self):
-        return SplitSessionDataset(test_size=self.test_size, 
-                                    sample_size=self.sample_size, 
-                                    minimum_interactions=self.minimum_interactions)
+#     def requires(self):
+#         return SplitSessionDataset(test_size=self.test_size, 
+#                                     sample_size=self.sample_size, 
+#                                     minimum_interactions=self.minimum_interactions)
 
-    def output(self):
-        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_train_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
-                                                                                        self.minimum_interactions, self.sample_size))), \
-                luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_test_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
-                                                                                        self.minimum_interactions, self.sample_size)))
+#     def output(self):
+#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_train_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
+#                                                                                         self.minimum_interactions, self.sample_size))), \
+#                 luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_test_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
+#                                                                                         self.minimum_interactions, self.sample_size)))
 
-    def add_visits_buys(self, df):
-        user_total_buys     = []
-        user_total_visits   = []
-        item_total_buys     = []
-        item_total_visits   = []        
-        hist_buys           = []
-        hist_visits         = []
+#     def add_visits_buys(self, df):
+#         user_total_buys     = []
+#         user_total_visits   = []
+#         item_total_buys     = []
+#         item_total_visits   = []        
+#         hist_buys           = []
+#         hist_visits         = []
 
-        user_buys_dict      = defaultdict(int)
-        user_visits_dict    = defaultdict(int)
+#         user_buys_dict      = defaultdict(int)
+#         user_visits_dict    = defaultdict(int)
 
-        item_buys_dict      = defaultdict(int)
-        item_visits_dict    = defaultdict(int)
+#         item_buys_dict      = defaultdict(int)
+#         item_visits_dict    = defaultdict(int)
 
-        hist_buys_dict      = defaultdict(int)
-        hist_visits_dict    = defaultdict(int)
+#         hist_buys_dict      = defaultdict(int)
+#         hist_visits_dict    = defaultdict(int)
 
-        for _, row in tqdm(df.iterrows(), total=df.shape[0]):
-            merchant, account = row['merchant_id'], row['account_id']
-            hist_tup = tuple([merchant, account])
+#         for _, row in tqdm(df.iterrows(), total=df.shape[0]):
+#             merchant, account = row['merchant_id'], row['account_id']
+#             hist_tup = tuple([merchant, account])
             
-            user_total_buys.append(user_buys_dict[account])
-            user_total_visits.append(user_visits_dict[account])
-            item_total_buys.append(item_buys_dict[merchant])
-            item_total_visits.append(item_visits_dict[merchant])
-            hist_buys.append(hist_buys_dict[hist_tup])
-            hist_visits.append(hist_visits_dict[hist_tup])
+#             user_total_buys.append(user_buys_dict[account])
+#             user_total_visits.append(user_visits_dict[account])
+#             item_total_buys.append(item_buys_dict[merchant])
+#             item_total_visits.append(item_visits_dict[merchant])
+#             hist_buys.append(hist_buys_dict[hist_tup])
+#             hist_visits.append(hist_visits_dict[hist_tup])
             
-            user_buys_dict[account]     += row['buy']
-            user_visits_dict[account]   += 1
-            item_buys_dict[merchant]    += row['buy']
-            item_visits_dict[merchant]  += 1            
-            hist_buys_dict[hist_tup]    += row['buy']
-            hist_visits_dict[hist_tup]  += 1
+#             user_buys_dict[account]     += row['buy']
+#             user_visits_dict[account]   += 1
+#             item_buys_dict[merchant]    += row['buy']
+#             item_visits_dict[merchant]  += 1            
+#             hist_buys_dict[hist_tup]    += row['buy']
+#             hist_visits_dict[hist_tup]  += 1
             
-        df['user_total_buys']   = user_total_buys
-        df['user_total_visits'] = user_total_visits
-        df['item_total_buys']   = item_total_buys
-        df['item_total_visits'] = item_total_visits        
-        df['hist_buys']         = hist_buys
-        df['hist_visits']       = hist_visits    
+#         df['user_total_buys']   = user_total_buys
+#         df['user_total_visits'] = user_total_visits
+#         df['item_total_buys']   = item_total_buys
+#         df['item_total_visits'] = item_total_visits        
+#         df['hist_buys']         = hist_buys
+#         df['hist_visits']       = hist_visits    
 
-        return df                                                                                
+#         return df                                                                                
 
-    def run(self):
-        train_df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
-        test_df  = pd.read_parquet(self.input()[1].path).sort_values("click_timestamp")
+#     def run(self):
+#         train_df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
+#         test_df  = pd.read_parquet(self.input()[1].path).sort_values("click_timestamp")
 
-        train_df = self.add_visits_buys(train_df)
-        test_df  = self.add_visits_buys(test_df)
+#         train_df = self.add_visits_buys(train_df)
+#         test_df  = self.add_visits_buys(test_df)
 
-        train_df.to_parquet(self.output()[0].path)
-        test_df.to_parquet(self.output()[1].path)
+#         train_df.to_parquet(self.output()[0].path)
+#         test_df.to_parquet(self.output()[1].path)
 
 class GenerateIndicesForAccountsAndMerchantsDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
@@ -537,7 +614,7 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return AddVisitsBuysForInteractionDataset(
+        return SplitSessionDataset(
                     test_size=self.test_size, 
                     minimum_interactions=self.minimum_interactions,
                     sample_size=self.sample_size), \
@@ -1049,7 +1126,7 @@ class PrepareIfoodIndexedSessionTestData(BasePySparkTask):
                     "account_idx", "merchant_idx",
                     "shift_idx", "mode_shift_idx", 
                     "day_of_week", "mode_day_of_week",
-                    "visit", 'buy').sort("click_timestamp")
+                    "day_of_month", "visit", 'buy').sort("click_timestamp")
 
         session_df.write.parquet(self.output().path)
 
@@ -1078,19 +1155,15 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
     def main(self, sc: SparkContext, *args):
         spark = SparkSession(sc)
 
-        train_df     = spark.read.parquet(self.input()[0][0].path).cache()
-        test_df      = spark.read.parquet(self.input()[0][1].path).cache()
+        train_df     = spark.read.parquet(self.input()[0][0].path)
+        test_df      = spark.read.parquet(self.input()[0][1].path)
         account_df   = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df  = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
                                     .select("merchant_idx", "merchant_id", "shifts", "days_of_week")
         
-        print("train_df size: ", train_df.count())
-        print("test_df size: ", test_df.count())
-        
-
         test_df  = test_df\
                         .withColumn("mode_shift_idx", test_df.shift_idx)\
-                        .withColumn("mode_day_of_week", test_df.day_of_week).cache()
+                        .withColumn("mode_day_of_week", test_df.day_of_week)
 
         # Filter idx only train set
         if not self.nofilter_iteractions_test:
@@ -1099,35 +1172,41 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
             merchant_df = merchant_df\
                             .join(train_df.select("merchant_id").distinct(), "merchant_id", how="inner")
 
-        #PrepareIfoodIndexedSessionTestData
+
         # Filter session with visits or not
-        orders_df = test_df.filter(test_df.buy == 1)        
-                
+        orders_df      = test_df.filter(test_df.buy == 1)        
+        count_visits   = test_df.count()
+        count_buys     = orders_df.count()
+
+        # Filter orders and remove duplicate buys
+        orders_df      = orders_df\
+                        .join(account_df, "account_id", how="inner")\
+                        .join(merchant_df, "merchant_id", how="inner")\
+                        .dropDuplicates(["session_id", "account_idx", "merchant_idx", "dt_partition", "shift_idx"])\
+                        .select(test_df.columns).cache()
+
         # Join with merchant the same caracteristics to simulate merchants open
         orders_df = orders_df.join(merchant_df, [merchant_df.shifts.contains(orders_df.shift),
                                                  merchant_df.days_of_week.contains(orders_df.day_of_week)]) \
                             .drop(merchant_df.merchant_id) \
-                            .select(test_df.columns + ["merchant_idx"]).cache()
+                            .select(test_df.columns + ["merchant_idx"])
 
         # Group and similar merchants list (merchant_idx_list)
         orders_df = orders_df.groupBy(test_df.columns)\
-                        .agg(collect_set("merchant_idx")\
-                        .alias("merchant_idx_list")) \
-                        .drop("merchant_idx")
-
-        count_visits   = test_df.count()
-        count_buys     = orders_df.count()
+                            .agg(collect_set("merchant_idx")\
+                            .alias("merchant_idx_list")) \
+                            .drop("merchant_idx")
 
         orders_df = orders_df \
                     .withColumn("count_visits", lit(count_visits)) \
                     .withColumn("count_buys", lit(count_buys)) \
-                    .join(account_df, "account_id", how="inner") \
-                    .join(merchant_df, "merchant_id", how="inner") \
-                    .select("session_id", "account_id", "click_timestamp",  
+                    .join(account_df, "account_id", how="inner")\
+                    .join(merchant_df, "merchant_id", how="inner")\
+                    .select("session_id", "account_id", "dt_partition",  
                             "account_idx", "merchant_idx", "shift", "shift_idx",
                             "mode_shift_idx", "mode_day_of_week", "day_of_week", 
-                            "count_buys", "count_visits", 
-                            "buy", "merchant_idx_list").dropDuplicates()
+                            "day_of_month", "count_buys", "count_visits", 
+                            "buy", "merchant_idx_list").dropDuplicates().cache()
         test_size = orders_df.count()
         
         if test_size > 0:

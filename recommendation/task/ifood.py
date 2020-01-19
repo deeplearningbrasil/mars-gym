@@ -31,7 +31,7 @@ from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction
 from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrdersTestData, \
     PrepareIfoodIndexedSessionTestData, \
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
-    PrepareRestaurantContentDataset, CreateShiftIndices, \
+    PrepareRestaurantContentDataset, \
     CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsDataset, \
     IndexAccountsAndMerchantsOfSessionTrainDataset, LoggingPolicyPsDataset
 from recommendation.task.evaluation import BaseEvaluationTask
@@ -317,7 +317,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
 
         print("Reading the orders DataFrame...")
         orders_df: pd.DataFrame = pd.read_parquet(self.input()[0].path, 
-                                        columns=['session_id', 'account_id', 'click_timestamp', 'account_idx', 'merchant_idx', 
+                                        columns=['session_id', 'account_id', 'dt_partition', 'account_idx', 'merchant_idx', 
                                                 'shift_idx', 'day_of_week', 'count_buys', 'count_visits', 'buy', 'merchant_idx_list'])
 
         print("Join with LogPolicyProb...")
@@ -422,7 +422,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             plot_histogram(orders_df["ps"].values).savefig(
                 os.path.join(self.output().path, "ps.jpg"))
 
-        orders_df[["session_id", "account_id", "click_timestamp", "account_idx", "merchant_idx", 
+        orders_df[["session_id", "account_id", "dt_partition", "account_idx", "merchant_idx", 
                    "rhat_merchant_idx", "shift_idx", "day_of_week", 
                    "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
                    "rewards_merchant_idx_list", "prob_merchant_idx_list", "relevance_list", 
@@ -925,7 +925,7 @@ class GenerateUserEmbeddingsFromContentModel(BaseEvaluationTask):
                     minimum_interactions=minimum_interactions,
                     sample_size=sample_size),
                 ProcessRestaurantContentDataset(),
-                CreateShiftIndices())
+                AddAdditionallInformationDataset())
 
     def output(self):
         return (luigi.LocalTarget(
@@ -950,7 +950,7 @@ class GenerateUserEmbeddingsFromContentModel(BaseEvaluationTask):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
 
         processed_content_df = pd.read_csv(self.input()[2][0].path)  # .set_index('merchant_idx')
-        shifts_df = pd.read_csv(self.input()[3].path).set_index('shift')
+        shifts_df = pd.read_csv(self.input()[3][0].path).set_index('shift')
         # print(processed_content_df.head())
         # print(processed_content_df.columns)
 
