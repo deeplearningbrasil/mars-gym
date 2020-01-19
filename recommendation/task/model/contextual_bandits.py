@@ -22,8 +22,7 @@ class DirectEstimatorTraining(BaseTorchModelTraining):
             n_users=self.n_users,
             n_items=self.n_items,
             n_factors=self.n_factors,
-            dropout_prob=self.dropout_prob,
-            epochs=self.epochs)
+            dropout_prob=self.dropout_prob)
 
 class ContextualBanditsTraining(BaseTorchModelTraining):
     loss_function: str = luigi.ChoiceParameter(choices=["crm"], default="crm")
