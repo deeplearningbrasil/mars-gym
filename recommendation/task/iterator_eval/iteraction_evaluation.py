@@ -104,10 +104,11 @@ class IterationEvaluationTask(BaseIterationEvaluation):
             
             if self.is_reinforcement:
 
-                task_merge   = MergeIteractionDatasetTask(test_size=test_size, 
-                                                        sample_size=sample_size,
-                                                        minimum_interactions=minimum_interactions,
-                                                        evaluation_path=task_eval.output_path)                
+                task_merge   = MergeIteractionDatasetTask(batch_size=self.batch_size,
+                                                          test_size=test_size, 
+                                                          sample_size=sample_size,
+                                                          minimum_interactions=minimum_interactions,
+                                                          evaluation_path=task_eval.output_path)                
 
                 # Merge Dataset
                 yield task_merge
@@ -205,7 +206,8 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
             yield task_eval
 
             if self.is_reinforcement:
-                task_merge   = MergeIteractionDatasetTask(test_size=test_size, 
+                task_merge   = MergeIteractionDatasetTask(batch_size=self.batch_size,
+                                                          test_size=test_size, 
                                                           sample_size=sample_size,
                                                           minimum_interactions=minimum_interactions,
                                                           evaluation_path=task_eval.output_path)

@@ -7,10 +7,10 @@ from torch.utils.data.dataset import Dataset
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
 import random
-
+import math
 from recommendation.task.model.base import BaseTorchModelTraining
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
-from recommendation.task.data_preparation.ifood import CheckDataset, GenerateIndicesForAccountsAndMerchantsDataset
+from recommendation.task.data_preparation.ifood import CheckDataset, CleanSessionDataset, GenerateIndicesForAccountsAndMerchantsDataset
 from tqdm import tqdm
 from recommendation.files import get_task_dir, get_task_dir
 from recommendation.task.data_preparation.base import BasePySparkTask
@@ -114,9 +114,11 @@ class MergeIteractionDatasetTask(BasePySparkTask):
     sample_size: int = luigi.IntParameter()
     minimum_interactions: int = luigi.FloatParameter()
     evaluation_path: str = luigi.Parameter()
+    batch_size: int = luigi.IntParameter() # 750000 | 165000
 
     def requires(self):
-        return CheckDataset(), \
+        return  BuildIteractionDatasetTask(),\
+                CheckDataset(), \
                 GenerateIndicesForAccountsAndMerchantsDataset(sample_size=self.sample_size)
 
     def output(self):
@@ -126,36 +128,69 @@ class MergeIteractionDatasetTask(BasePySparkTask):
     def output_path(self):
        return os.path.join(BaseDir().dataset_processed, "info_session", "merged", self.task_id)
 
+    def merge_real_test_with_evaluation_data(self, spark, df_real, df_eval):
+        df = df_real.cache()
+        #df = df_real.withColumn("buy", lit(0))
+
+        # Load merchant indices idx
+        df_mearchant        = spark.read.csv(self.input()[2][1].path,header=True, inferSchema=True)
+        df_mearchant        = df_mearchant.select('merchant_idx', 'merchant_id')
+        df_rhat_mearchant   = df_mearchant.withColumnRenamed("merchant_id", "rhat_merchant_id")\
+                                            .withColumnRenamed("merchant_idx", "rhat_merchant_idx")
+
+        df_eval = df_eval.join(df_mearchant, 'merchant_idx', how='inner')
+        df_eval = df_eval.join(df_rhat_mearchant,'rhat_merchant_idx' , how='inner')\
+                            .withColumn("buy", lit(1))
+
+        # Join order interactions
+        df = df.join(
+                df_eval.select('session_id', 'account_id', 'merchant_id', 'dt_partition', 'rhat_merchant_id', 'buy'), 
+                ['session_id', 'account_id', 'merchant_id', 'dt_partition', 'buy'], how='left')
+
+        df = df.withColumn("old_buy", df.buy)
+        df = df.withColumn("old_merchant_id", df.merchant_id)
+
+        # Rewrite original interaction 
+        df = df.withColumn('buy', when(df.rhat_merchant_id.isNull(), 0)\
+                .otherwise((df.merchant_id == df.rhat_merchant_id).cast(IntegerType())))
+        df = df.withColumn('merchant_id', when(df.rhat_merchant_id.isNull(), df.merchant_id)\
+                .otherwise(df.rhat_merchant_id))
+
+        #df_info_session.columns
+        columns = ['session_id','account_id','merchant_id','click_timestamp','buy','dt_partition','old_buy', 'old_merchant_id']
+        
+        return df.select(columns)
+
+#        columns = ['session_id','account_id','merchant_id','click_timestamp','buy','dt_partition','old_buy', 'old_merchant_id']
+ #       df.select(columns).write.mode("overwrite").parquet(self.output().path)
+
     def main(self, sc: SparkContext, *args):
         #os.makedirs(self.output_path, exist_ok=True)
         spark = SparkSession(sc)
 
         # Load info_session
-        df_info_session = spark.read.parquet(self.input()[0][6].path)
+        df_groud_truth       = spark.read.parquet(self.input()[0].path)
 
-        # Load merchant indices idx
-        df_mearchant = spark.read.csv(self.input()[1][1].path,header=True, inferSchema=True)
-        df_mearchant = df_mearchant.select('merchant_idx', 'merchant_id')
+        # Load info_session
+        df_current_dataset   = spark.read.parquet(os.environ['DATASET_INFO_SESSION']).sort("click_timestamp")
 
-        # Load evaluation dataset
+        n_test      = math.ceil(self.test_size * self.sample_size)
+        df_trained  = df_current_dataset.limit(self.sample_size).sort("click_timestamp").limit(self.sample_size - n_test)
+        df_test_gt  = df_current_dataset.limit(self.sample_size).sort("click_timestamp", ascending=False).limit(n_test)
+
+        # Join test groud truth with evaluation information
         #'../output/evaluation/EvaluateAutoEncoderIfoodModel/results/VariationalAutoEncoderTraining_selu____500_fc62ac744a_6534ac1232/orders_with_metrics.csv'
-        df_eval = spark.read.csv(os.path.join(self.evaluation_path, 'orders_with_metrics.csv'), header=True, inferSchema=True).sort('click_timestamp')
-        df_eval = df_eval.withColumn("click_timestamp", F.from_utc_timestamp(df_eval.click_timestamp, LOCAL_TZ))
-        df_eval = df_eval.join(df_mearchant, df_eval.rhat_merchant_idx == df_mearchant.merchant_idx)
-        df_eval = df_eval.withColumnRenamed("merchant_id", "rhat_merchant_id")
-        df_eval = df_eval.withColumn("buy", lit(1))
+        df_eval      = spark.read.csv(os.path.join(self.evaluation_path, 'orders_with_metrics.csv'), header=True, inferSchema=True)
+        test_eval_df = self.merge_real_test_with_evaluation_data(spark, df_test_gt, df_eval)
 
-        # Join order interactions
-        df = df_info_session.join(
-            df_eval.select('session_id', 'account_id', 'click_timestamp', 'rhat_merchant_id', 'buy'), 
-            ['session_id', 'account_id', 'click_timestamp', 'buy'], how='left').cache()
+        # Filter next test set with groud truth information
+        df_next_test_gt = df_groud_truth.sort("click_timestamp").limit(self.sample_size + self.batch_size)
+        df_next_test_gt = df_next_test_gt.sort("click_timestamp", ascending=False).limit(self.batch_size)
 
-        # Rewrite original interaction 
-        df = df.withColumn('buy', when(df.rhat_merchant_id.isNull(), df.buy)\
-                .otherwise((df.merchant_id == df.rhat_merchant_id).cast(IntegerType())))
-        df = df.withColumn('merchant_id', when(df.rhat_merchant_id.isNull(), df.merchant_id)\
-                .otherwise(df.rhat_merchant_id))
-
-        df.select(df_info_session.columns).write.mode("overwrite").parquet(self.output().path)
+        columns         = df_groud_truth.columns
+        df_next_dataset = df_trained.select(columns)\
+                            .union(test_eval_df.select(columns))\
+                            .union(df_next_test_gt.select(columns)).sort("click_timestamp")
 
 
+        df_next_dataset.write.mode("overwrite").parquet(self.output().path)
