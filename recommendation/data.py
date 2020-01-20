@@ -720,6 +720,9 @@ class DirectEstimatorDataset(InteractionsDataset):
         self._vocab_size: int = metadata_data_frame.iloc[0]["vocab_size"]
         self._non_text_input_dim: int = metadata_data_frame.iloc[0]["non_textual_input_dim"]
 
+        self._auxiliar_output_columns = [auxiliar_output_column.name
+                                         for auxiliar_output_column in project_config.auxiliar_output_columns]
+
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
@@ -752,4 +755,9 @@ class DirectEstimatorDataset(InteractionsDataset):
         positive_items = self._get_items(item_indices, user_item_visits, user_item_buys)
         output         = rows[self._output_column].values
 
+        if self._auxiliar_output_columns:
+            output = tuple([output]) + tuple(rows[auxiliar_output_column].values
+                                             for auxiliar_output_column in self._auxiliar_output_columns)
+                
         return (user_indices, shift_indices, *positive_items), (output)
+

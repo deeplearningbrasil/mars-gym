@@ -6,7 +6,7 @@ import os
 import shutil
 from contextlib import redirect_stdout
 from typing import Type, Dict, List, Optional
-
+import gc
 import luigi
 import mlflow
 import numpy as np
@@ -246,6 +246,7 @@ class BaseModelTraining(luigi.Task):
                 shutil.rmtree(self.output().path)
                 raise
             finally:
+                gc.collect()
                 if self.device == "cuda":
                     CudaRepository.put_available_device(self.device_id)
 
@@ -274,6 +275,7 @@ class BaseTorchModelTraining(BaseModelTraining):
     monitor_mode: str = luigi.Parameter(default="min")
     generator_workers: int = luigi.IntParameter(default=min(multiprocessing.cpu_count(), 20))
     pin_memory: bool = luigi.BoolParameter(default=False)
+    task_hash: str = luigi.Parameter(default='none')
 
     metrics = luigi.ListParameter(default=["loss"])
 

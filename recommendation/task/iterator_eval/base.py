@@ -62,7 +62,7 @@ class BaseIterationEvaluation(luigi.Task):
 
         train_params = get_params(task_dir)
         train_params = {**train_params, **params}
-        train_params['seed'] = self.seed
+        train_params['task_hash'] = self.task_id
 
         self._model_training = class_(**train_params)
 
@@ -158,9 +158,9 @@ class MergeIteractionDatasetTask(BasePySparkTask):
                 .otherwise(df.rhat_merchant_id))
 
         #df_info_session.columns
-        columns = ['session_id','account_id','merchant_id','click_timestamp','buy','dt_partition','old_buy', 'old_merchant_id']
+        #columns = ['session_id','account_id','merchant_id','click_timestamp','buy','dt_partition','old_buy', 'old_merchant_id']
         
-        return df.select(columns)
+        return df.select(df_real.columns)
 
 #        columns = ['session_id','account_id','merchant_id','click_timestamp','buy','dt_partition','old_buy', 'old_merchant_id']
  #       df.select(columns).write.mode("overwrite").parquet(self.output().path)

@@ -55,7 +55,7 @@ class IterationEvaluationTask(BaseIterationEvaluation):
                                         'bandit_policy_params': self.bandit_policy_params,
                                         'nofilter_iteractions_test':  self.is_reinforcement,
                                         'no_offpolicy_eval': self.no_offpolicy_eval,
-                                        'seed': self.seed}, 
+                                        'task_hash': self.task_id}, 
                                         **params)
                           
         return self._model_evaluate     
@@ -166,7 +166,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
                           'bandit_policy_params': self.bandit_policy_params,
                           'nofilter_iteractions_test':  self.is_reinforcement,
                           'no_offpolicy_eval': self.no_offpolicy_eval,                          
-                          'seed': self.seed}, **params}
+                          'task_hash': self.task_id}, **params}
 
         self._model_evaluate = class_(**eval_params)
 

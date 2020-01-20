@@ -5,7 +5,7 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateMostPopularIfood
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateMostPopularIfoodModel --local-scheduler --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateMostPopularIfoodModel --local-scheduler --plot-histogram --bandit-policy model
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateMostPopularIfoodModel --local-scheduler --plot-histogram --bandit-policy adaptive
 
 # MostPopularPerUser
 
@@ -23,14 +23,18 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateRandomIfoodModel
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateRandomIfoodModel --local-scheduler --plot-histogram --bandit-policy model
 
-# DirectEstimatorTraining____500____591fc2ad60
+
+# DirectEstimatorTraining____512____e9f2fd965d
+
+PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits DirectEstimatorTraining --project ifood_contextual_bandit_direct_estimator --local-scheduler --batch-size=512 --optimizer=radam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.801}' --learning-rate=0.001 --loss-function=crm  --n-factors=100 --epochs 300
+
 PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits DirectEstimatorTraining --project ifood_offpolicy_direct_estimator  --local-scheduler
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____500____591fc2ad60 --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____512____e9f2fd965d --plot-histogram
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____500____591fc2ad60 --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____512____e9f2fd965d --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____500____591fc2ad60 --bandit-policy model --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____512____e9f2fd965d --bandit-policy model --plot-histogram
 
 # MatrixFactorizationTraining____500_False_6fa6e5fea5
 PYTHONPATH="." luigi --module recommendation.task.model.matrix_factorization MatrixFactorizationTraining --project ifood_binary_buys_cf --n-factors 100 --binary --loss-function bce --metrics '["loss", "acc"]' --epochs 300 --local-scheduler
@@ -115,6 +119,7 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --mod
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetSimpleContentTraining --model-task-id=TripletNetSimpleContentTraining_selu____512_19dad0ffa3 --local-scheduler --batch-size 500  --plot-histogram --bandit-policy epsilon_greedy --bandit-policy-params '{"epsilon": 0.1}' --local-scheduler  
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodModel --model-module=recommendation.task.model.triplet_net --model-cls=TripletNetSimpleContentTraining --model-task-id=TripletNetSimpleContentTraining_selu____512_19dad0ffa3 --local-scheduler --batch-size 500  --plot-histogram --bandit-policy model --local-scheduler  
+
 
 # ContextualBanditsTraining_selu____512_1ef3c7b713
 PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits ContextualBanditsTraining --project ifood_contextual_bandit --local-scheduler --batch-size=512 --optimizer=radam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.801}' --learning-rate=0.001 --loss-function=crm  --use-normalize --use-buys-visits  --content-layers=[256,128,64]  --binary --predictor=logistic_regression --context-embeddings --use-numerical-content --user-embeddings --n-factors=100 --epochs 300

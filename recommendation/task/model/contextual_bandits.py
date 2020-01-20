@@ -14,8 +14,7 @@ class DirectEstimatorTraining(BaseTorchModelTraining):
     dropout_prob: float = luigi.FloatParameter(default=0.1)
     learning_rate: float = luigi.FloatParameter(1e-4)
     loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce")
-    epochs: int = luigi.IntParameter(default=10)
-    eval_hash: str = luigi.Parameter(default='none')
+    epochs: int = luigi.IntParameter(default=50)
 
     def create_module(self) -> nn.Module:
         return DirectEstimator(

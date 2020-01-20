@@ -14,7 +14,8 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     model_task_id: str = luigi.Parameter()
     limit_list_size: int = luigi.IntParameter(default=50)
     nofilter_iteractions_test: bool = luigi.BoolParameter(default=False)
-    seed: int = luigi.IntParameter(default=42)
+    no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
+    task_hash: str = luigi.Parameter(default='none')
 
     @property
     def task_name(self):

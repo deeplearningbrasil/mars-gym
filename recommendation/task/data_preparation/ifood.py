@@ -54,6 +54,13 @@ class BaseDir(luigi.Config):
         else: 
             return self.dataset_processed_path
 
+class DummyTask(luigi.Task):
+    def output(self):
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "dummy"))
+    
+    def run(self):
+        with open(self.output().path, "w") as f:
+            f.write("dummy")
 
 class CheckDataset(luigi.Task):
 

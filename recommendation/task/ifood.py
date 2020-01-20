@@ -20,7 +20,7 @@ from torch.utils.data.dataset import Dataset
 from torchbearer import Trial
 from tqdm import tqdm
 tqdm.pandas()
-
+import gc
 
 from recommendation.data import literal_eval_array_columns
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
@@ -33,7 +33,8 @@ from recommendation.task.data_preparation.ifood import PrepareIfoodIndexedOrders
     ListAccountMerchantTuplesForIfoodIndexedOrdersTestData, ProcessRestaurantContentDataset, \
     PrepareRestaurantContentDataset, \
     CreateInteractionDataset, GenerateIndicesForAccountsAndMerchantsDataset, \
-    IndexAccountsAndMerchantsOfSessionTrainDataset, LoggingPolicyPsDataset
+    IndexAccountsAndMerchantsOfSessionTrainDataset, LoggingPolicyPsDataset,\
+        DummyTask
 from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import chunks, parallel_literal_eval
@@ -126,6 +127,7 @@ def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, mer
     return [1 if merchant_idx == ordered_merchant_idx else 0 for merchant_idx in sorted_merchant_idx_list]
 
 
+
 class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
     plot_histogram: bool = luigi.BoolParameter(default=False)
@@ -175,6 +177,9 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             pickle.dump(bandit_model, bandit_file)        
 
     def load_direct_estimator(self) -> DirectEstimatorTraining:
+        if self.no_offpolicy_eval:
+            return DummyTask()
+
         test_size            = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
         sample_size          = self.model_training.requires().sample_size
@@ -183,8 +188,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
                                        session_test_size=test_size, 
                                        minimum_interactions=minimum_interactions, 
                                        sample_size=sample_size,
-                                       seed=self.seed,
-                                       eval_hash=self.task_name)        
+                                       task_hash=self.task_name)        
 
 
     def _read_test_data_frame(self) -> pd.DataFrame:
@@ -425,6 +429,8 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             plot_histogram(orders_df["ps"].values).savefig(
                 os.path.join(self.output().path, "ps.jpg"))
 
+        gc.collect()
+
         orders_df[["session_id", "account_id", "dt_partition", "account_idx", "merchant_idx", 
                    "rhat_merchant_idx", "shift_idx", "day_of_week", 
                    "sorted_merchant_idx_list", "scores_merchant_idx_list", "rhat_scores", 
@@ -505,7 +511,7 @@ class EvaluateIfoodModel(BaseEvaluationTask):
                                               limit_list_size=self.limit_list_size,
                                               nofilter_iteractions_test=self.nofilter_iteractions_test,
                                               no_offpolicy_eval=self.no_offpolicy_eval,
-                                              seed=self.seed)
+                                              task_hash=self.task_hash)
 
     def output(self):
         return luigi.LocalTarget(os.path.join(self.output_path, "orders_with_metrics.csv")), \
@@ -644,11 +650,14 @@ class SortMerchantListsRandomly(SortMerchantListsForIfoodModel):
         return None
 
     def load_direct_estimator(self) -> DirectEstimatorTraining:
+        if self.no_offpolicy_eval:
+            return DummyTask()
+
         return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
                                        session_test_size=self.test_size, 
                                        minimum_interactions=self.minimum_interactions, 
                                        sample_size=self.sample_size,
-                                       eval_hash=self.task_name)    
+                                       task_hash=self.task_name)    
 
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 'minimum_interactions':self.minimum_interactions, 'sample_size':self.sample_size}
@@ -677,7 +686,7 @@ class EvaluateAutoEncoderIfoodModel(EvaluateIfoodModel):
                                                          plot_histogram=self.plot_histogram,
                                                          limit_list_size=self.limit_list_size,
                                                          nofilter_iteractions_test=self.nofilter_iteractions_test,
-                                                         seed=self.seed)
+                                                         task_hash=self.task_hash)
 
 
 class EvaluateRandomIfoodModel(EvaluateIfoodModel):
@@ -703,7 +712,7 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
                                         model_task_id=self.model_task_id,
                                         limit_list_size=self.limit_list_size,
                                         nofilter_iteractions_test=self.nofilter_iteractions_test,
-                                        seed=self.seed), \
+                                        task_hash=self.task_hash), \
                GenerateIndicesForAccountsAndMerchantsDataset(
                                         test_size=self.test_size, 
                                         minimum_interactions=self.minimum_interactions, 
@@ -740,11 +749,14 @@ class SortMerchantListsByMostPopular(SortMerchantListsForIfoodModel):
         return None
 
     def load_direct_estimator(self) -> DirectEstimatorTraining:
+        if self.no_offpolicy_eval:
+            return DummyTask()
+
         return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
                                        session_test_size=self.test_size, 
                                        minimum_interactions=self.minimum_interactions, 
                                        sample_size=self.sample_size,
-                                       eval_hash=self.task_name)    
+                                       task_hash=self.task_name)    
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 
                                 'minimum_interactions':self.minimum_interactions,
@@ -794,7 +806,7 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
                                               model_task_id=self.model_task_id,
                                               limit_list_size=self.limit_list_size,
                                               nofilter_iteractions_test=self.nofilter_iteractions_test,
-                                              seed=self.seed), \
+                                              task_hash=self.task_hash), \
                GenerateIndicesForAccountsAndMerchantsDataset(
                                             test_size=self.test_size, 
                                             sample_size=self.sample_size,
@@ -838,11 +850,14 @@ class SortMerchantListsByMostPopularPerUser(SortMerchantListsForIfoodModel):
         return None
 
     def load_direct_estimator(self) -> DirectEstimatorTraining:
+        if self.no_offpolicy_eval:
+            return DummyTask()
+
         return DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', 
                                        session_test_size=self.test_size, 
                                        minimum_interactions=self.minimum_interactions, 
                                        sample_size=self.sample_size,
-                                       eval_hash=self.task_name)       
+                                       task_hash=self.task_name)       
     def requires(self):
         train_dataset_split = {'test_size': self.test_size, 'minimum_interactions':self.minimum_interactions, 'sample_size':self.sample_size}
 
@@ -899,7 +914,7 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
                                                     buy_importance=self.buy_importance,
                                                     visit_importance=self.visit_importance,
                                                     nofilter_iteractions_test=self.nofilter_iteractions_test,
-                                                    seed=self.seed), \
+                                                    task_hash=self.task_hash), \
                GenerateIndicesForAccountsAndMerchantsDataset(
                                                     test_size=self.test_size,
                                                     sample_size=self.sample_size,
@@ -1268,7 +1283,8 @@ class EvaluateIfoodFullContentModel(EvaluateIfoodModel):
                                                  limit_list_size=self.limit_list_size,
                                                  batch_size=self.batch_size,
                                                  nofilter_iteractions_test=self.nofilter_iteractions_test,
-                                                 seed=self.seed)
+                                                 no_offpolicy_eval=self.no_offpolicy_eval,
+                                                 task_hash=self.task_hash)
 
 
 class GenerateContentEmbeddings(BaseEvaluationTask):
