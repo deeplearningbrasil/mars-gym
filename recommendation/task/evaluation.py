@@ -18,6 +18,10 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     task_hash: str = luigi.Parameter(default='none')
 
     @property
+    def cache_attr(self):
+        return ['']
+
+    @property
     def task_name(self):
         return self.model_task_id + "_" + self.task_id.split("_")[-1]
 
@@ -38,6 +42,11 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     @property
     def output_path(self):
         return os.path.join("output", "evaluation", self.__class__.__name__, "results", self.task_name)
+
+    def cache_cleanup(self):
+        for a in self.cache_attrs:
+            if hasattr(self, a):
+                delattr(self, a)
 
     def _save_params(self):
         with open(get_params_path(self.output_path), "w") as params_file:

@@ -24,15 +24,15 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateRandomIfoodModel
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateRandomIfoodModel --local-scheduler --plot-histogram --bandit-policy model
 
 
-# DirectEstimatorTraining____512____e9f2fd965d
+# DirectEstimatorTraining____512____3084a469ce
 
 PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits DirectEstimatorTraining --project ifood_contextual_bandit_direct_estimator --local-scheduler --batch-size=512 --optimizer=radam --lr-scheduler=step --lr-scheduler-params='{"step_size": 5, "gamma": 0.801}' --learning-rate=0.001 --loss-function=crm  --n-factors=100 --epochs 300
 
 PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits DirectEstimatorTraining --project ifood_offpolicy_direct_estimator  --local-scheduler
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____512____e9f2fd965d --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____512____3084a469ce --plot-histogram
 
-PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____512____e9f2fd965d --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
+PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____512____3084a469ce --bandit-policy epsilon_greedy  --bandit-policy-params '{"epsilon": 0.1}' --plot-histogram
 
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler --model-module=recommendation.task.model.contextual_bandits --model-cls=DirectEstimatorTraining --model-task-id=DirectEstimatorTraining____512____e9f2fd965d --bandit-policy model --plot-histogram
 

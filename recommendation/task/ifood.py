@@ -139,6 +139,10 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
     no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
 
+    @property
+    def cache_attrs(self):
+        return ['_test_data_frame', '_test_direct_estimator_data_frame', '_dataset']
+
     def requires(self):
         test_size            = self.model_training.requires().session_test_size
         minimum_interactions = self.model_training.requires().minimum_interactions
@@ -686,6 +690,7 @@ class EvaluateAutoEncoderIfoodModel(EvaluateIfoodModel):
                                                          plot_histogram=self.plot_histogram,
                                                          limit_list_size=self.limit_list_size,
                                                          nofilter_iteractions_test=self.nofilter_iteractions_test,
+                                                         no_offpolicy_eval=self.no_offpolicy_eval,
                                                          task_hash=self.task_hash)
 
 
@@ -712,6 +717,7 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
                                         model_task_id=self.model_task_id,
                                         limit_list_size=self.limit_list_size,
                                         nofilter_iteractions_test=self.nofilter_iteractions_test,
+                                        no_offpolicy_eval=self.no_offpolicy_eval,
                                         task_hash=self.task_hash), \
                GenerateIndicesForAccountsAndMerchantsDataset(
                                         test_size=self.test_size, 
@@ -914,6 +920,7 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
                                                     buy_importance=self.buy_importance,
                                                     visit_importance=self.visit_importance,
                                                     nofilter_iteractions_test=self.nofilter_iteractions_test,
+                                                    no_offpolicy_eval=self.no_offpolicy_eval,
                                                     task_hash=self.task_hash), \
                GenerateIndicesForAccountsAndMerchantsDataset(
                                                     test_size=self.test_size,

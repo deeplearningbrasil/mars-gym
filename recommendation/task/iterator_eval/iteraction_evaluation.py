@@ -131,6 +131,12 @@ class IterationEvaluationTask(BaseIterationEvaluation):
 
             # Save logs
             self.save_logs(logs)    
+            
+            task_train.cache_cleanup()
+            del task_train
+            del task_eval
+            del task_merge     
+            #task_eval.cache_cleanup()
             gc.collect()
 
         # params.json
@@ -207,7 +213,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
 
             # Evalution Model
             yield task_eval
-
+            
             if self.is_reinforcement:
                 task_merge   = MergeIteractionDatasetTask(batch_size=self.batch_size,
                                                           test_size=test_size, 
@@ -224,7 +230,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
                 # set new info_session dataset
                 os.environ['DATASET_INFO_SESSION'] = task_merge.output_path
             
-
+           
             logs.append({'i': i,
                         'time': int((timeit.default_timer() - start)/60),
                         'model_task_id': self.model_cls_eval,
@@ -233,6 +239,8 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
                         'sample_size':  sample_size,
                         'sample_percent': len(full_df)/sample_size,
                         'test_size':    test_size})
+            #del task_eval
+
             # Save logs
             self.save_logs(logs)    
             gc.collect()

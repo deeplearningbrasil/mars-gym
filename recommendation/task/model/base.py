@@ -96,6 +96,11 @@ class BaseModelTraining(luigi.Task):
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
     seed: int = luigi.IntParameter(default=SEED)
 
+    @property
+    def cache_attrs(self):
+        return ['_test_dataset', '_val_dataset', '_train_dataset', 
+                '_test_data_frame', '_val_data_frame', '_train_data_frame', '_metadata_data_frame']
+
     def requires(self):
         return self.project_config.prepare_data_frames_task(session_test_size=self.session_test_size,
                                                             sample_size=self.sample_size,
@@ -233,6 +238,12 @@ class BaseModelTraining(luigi.Task):
     def train(self):
         pass
 
+
+    def cache_cleanup(self):
+        for a in self.cache_attrs:
+            if hasattr(self, a):
+                delattr(self, a)
+
     def run(self):
         np.random.seed(self.seed)
 
@@ -249,7 +260,6 @@ class BaseModelTraining(luigi.Task):
                 gc.collect()
                 if self.device == "cuda":
                     CudaRepository.put_available_device(self.device_id)
-
 
 class BaseTorchModelTraining(BaseModelTraining):
     __metaclass__ = abc.ABCMeta
@@ -278,6 +288,7 @@ class BaseTorchModelTraining(BaseModelTraining):
     task_hash: str = luigi.Parameter(default='none')
 
     metrics = luigi.ListParameter(default=["loss"])
+
 
     @property
     def resources(self):
@@ -328,6 +339,7 @@ class BaseTorchModelTraining(BaseModelTraining):
 
         mlflow.log_artifact(get_weights_path(self.output().path))
         self.after_fit()
+        self.cache_cleanup()
 
     def after_fit(self):
         pass
@@ -397,6 +409,7 @@ class BaseTorchModelTraining(BaseModelTraining):
         module.load_state_dict(state_dict["model"])
         module.eval()
         return module
+
 
     @property
     def torch_device(self) -> torch.device:
