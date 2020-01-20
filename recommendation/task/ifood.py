@@ -24,7 +24,7 @@ import gc
 
 from recommendation.data import literal_eval_array_columns
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
-    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit
+    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer
 from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.offpolicy_metrics import DirectEstimator, eval_IPS, eval_CIPS, eval_SNIPS, eval_doubly_robust
 from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k, precision_at_k
@@ -42,7 +42,8 @@ from recommendation.task.model.contextual_bandits import DirectEstimatorTraining
 
 _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
-    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, explore_then_exploit=ExploreThenExploit, none=None)
+    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, 
+    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, none=None)
 
 
 def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],

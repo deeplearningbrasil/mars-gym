@@ -405,3 +405,31 @@ class LinThompsonSampling(_LinBanditPolicy):
 
         mu = np.random.multivariate_normal(original_score, self._v_sq * Ainv)
         return x.dot(mu)
+
+class SoftmaxExplorer(BanditPolicy):
+    def __init__(self, reward_model: nn.Module, logit_multiplier: float = 1.0, reverse_sigmoid: bool = True, seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._logit_multiplier = logit_multiplier
+        self._rng = RandomState(seed)
+        self._reverse_sigmoid = _reverse_sigmoid
+
+    def _softmax(self, x):
+        return np.exp(x) / np.sum(np.exp(x), axis=0)
+
+    def _compute_prob(self, arm_scores):
+        if self._reverse_sigmoid:
+            arm_scores = torch.log(arm_scores/(1 - arm_scores))
+
+        n_arms = len(arm_scores)
+        arms_probs = self._softmax(self._logit_multiplier * arm_scores)
+
+        return arms_probs
+
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
+        n_arms = len(arm_indices)
+        arm_probs = self._compute_prob(arm_scores)
+
+        return self._rng.choice(len(arm_scores), arm_probs)
