@@ -35,6 +35,25 @@ def plot_line(df, title="", yrange=[0, 1], cum=False):
 
   st.plotly_chart(fig)
 
+def plot_line_iteraction(df_group, metric, title="", yrange=[0, 1], cum=False):
+  data = []
+  ymax = yrange[1] if yrange else 1
+  
+  for group, rows in df_group:
+    #for i, row in rows.iterrows():
+    values = np.cumsum(rows[metric].values) if cum else rows[metric].values
+    ymax   = np.max([np.max(values), ymax])
+    data.append(go.Scatter(name=group, x=rows.index, y=values))
+    
+  fig = go.Figure(data=data)
+  # Change the bar mode
+  fig.update_layout(template=TEMPLATE, legend_orientation="v", title=title)
+  if yrange is not None:
+    fig.update_yaxes(range=[yrange[0], ymax+(ymax*0.1)])
+
+  st.plotly_chart(fig)
+
+
 def plot_radar(df, title=""):
   data = []
   for i, row in df.iterrows():
