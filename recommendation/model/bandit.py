@@ -194,7 +194,7 @@ class EpsilonGreedy(BanditPolicy):
 
 class AdaptiveGreedy(BanditPolicy):
     #TODO: Tune these parameters: exploration_threshold, decay_rate
-    def __init__(self, reward_model: nn.Module, exploration_threshold: float = 0.2, decay_rate: float = 0.9997,
+    def __init__(self, reward_model: nn.Module, exploration_threshold: float = 0.7, decay_rate: float = 0.999997,
          seed: int = 42) -> None:
         super().__init__(reward_model)
         self._exploration_threshold = exploration_threshold
@@ -234,7 +234,7 @@ class AdaptiveGreedy(BanditPolicy):
 
 class PercentileAdaptiveGreedy(BanditPolicy):
     #TODO: Tune these parameters: window_size, exploration_threshold, percentile, percentile_decay
-    def __init__(self, reward_model: nn.Module, window_size: int = 500, exploration_threshold: float = 0.9, percentile = 35, percentile_decay: float = 0.9997,
+    def __init__(self, reward_model: nn.Module, window_size: int = 500, exploration_threshold: float = 0.7, percentile = 35, percentile_decay: float = 1.0,
          seed: int = 42) -> None:
         super().__init__(reward_model)
         self._window_size = window_size
