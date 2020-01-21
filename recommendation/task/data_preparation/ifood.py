@@ -495,8 +495,8 @@ class SplitSessionDataset(BasePySparkTask):
         if self.sample_size > 0:
             df = df.sort("click_timestamp").limit(self.sample_size)
 
-        count  = df.count()
-        n_test = math.ceil(self.test_size * count)
+        count    = df.count()
+        n_test   = int(self.test_size) if self.test_size > 1 else math.ceil(self.test_size * count)
 
         train_df = df.sort("click_timestamp").limit(count - n_test)
         test_df  = df.sort("click_timestamp", ascending=False).limit(n_test)

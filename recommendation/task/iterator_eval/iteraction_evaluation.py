@@ -78,7 +78,7 @@ class IterationEvaluationTask(BaseIterationEvaluation):
             start = timeit.default_timer()
 
             sample_size           = self.batch_size * (i + 1)
-            test_size             = 1 / (i + 1)  
+            test_size             = self.batch_size
             minimum_interactions  = self.minimum_interactions
 
             #  If reinforcement the first interaction dont have train data
@@ -86,7 +86,7 @@ class IterationEvaluationTask(BaseIterationEvaluation):
             if i == 0:
               if self.is_reinforcement:
                 minimum_interactions  = 0
-                test_size             = test_size - (5/sample_size)
+                test_size             = test_size - 5
               else: continue
 
 
@@ -131,17 +131,20 @@ class IterationEvaluationTask(BaseIterationEvaluation):
 
             # Save logs
             self.save_logs(logs)    
-            
+
+            # Cleanup
             task_train.cache_cleanup()
             del task_train
             del task_eval
             del task_merge     
-            #task_eval.cache_cleanup()
             gc.collect()
 
+
+            if i >= self.rounds:
+                break
+            
         # params.json
-        with open(self.output()[1].path, "w") as params_file:
-            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
+        self.save_params()
 
 
 # DATASET_PROCESSED_PATH="./output/ifood/dataset_6" PYTHONPATH="." luigi \
@@ -195,7 +198,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
             start = timeit.default_timer()
 
             sample_size           = self.batch_size * (i + 1)
-            test_size             = 1 / (i + 1)  
+            test_size             = self.batch_size
             minimum_interactions  = self.minimum_interactions
 
             #  If reinforcement the first interaction dont have train data
@@ -203,7 +206,7 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
             if i == 0:
               if self.is_reinforcement:
                 minimum_interactions  = 0
-                test_size             = test_size - (5/sample_size)
+                test_size             = test_size - 5
               else: continue
 
             task_eval    = self.model_evaluate({'sample_size': sample_size, 
@@ -239,12 +242,15 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
                         'sample_size':  sample_size,
                         'sample_percent': len(full_df)/sample_size,
                         'test_size':    test_size})
-            #del task_eval
+            
+            # Cleanup
+            gc.collect()
 
             # Save logs
             self.save_logs(logs)    
-            gc.collect()
+            
+            if i >= self.rounds:
+                break
 
         # params.json
-        with open(self.output()[1].path, "w") as params_file:
-            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
+        self.save_params()

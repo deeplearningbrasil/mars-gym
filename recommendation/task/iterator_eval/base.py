@@ -20,7 +20,7 @@ from pyspark.sql.types import IntegerType
 from recommendation.task.data_preparation.ifood import BaseDir
 import pyspark.sql.functions as F
 from recommendation.files import get_params, get_task_dir
-
+import json
 from tzlocal import get_localzone
 import gc
 
@@ -40,7 +40,8 @@ class BaseIterationEvaluation(luigi.Task):
     model_task_id: str = luigi.Parameter()
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
-    
+    rounds: int = luigi.IntParameter(default = 1000, significant=False)
+
     batch_size: int = luigi.IntParameter(default = 750000) # 750000 | 165000
     minimum_interactions: int = luigi.FloatParameter(default=5)
     no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
@@ -52,7 +53,7 @@ class BaseIterationEvaluation(luigi.Task):
         return  luigi.LocalTarget(os.path.join("output", "evaluation", self.__class__.__name__, 
                                     "results", self.task_name, "history.csv")), \
                 luigi.LocalTarget(os.path.join("output", "evaluation", self.__class__.__name__, 
-                                    "results", self.task_name, "params.json"))          
+                                    "results", self.task_name, "params.json"))                                                   
 
     @property
     def task_name(self):
@@ -76,6 +77,10 @@ class BaseIterationEvaluation(luigi.Task):
         df = pd.DataFrame(log)
         print(df.head())
         df.to_csv(self.output()[0].path, index=False)     
+
+    def save_params(self):
+        with open(self.output()[1].path, "w") as params_file:
+            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
 
     @property
     def seed(self):
@@ -177,8 +182,10 @@ class MergeIteractionDatasetTask(BasePySparkTask):
 
         # Load info_session
         df_current_dataset   = spark.read.parquet(os.environ['DATASET_INFO_SESSION']).sort("click_timestamp")
-
-        n_test      = math.ceil(self.test_size * self.sample_size)
+        count = df_current_dataset.count()
+        
+        n_test      = self.test_size
+        #raise(Exception(count, self.sample_size, n_test, os.environ['DATASET_INFO_SESSION']))
         df_trained  = df_current_dataset.limit(self.sample_size).sort("click_timestamp").limit(self.sample_size - n_test)
         df_test_gt  = df_current_dataset.limit(self.sample_size).sort("click_timestamp", ascending=False).limit(n_test)
 
@@ -196,5 +203,5 @@ class MergeIteractionDatasetTask(BasePySparkTask):
                             .union(test_eval_df.select(columns))\
                             .union(df_next_test_gt.select(columns)).sort("click_timestamp")
 
-
+        df_next_test_gt.write.mode("overwrite").parquet(self.output().path+"_test_gt")
         df_next_dataset.write.mode("overwrite").parquet(self.output().path)
