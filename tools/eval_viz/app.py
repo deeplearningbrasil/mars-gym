@@ -94,11 +94,13 @@ def load_iteractions_params(iteractions):
         data.append(d)
 
       df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
-      df['iteraction'] = model
-      dfs.append(df)
+      
     except:
       df = pd.DataFrame()
 
+    df['iteraction'] = model
+    dfs.append(df)
+  
   return pd.concat(dfs)
 
 @st.cache(allow_output_mutation=True)
