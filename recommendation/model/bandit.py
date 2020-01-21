@@ -378,7 +378,7 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
 
 class LinUCB(_LinBanditPolicy):
-    def __init__(self, reward_model: nn.Module, alpha: float = 0.5, arm_index: int = 1) -> None:
+    def __init__(self, reward_model: nn.Module, alpha: float = 1e-5, arm_index: int = 1) -> None:
         super().__init__(reward_model, arm_index)
         self._alpha = alpha
 
