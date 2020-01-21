@@ -1,4 +1,5 @@
 import abc
+import gc
 import json
 import logging
 import multiprocessing
@@ -6,7 +7,7 @@ import os
 import shutil
 from contextlib import redirect_stdout
 from typing import Type, Dict, List, Optional
-import gc
+
 import luigi
 import mlflow
 import numpy as np
@@ -36,13 +37,14 @@ from recommendation.data import SupportBasedCorruptionTransformation, \
 from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
 from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss, VAELoss, \
-    FocalVAELoss, AttentiveVAELoss, WeightedTripletLoss, ImplicitFeedbackBCELoss, RelativeTripletLoss, CounterfactualRiskMinimization
+    FocalVAELoss, AttentiveVAELoss, WeightedTripletLoss, ImplicitFeedbackBCELoss, RelativeTripletLoss, \
+    CounterfactualRiskMinimization
 from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
 from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, \
-    NoAutoCollationDataLoader, RAdam
+    NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from recommendation.utils import lecun_normal_init, he_init
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -51,13 +53,15 @@ TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransforma
                                   masking_noise=MaskingNoiseCorruptionTransformation,
                                   salt_and_pepper_noise=SaltAndPepperNoiseCorruptionTransformation,
                                   none=None)
-TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax, radam=RAdam)
+TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax,
+                        radam=RAdam)
 TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss,
                             mlm=nn.MultiLabelMarginLoss, relative_triplet=RelativeTripletLoss,
                             focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
                             bpr_triplet=BayesianPersonalizedRankingTripletLoss, vae_loss=VAELoss,
                             focal_vae_loss=FocalVAELoss, attentive_vae_loss=AttentiveVAELoss,
-                            weighted_triplet=WeightedTripletLoss, implicit_feedback_bce=ImplicitFeedbackBCELoss, crm=CounterfactualRiskMinimization)
+                            weighted_triplet=WeightedTripletLoss, implicit_feedback_bce=ImplicitFeedbackBCELoss,
+                            crm=CounterfactualRiskMinimization)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)
@@ -98,7 +102,7 @@ class BaseModelTraining(luigi.Task):
 
     @property
     def cache_attrs(self):
-        return ['_test_dataset', '_val_dataset', '_train_dataset', 
+        return ['_test_dataset', '_val_dataset', '_train_dataset',
                 '_test_data_frame', '_val_data_frame', '_train_data_frame', '_metadata_data_frame']
 
     def requires(self):
@@ -238,7 +242,6 @@ class BaseModelTraining(luigi.Task):
     def train(self):
         pass
 
-
     def cache_cleanup(self):
         for a in self.cache_attrs:
             if hasattr(self, a):
@@ -260,6 +263,7 @@ class BaseModelTraining(luigi.Task):
                 gc.collect()
                 if self.device == "cuda":
                     CudaRepository.put_available_device(self.device_id)
+
 
 class BaseTorchModelTraining(BaseModelTraining):
     __metaclass__ = abc.ABCMeta
@@ -288,7 +292,6 @@ class BaseTorchModelTraining(BaseModelTraining):
     task_hash: str = luigi.Parameter(default='none')
 
     metrics = luigi.ListParameter(default=["loss"])
-
 
     @property
     def resources(self):
@@ -410,7 +413,6 @@ class BaseTorchModelTraining(BaseModelTraining):
         module.eval()
         return module
 
-
     @property
     def torch_device(self) -> torch.device:
         if not hasattr(self, "_torch_device"):
@@ -421,24 +423,26 @@ class BaseTorchModelTraining(BaseModelTraining):
         return self._torch_device
 
     def get_train_generator(self) -> DataLoader:
-        return NoAutoCollationDataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
+        batch_sampler = FasterBatchSampler(self.train_dataset, self.batch_size, shuffle=True)
+        return NoAutoCollationDataLoader(self.train_dataset, batch_sampler=batch_sampler,
                                          num_workers=self.generator_workers,
                                          pin_memory=self.pin_memory if self.device == "cuda" else False)
 
     def get_val_generator(self) -> DataLoader:
-        return NoAutoCollationDataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False,
+        batch_sampler = FasterBatchSampler(self.val_dataset, self.batch_size, shuffle=False)
+        return NoAutoCollationDataLoader(self.val_dataset, batch_sampler=batch_sampler,
                                          num_workers=self.generator_workers,
                                          pin_memory=self.pin_memory if self.device == "cuda" else False)
 
     def get_test_generator(self) -> DataLoader:
-        return NoAutoCollationDataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False,
+        batch_sampler = FasterBatchSampler(self.test_dataset, self.batch_size, shuffle=False)
+        return NoAutoCollationDataLoader(self.test_dataset, batch_sampler=batch_sampler,
                                          num_workers=self.generator_workers,
                                          pin_memory=True if self.device == "cuda" else False)
 
 
 def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraining],
                                             task_dir: str) -> BaseTorchModelTraining:
-
     return model_cls(**get_params(task_dir))
 
 

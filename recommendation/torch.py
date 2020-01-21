@@ -7,6 +7,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from torch import nn
 from torch.optim.optimizer import Optimizer
+from torch.utils.data import Sampler, Dataset
 from torch.utils.data.dataloader import DataLoader
 from torchbearer.callbacks import Callback
 import mlflow
@@ -581,6 +582,37 @@ def coo_matrix_to_sparse_tensor(coo: coo_matrix) -> torch.Tensor:
     v = torch.tensor(values, dtype=torch.float32)
 
     return torch.sparse_coo_tensor(i, v, coo.shape)
+
+
+class FasterBatchSampler(Sampler):
+    def __init__(self, data_source: Dataset, batch_size: int, drop_last: bool = False, shuffle: bool = False):
+        super().__init__(data_source)
+        self.data_source = data_source
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        self.shuffle = shuffle
+
+    @property
+    def num_samples(self):
+        if not hasattr(self, "_num_samples"):
+            self._num_samples = len(self.data_source)
+        return self._num_samples
+
+    def __len__(self):
+        if self.drop_last:
+            return self.num_samples // self.batch_size
+        else:
+            return (self.num_samples + self.batch_size - 1) // self.batch_size
+
+    def __iter__(self):
+        if self.shuffle:
+            iter_list: List[int] = torch.randperm(self.num_samples).tolist()
+        else:
+            iter_list: List[int] = list(range(self.num_samples))
+        for i in range(0, self.num_samples, self.batch_size):
+            last_idx = i + self.batch_size
+            if last_idx < self.num_samples or not self.drop_last:
+                yield iter_list[i:last_idx]
 
 
 class NoAutoCollationDataLoader(DataLoader):
