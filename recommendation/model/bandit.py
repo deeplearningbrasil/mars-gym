@@ -411,16 +411,18 @@ class SoftmaxExplorer(BanditPolicy):
         super().__init__(reward_model)
         self._logit_multiplier = logit_multiplier
         self._rng = RandomState(seed)
-        self._reverse_sigmoid = _reverse_sigmoid
+        self._reverse_sigmoid = reverse_sigmoid
 
     def _softmax(self, x):
         return np.exp(x) / np.sum(np.exp(x), axis=0)
 
     def _compute_prob(self, arm_scores):
-        if self._reverse_sigmoid:
-            arm_scores = torch.log(arm_scores/(1 - arm_scores))
-
         n_arms = len(arm_scores)
+        arm_scores = np.array(arm_scores)
+        if self._reverse_sigmoid:
+            arm_scores = np.log(arm_scores/(1 - arm_scores))
+
+        
         arms_probs = self._softmax(self._logit_multiplier * arm_scores)
 
         return arms_probs
@@ -432,4 +434,4 @@ class SoftmaxExplorer(BanditPolicy):
         n_arms = len(arm_indices)
         arm_probs = self._compute_prob(arm_scores)
 
-        return self._rng.choice(len(arm_scores), arm_probs)
+        return self._rng.choice(a=len(arm_scores), p=arm_probs)
