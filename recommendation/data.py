@@ -654,6 +654,15 @@ class ContextualBanditsDataset(InteractionsDataset):
         self._items_df = self._metadata_data_frame[[self._input_columns[1]] + self._metadata_columns].set_index(
             self._input_columns[1],
             drop=False).sort_index()
+
+        # Asserting index is contiguous to extract the embeddings
+        assert all(self._items_df.reset_index(drop=True).index == self._items_df.index)
+        self._embeddings_for_metadata_columns: Dict[str, np.ndarray] = {}
+        for column_name in self._metadata_columns:
+            emb = self._items_df[column_name].values.tolist()
+            dtype = np.float32 if column_name == "restaurant_complete_info" else np.int64
+            self._embeddings_for_metadata_columns[column_name] = np.array(emb, dtype=dtype)
+            self._items_df.drop(columns=[column_name], inplace=True)
     
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
@@ -667,18 +676,15 @@ class ContextualBanditsDataset(InteractionsDataset):
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def _get_items(self, item_indices: List[int], visits: List[int], buys: List[int]) -> Tuple[torch.Tensor, ...]:
+    def _get_items(self, item_indices: np.ndarray, visits: np.ndarray, buys: np.ndarray) -> Tuple[np.ndarray, ...]:
         res = []
 
-        res.append(torch.tensor(np.array(item_indices), dtype=torch.int64))
-        df_items = self._items_df.loc[item_indices]
+        res.append(item_indices.astype(np.int64))
         for column_name in self._metadata_columns:
-            c = df_items[column_name].values.tolist()
-            dtype = torch.float32 if column_name == "restaurant_complete_info" else torch.int64
-            res.append(torch.tensor(np.array(c), dtype=dtype))
+            res.append(self._embeddings_for_metadata_columns[column_name][item_indices])
 
-        res.append(torch.tensor(np.array(visits), dtype=torch.float32))
-        res.append(torch.tensor(np.array(buys), dtype=torch.float32))
+        res.append(visits.astype(np.float32))
+        res.append(buys.astype(np.float32))
         return tuple(res)
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...],
@@ -711,6 +717,15 @@ class DirectEstimatorDataset(InteractionsDataset):
         self._items_df = self._metadata_data_frame[[self._input_columns[1]] + self._metadata_columns].set_index(
             self._input_columns[1],
             drop=False).sort_index()
+
+        # Asserting index is contiguous to extract the embeddings
+        assert all(self._items_df.reset_index(drop=True).index == self._items_df.index)
+        self._embeddings_for_metadata_columns: Dict[str, np.ndarray] = {}
+        for column_name in self._metadata_columns:
+            emb = self._items_df[column_name].values.tolist()
+            dtype = np.float32 if column_name == "restaurant_complete_info" else np.int64
+            self._embeddings_for_metadata_columns[column_name] = np.array(emb, dtype=dtype)
+            self._items_df.drop(columns=[column_name], inplace=True)
     
         self._users = self._data_frame[self._input_columns[0]].unique()
         self._items = self._data_frame[self._input_columns[1]].unique()
@@ -726,18 +741,15 @@ class DirectEstimatorDataset(InteractionsDataset):
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
-    def _get_items(self, item_indices: List[int], visits: List[int], buys: List[int]) -> Tuple[torch.Tensor, ...]:
+    def _get_items(self, item_indices: np.ndarray, visits: np.ndarray, buys: np.ndarray) -> Tuple[np.ndarray, ...]:
         res = []
 
-        res.append(torch.tensor(np.array(item_indices), dtype=torch.int64))
-        df_items = self._items_df.loc[item_indices]
+        res.append(item_indices.astype(np.int64))
         for column_name in self._metadata_columns:
-            c = df_items[column_name].values.tolist()
-            dtype = torch.float32 if column_name == "restaurant_complete_info" else torch.int64
-            res.append(torch.tensor(np.array(c), dtype=dtype))
+            res.append(self._embeddings_for_metadata_columns[column_name][item_indices])
 
-        res.append(torch.tensor(np.array(visits), dtype=torch.float32))
-        res.append(torch.tensor(np.array(buys), dtype=torch.float32))
+        res.append(visits.astype(np.float32))
+        res.append(buys.astype(np.float32))
         return tuple(res)
 
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, Tuple[np.ndarray, ...],
