@@ -78,6 +78,8 @@ def load_train_params():
 
 @st.cache(allow_output_mutation=True)
 def load_iteractions_params(iteractions):
+  if len(iteractions) == 0:
+    return pd.DataFrame()
 
   dfs = []
 
@@ -114,21 +116,26 @@ def load_history_train(model):
 @st.cache(allow_output_mutation=True)
 def load_all_iteraction_metrics(iteractions):
   if len(iteractions) == 0:
-    return None
+    return pd.DataFrame()
 
   metrics = []
 
   for iteraction in iteractions:
-    models = [row.train_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
-    paths  = [row.eval_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
+    try:
+      metric = load_data_iteractions_metrics(iteraction)
+    except:
+      continue
+
+    models = [row.train_path for i, row in metric.iterrows()]  
+    paths  = [row.eval_path for i, row in metric.iterrows()]  
     df = json2df(dict(zip(models, paths)), 'metrics.json', 'path')
 
-    metric = load_data_iteractions_metrics(iteraction).join(
+    metric = metric.join(
       df.reset_index()
     )
     metric['iteraction'] = iteraction
     metrics.append(metric)
-    
+
   return pd.concat(metrics)
 
 def display_compare_results():
