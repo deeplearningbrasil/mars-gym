@@ -28,7 +28,7 @@ LOCAL_TZ: str = str(get_localzone())
 _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
     percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, 
-    softmax_explore = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, none=None)
+    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, none=None)
 
 class BaseIterationEvaluation(luigi.Task):
     run_type: str = luigi.ChoiceParameter(choices=["supervised", 'reinforcement'], default="supervised")
