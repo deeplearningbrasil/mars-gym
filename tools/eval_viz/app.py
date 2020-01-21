@@ -77,20 +77,27 @@ def load_train_params():
   return json2df(fetch_training_path(), 'params.json', 'path')
 
 @st.cache(allow_output_mutation=True)
-def load_iteractions_params(model):
-  file_path = os.path.join(fetch_iteraction_results_path()[model], 'params.json')
-  data      = []
+def load_iteractions_params(iteractions):
 
-  try:
-    with open(file_path) as json_file:
-      d = json.load(json_file)
-      data.append(d)
+  dfs = []
 
-    df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
-  except:
-    df = pd.DataFrame()
+  for model in iteractions:
 
-  return df
+    file_path = os.path.join(fetch_iteraction_results_path()[model], 'params.json')
+    data      = []
+
+    try:
+      with open(file_path) as json_file:
+        d = json.load(json_file)
+        data.append(d)
+
+      df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
+      df['iteraction'] = model
+      dfs.append(df)
+    except:
+      df = pd.DataFrame()
+
+  return pd.concat(dfs)
 
 @st.cache(allow_output_mutation=True)
 def load_data_iteractions_metrics(model):
@@ -105,16 +112,24 @@ def load_history_train(model):
   return pd.read_csv(os.path.join(fetch_training_path()[model],'history.csv')).set_index('epoch')
 
 @st.cache(allow_output_mutation=True)
-def load_all_iteraction_metrics(iteraction):
-  models = [row.train_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
-  paths  = [row.eval_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
-  df = json2df(dict(zip(models, paths)), 'metrics.json', 'path')
+def load_all_iteraction_metrics(iteractions):
+  if len(iteractions) == 0:
+    return None
 
-  metrics = load_data_iteractions_metrics(iteraction).join(
-    df.reset_index()
-  )
+  metrics = []
 
-  return metrics
+  for iteraction in iteractions:
+    models = [row.train_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
+    paths  = [row.eval_path for i, row in load_data_iteractions_metrics(iteraction).iterrows()]  
+    df = json2df(dict(zip(models, paths)), 'metrics.json', 'path')
+
+    metric = load_data_iteractions_metrics(iteraction).join(
+      df.reset_index()
+    )
+    metric['iteraction'] = iteraction
+    metrics.append(metric)
+    
+  return pd.concat(metrics)
 
 def display_compare_results():
   st.title("[Compare Results]")
@@ -201,24 +216,39 @@ def display_one_result():
 
 def display_iteraction_result():
   st.sidebar.markdown("## Filter Options")
-  input_iteraction = st.sidebar.selectbox("Results", sorted(fetch_iteraction_results_path().keys()))
 
 
   st.title("[Iteraction Results]")
-  st.write(input_iteraction)
+  #st.write(input_iteraction)
 
-  metrics          = load_all_iteraction_metrics(input_iteraction)
-  input_metrics    = st.sidebar.multiselect("Metrics", sorted(metrics.columns), default=['precision_at_1'])
-  input_cum        = st.sidebar.checkbox('Cumulative')
+  #df_metrics       = filter_df(load_data_metrics(), input_models_eval, input_metrics, input_sorted)
+  input_iteraction  = st.sidebar.multiselect("Results", sorted(fetch_iteraction_results_path().keys()))
+  metrics           = load_all_iteraction_metrics(input_iteraction)
+  params            = load_iteractions_params(input_iteraction)
+  input_metrics     = st.sidebar.selectbox("Metrics", sorted(load_data_metrics().columns), 
+                            index=len(load_data_metrics().columns)-1)
+  input_cum         = st.sidebar.checkbox('Cumulative')
 
-  st.markdown('## Metrics')
+  if len(input_iteraction) > 0 and input_metrics:
+    df = metrics.merge(params, on=['iteraction'], how='left').reset_index()
+                  
 
-  plot_line(metrics[input_metrics].transpose(), "Metrics", yrange=None, cum=input_cum)
+    plot_line_iteraction(df, input_metrics, 
+                            title="Metrics - "+input_metrics, 
+                            legend=['iteraction', 'bandit_policy'],
+                            yrange=None, 
+                            cum=input_cum)
+    #st.dataframe(df)
+    st.markdown('## Models')
+    for group, rows in metrics.groupby("iteraction"):
+      st.markdown("### "+group)
+      st.markdown('### Metrics')
+      st.dataframe(rows.transpose())
+      st.markdown('### Params')
+      st.dataframe(params[params.iteraction == group].transpose())
 
-  st.dataframe(metrics)
-  
-  st.markdown('## Params')
-  st.dataframe(load_iteractions_params(input_iteraction).transpose())
+  #st.markdown('## Params')
+  #st.dataframe(load_iteractions_params(input_iteraction).transpose())
 
 
 

@@ -119,6 +119,43 @@ class ModelPolicy(BanditPolicy):
 
         return action
 
+class ExploreThenExploit(BanditPolicy):
+    #TODO: Tune breakpoint parameter
+    def __init__(self, reward_model: nn.Module, breakpoint: int = 2000, seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._breakpoint = breakpoint
+        self._rng = RandomState(seed)
+        self._t = 0
+    
+    def _compute_prob(self, arm_scores):
+        n_arms = len(arm_scores)
+        arm_probs = np.zeros(len(arm_scores))
+        max_score = max(arm_scores)
+        argmax = int(np.argmax(arm_scores))
+        
+        if self._t > self._breakpoint:
+            arm_probs[argmax] = 1.0
+        else:   
+            arm_probs = np.ones(n_arms) / n_arms
+
+        return arm_probs
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
+        n_arms = len(arm_indices)
+        arm_probas = np.ones(n_arms) / n_arms
+        max_score = max(arm_scores)
+
+        if self._t > self._breakpoint:
+            action = int(np.argmax(arm_scores))
+        else:
+            action = self._rng.choice(len(arm_indices), p=arm_probas)
+
+        if pos == 0:
+            self._t += 1
+            
+        return action
 
 class EpsilonGreedy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, epsilon: float = 0.05, epsilon_decay: float = 1.0, seed: int = 42) -> None:
@@ -156,7 +193,7 @@ class EpsilonGreedy(BanditPolicy):
         return action
 
 class AdaptiveGreedy(BanditPolicy):
-    #TODO: Tune these parameters: window_size, exploration_threshold, percentile, percentile_decay
+    #TODO: Tune these parameters: exploration_threshold, decay_rate
     def __init__(self, reward_model: nn.Module, exploration_threshold: float = 0.2, decay_rate: float = 0.9997,
          seed: int = 42) -> None:
         super().__init__(reward_model)
@@ -368,3 +405,33 @@ class LinThompsonSampling(_LinBanditPolicy):
 
         mu = np.random.multivariate_normal(original_score, self._v_sq * Ainv)
         return x.dot(mu)
+
+class SoftmaxExplorer(BanditPolicy):
+    def __init__(self, reward_model: nn.Module, logit_multiplier: float = 1.0, reverse_sigmoid: bool = True, seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._logit_multiplier = logit_multiplier
+        self._rng = RandomState(seed)
+        self._reverse_sigmoid = reverse_sigmoid
+
+    def _softmax(self, x):
+        return np.exp(x) / np.sum(np.exp(x), axis=0)
+
+    def _compute_prob(self, arm_scores):
+        n_arms = len(arm_scores)
+        arm_scores = np.array(arm_scores)
+        if self._reverse_sigmoid:
+            arm_scores = np.log(arm_scores/(1 - arm_scores))
+
+        
+        arms_probs = self._softmax(self._logit_multiplier * arm_scores)
+
+        return arms_probs
+
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
+        n_arms = len(arm_indices)
+        arm_probs = self._compute_prob(arm_scores)
+
+        return self._rng.choice(a=len(arm_scores), p=arm_probs)

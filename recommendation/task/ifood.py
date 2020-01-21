@@ -24,7 +24,7 @@ import gc
 
 from recommendation.data import literal_eval_array_columns
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
-    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling
+    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer
 from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.offpolicy_metrics import DirectEstimator, eval_IPS, eval_CIPS, eval_SNIPS, eval_doubly_robust
 from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k, precision_at_k
@@ -42,7 +42,8 @@ from recommendation.task.model.contextual_bandits import DirectEstimatorTraining
 
 _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
-    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, none=None)
+    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, 
+    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, none=None)
 
 
 def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],
@@ -138,6 +139,10 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     pin_memory: bool = luigi.BoolParameter(default=False)
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
     no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
+
+    @property
+    def cache_attrs(self):
+        return ['_test_data_frame', '_test_direct_estimator_data_frame', '_dataset']
 
     def requires(self):
         test_size            = self.model_training.requires().session_test_size
@@ -686,6 +691,7 @@ class EvaluateAutoEncoderIfoodModel(EvaluateIfoodModel):
                                                          plot_histogram=self.plot_histogram,
                                                          limit_list_size=self.limit_list_size,
                                                          nofilter_iteractions_test=self.nofilter_iteractions_test,
+                                                         no_offpolicy_eval=self.no_offpolicy_eval,
                                                          task_hash=self.task_hash)
 
 
@@ -712,6 +718,7 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
                                         model_task_id=self.model_task_id,
                                         limit_list_size=self.limit_list_size,
                                         nofilter_iteractions_test=self.nofilter_iteractions_test,
+                                        no_offpolicy_eval=self.no_offpolicy_eval,
                                         task_hash=self.task_hash), \
                GenerateIndicesForAccountsAndMerchantsDataset(
                                         test_size=self.test_size, 
@@ -914,6 +921,7 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
                                                     buy_importance=self.buy_importance,
                                                     visit_importance=self.visit_importance,
                                                     nofilter_iteractions_test=self.nofilter_iteractions_test,
+                                                    no_offpolicy_eval=self.no_offpolicy_eval,
                                                     task_hash=self.task_hash), \
                GenerateIndicesForAccountsAndMerchantsDataset(
                                                     test_size=self.test_size,
