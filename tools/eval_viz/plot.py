@@ -44,7 +44,10 @@ def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0,
     values = np.cumsum(rows[metric].values) if cum else rows[metric].values
     ymax   = np.max([np.max(values), ymax])
 
-    name   = " - ".join(list(rows.iloc[0][legend]))
+    try:
+      name   = " - ".join(list(rows.iloc[0][legend]))
+    except:
+      name   = group
 
     data.append(go.Scatter(name=name, x=list(range(len(rows))), y=values))
     
