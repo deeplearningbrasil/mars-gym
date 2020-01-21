@@ -139,7 +139,6 @@ class InteractionsDataset(Dataset):
         literal_eval_array_columns(metadata_data_frame, project_config.input_columns + [
             project_config.output_column] + project_config.metadata_columns)
 
-        self._data_frame = data_frame
         self._metadata_data_frame = metadata_data_frame
         self._input_columns = [input_column.name for input_column in project_config.input_columns]
         self._index_input_columns = [input_column.name for input_column in project_config.input_columns
@@ -148,6 +147,9 @@ class InteractionsDataset(Dataset):
         self._output_column = project_config.output_column.name
         self._auxiliar_output_columns = [auxiliar_output_column.name
                                          for auxiliar_output_column in project_config.auxiliar_output_columns]
+
+        self._data_frame = data_frame[set(self._input_columns + [self._output_column] + self._auxiliar_output_columns)
+            .intersection(data_frame.columns)]
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]
