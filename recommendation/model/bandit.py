@@ -420,7 +420,7 @@ class SoftmaxExplorer(BanditPolicy):
         n_arms = len(arm_scores)
         arm_scores = np.array(arm_scores)
         if self._reverse_sigmoid:
-            arm_scores = np.log(arm_scores/(1 - arm_scores))
+            arm_scores = np.log(arm_scores/((1 - arm_scores) + 1e-8))
 
         
         arms_probs = self._softmax(self._logit_multiplier * arm_scores)
