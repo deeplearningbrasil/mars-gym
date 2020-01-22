@@ -121,22 +121,38 @@ class ModelPolicy(BanditPolicy):
 
 class ExploreThenExploit(BanditPolicy):
     #TODO: Tune breakpoint parameter
-    def __init__(self, reward_model: nn.Module, breakpoint: int = 2000, seed: int = 42) -> None:
+    def __init__(self, reward_model: nn.Module, breakpoint_explore: int = 50000, breakpoint_exploit: int = 0, 
+                exploration_decay: int = 10000, seed: int = 42) -> None:
         super().__init__(reward_model)
-        self._breakpoint = breakpoint
+        self._breakpoint_explore = breakpoint_explore
+        self._breakpoint_exploit = breakpoint_exploit
+        self._exploration_decay = exploration_decay
         self._rng = RandomState(seed)
         self._t = 0
-    
+        self.exploring = True
+
+    def _update_state(self):
+        if self.exploring and self._t > self._breakpoint_explore:
+                self._t = 0
+                self.exploring = False
+                if self._breakpoint_explore >= 0:
+                    self._breakpoint_explore -= self._exploration_decay
+        elif not self.exploring and self._t > self._breakpoint_exploit:
+                self._t = 0
+                self.exploring = True
+                if self._breakpoint_explore >= 0:
+                    self._breakpoint_exploit += self._exploration_decay
+
     def _compute_prob(self, arm_scores):
         n_arms = len(arm_scores)
         arm_probs = np.zeros(len(arm_scores))
         max_score = max(arm_scores)
         argmax = int(np.argmax(arm_scores))
         
-        if self._t > self._breakpoint:
-            arm_probs[argmax] = 1.0
-        else:   
+        if self.exploring:
             arm_probs = np.ones(n_arms) / n_arms
+        else: 
+            arm_probs[argmax] = 1.0
 
         return arm_probs
 
@@ -147,14 +163,15 @@ class ExploreThenExploit(BanditPolicy):
         arm_probas = np.ones(n_arms) / n_arms
         max_score = max(arm_scores)
 
-        if self._t > self._breakpoint:
-            action = int(np.argmax(arm_scores))
-        else:
-            action = self._rng.choice(len(arm_indices), p=arm_probas)
-
         if pos == 0:
             self._t += 1
-            
+            self._update_state()
+
+        if self.exploring:
+            action = self._rng.choice(len(arm_indices), p=arm_probas)
+        else:
+            action = int(np.argmax(arm_scores))
+
         return action
 
 class EpsilonGreedy(BanditPolicy):
