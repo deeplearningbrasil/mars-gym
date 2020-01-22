@@ -14,7 +14,7 @@ def json2df(paths, file, idx):
         d['model'] = d['path'].replace("_"+d['path'].split("_")[-1], "")
 
         data.append(d)
-    except IsADirectoryError:
+    except:
       data.append({'path': path.split("/")[-1]})
 
   df = pd.DataFrame.from_dict(json_normalize(data), orient='columns')
