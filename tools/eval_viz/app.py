@@ -239,12 +239,17 @@ def display_iteraction_result():
   input_cum         = st.sidebar.checkbox('Cumulative')
 
   if len(input_iteraction) > 0 and input_metrics:
-    df = metrics.merge(params, on=['iteraction'], how='left').reset_index()
+    df_params_eval = json2df(dict(metrics.groupby("iteraction").first()['eval_path'].loc[input_iteraction]), 'params.json', 'path')
+    df_params_eval['iteraction'] = list(input_iteraction)
+
+    df = metrics.merge(params, on=['iteraction'], how='left')\
+                .merge(df_params_eval[['iteraction', 'bandit_policy']], on=['iteraction'], how='left')\
+                .reset_index()
                   
 
     plot_line_iteraction(df, input_metrics, 
                             title="Metrics - "+input_metrics, 
-                            legend=['iteraction', 'bandit_policy'],
+                            legend=['iteraction', 'bandit_policy_y'],
                             yrange=None, 
                             cum=input_cum)
     #st.dataframe(df)
