@@ -49,6 +49,7 @@ class BaseIterationEvaluation(luigi.Task):
     batch_size: int = luigi.IntParameter(default = 750000) # 750000 | 165000
     minimum_interactions: int = luigi.FloatParameter(default=5)
     no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
+    limit_list_size: int = luigi.IntParameter(default=50)
 
     def requires(self):
         return BuildIteractionDatasetTask(run_type = self.run_type)
