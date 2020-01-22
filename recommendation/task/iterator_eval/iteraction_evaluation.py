@@ -105,7 +105,8 @@ class IterationEvaluationTask(BaseIterationEvaluation):
             
             if self.is_reinforcement:
 
-                task_merge   = MergeIteractionDatasetTask(batch_size=self.batch_size,
+                task_merge   = MergeIteractionDatasetTask(iteraction=i,
+                                                          batch_size=self.batch_size,
                                                           test_size=test_size, 
                                                           sample_size=sample_size,
                                                           minimum_interactions=minimum_interactions,

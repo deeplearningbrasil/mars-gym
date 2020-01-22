@@ -8,10 +8,13 @@ from pyspark import SparkContext
 from pyspark.sql import SparkSession
 import random
 import math
+from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count, abs
+from pyspark.sql.types import IntegerType, StringType
+
 from recommendation.task.model.base import BaseTorchModelTraining
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
     PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer
-from recommendation.task.data_preparation.ifood import CheckDataset, CleanSessionDataset, GenerateIndicesForAccountsAndMerchantsDataset
+from recommendation.task.data_preparation.ifood import CheckDataset, CleanSessionDataset, AddAdditionallInformationDataset, GenerateIndicesForAccountsAndMerchantsDataset
 from tqdm import tqdm
 from recommendation.files import get_task_dir, get_task_dir
 from recommendation.task.data_preparation.base import BasePySparkTask
@@ -23,6 +26,7 @@ from recommendation.files import get_params, get_task_dir
 import json
 from tzlocal import get_localzone
 import gc
+from recommendation.utils import parallel_literal_eval, datetime_to_shift, date_to_day_of_week, date_to_day_of_month
 
 LOCAL_TZ: str = str(get_localzone())
 _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
@@ -119,6 +123,7 @@ class BuildIteractionDatasetTask(BasePySparkTask):
 # --local-scheduler \
 # --evaluation-path='output/evaluation/EvaluateAutoEncoderIfoodModel/results/VariationalAutoEncoderTraining_selu____500_fc62ac744a_6534ac1232'  
 class MergeIteractionDatasetTask(BasePySparkTask):
+    iteraction: int = luigi.IntParameter(default=0)
     test_size: float = luigi.FloatParameter()
     sample_size: int = luigi.IntParameter()
     minimum_interactions: int = luigi.FloatParameter()
@@ -130,7 +135,9 @@ class MergeIteractionDatasetTask(BasePySparkTask):
                 CheckDataset(), \
                 GenerateIndicesForAccountsAndMerchantsDataset(sample_size=self.sample_size, 
                                                               test_size=self.test_size,
-                                                              minimum_interactions=self.minimum_interactions)
+                                                              minimum_interactions=self.minimum_interactions),\
+                AddAdditionallInformationDataset()
+                                
 
     def output(self):
         return luigi.LocalTarget(self.output_path)
@@ -143,23 +150,29 @@ class MergeIteractionDatasetTask(BasePySparkTask):
         df = df_real.cache()
         #df = df_real.withColumn("buy", lit(0))
 
+        df_shift        = spark.read.csv(self.input()[3][0].path,header=True, inferSchema=True)
+
         # Load merchant indices idx
-        df_mearchant        = spark.read.csv(self.input()[2][1].path,header=True, inferSchema=True)
-        df_mearchant        = df_mearchant.select('merchant_idx', 'merchant_id')
+        df_mearchant        = spark.read.csv(self.input()[2][1].path,header=True, inferSchema=True)\
+                                .select('merchant_idx', 'merchant_id')
         df_rhat_mearchant   = df_mearchant.withColumnRenamed("merchant_id", "rhat_merchant_id")\
                                             .withColumnRenamed("merchant_idx", "rhat_merchant_idx")
-
+        
+        df_eval = df_eval.join(df_shift, 'shift_idx', how='inner')
         df_eval = df_eval.join(df_mearchant, 'merchant_idx', how='inner')
         df_eval = df_eval.join(df_rhat_mearchant,'rhat_merchant_idx' , how='inner')\
                             .withColumn("buy", lit(1))
 
+        # Add shift
+        datetime_to_shift_udf    = udf(datetime_to_shift, StringType())
+        df = df.withColumn("shift", datetime_to_shift_udf(df.click_timestamp))
+
+        #ndcg_at_15, ndcg_at_10, count_visits, merchant_idx, account_id, rewards, shift_idx, average_precision, ndcg_at_50, count_buys, _c0, account_idx, ps_eval, session_id, precision_at_1, rhat_scores, rhat_merchant_id, merchant_id, day_of_week, rhat_merchant_idx, ps, dt_partition, buy, ndcg_at_5, ndcg_at_20, rhat_rewards
+
         # Join order interactions
         df = df.join(
-                df_eval.select('session_id', 'account_id', 'merchant_id', 'dt_partition', 'rhat_merchant_id', 'buy'), 
-                ['session_id', 'account_id', 'merchant_id', 'dt_partition', 'buy'], how='left')
-
-        df = df.withColumn("old_buy", df.buy)
-        df = df.withColumn("old_merchant_id", df.merchant_id)
+                df_eval.select('session_id', 'account_id', 'merchant_id', 'dt_partition', 'shift', 'buy', 'rhat_merchant_id'), 
+                ['session_id', 'account_id', 'merchant_id', 'dt_partition', 'shift', 'buy'], how='left')
 
         # Rewrite original interaction 
         df = df.withColumn('buy', when(df.rhat_merchant_id.isNull(), 0)\
@@ -172,9 +185,6 @@ class MergeIteractionDatasetTask(BasePySparkTask):
         
         return df.select(df_real.columns)
 
-#        columns = ['session_id','account_id','merchant_id','click_timestamp','buy','dt_partition','old_buy', 'old_merchant_id']
- #       df.select(columns).write.mode("overwrite").parquet(self.output().path)
-
     def main(self, sc: SparkContext, *args):
         #os.makedirs(self.output_path, exist_ok=True)
         spark = SparkSession(sc)
@@ -184,10 +194,8 @@ class MergeIteractionDatasetTask(BasePySparkTask):
 
         # Load info_session
         df_current_dataset   = spark.read.parquet(os.environ['DATASET_INFO_SESSION']).sort("click_timestamp")
-        count = df_current_dataset.count()
         
         n_test      = self.test_size
-        #raise(Exception(count, self.sample_size, n_test, os.environ['DATASET_INFO_SESSION']))
         df_trained  = df_current_dataset.limit(self.sample_size).sort("click_timestamp").limit(self.sample_size - n_test)
         df_test_gt  = df_current_dataset.limit(self.sample_size).sort("click_timestamp", ascending=False).limit(n_test)
 
@@ -205,5 +213,5 @@ class MergeIteractionDatasetTask(BasePySparkTask):
                             .union(test_eval_df.select(columns))\
                             .union(df_next_test_gt.select(columns)).sort("click_timestamp")
 
-        df_next_test_gt.write.mode("overwrite").parquet(self.output().path+"_test_gt")
+#        df_next_test_gt.write.mode("overwrite").parquet(self.output().path+"_test_gt")
         df_next_dataset.write.mode("overwrite").parquet(self.output().path)
