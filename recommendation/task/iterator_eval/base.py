@@ -128,7 +128,9 @@ class MergeIteractionDatasetTask(BasePySparkTask):
     def requires(self):
         return  BuildIteractionDatasetTask(),\
                 CheckDataset(), \
-                GenerateIndicesForAccountsAndMerchantsDataset(sample_size=self.sample_size)
+                GenerateIndicesForAccountsAndMerchantsDataset(sample_size=self.sample_size, 
+                                                              test_size=self.test_size,
+                                                              minimum_interactions=self.minimum_interactions)
 
     def output(self):
         return luigi.LocalTarget(self.output_path)
