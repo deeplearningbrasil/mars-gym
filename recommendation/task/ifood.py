@@ -398,7 +398,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             total=len(orders_df)))
 
         orders_df["rhat_merchant_idx"] = list(tqdm(
-            starmap(lambda sorted_merchant_idx_list, scores_merchant_idx_list: -1, zip(orders_df["sorted_merchant_idx_list"], orders_df["scores_merchant_idx_list"])),
+            starmap(lambda sorted_merchant_idx_list, scores_merchant_idx_list: sorted_merchant_idx_list[0], zip(orders_df["sorted_merchant_idx_list"], orders_df["scores_merchant_idx_list"])),
             total=len(orders_df)))
 
         print("Creating direct estimator rewards merchant list...")
