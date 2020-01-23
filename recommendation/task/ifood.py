@@ -23,7 +23,7 @@ tqdm.pandas()
 import gc
 
 from recommendation.data import literal_eval_array_columns
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, FixedPolicy, \
     PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer
 from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.offpolicy_metrics import DirectEstimator, eval_IPS, eval_CIPS, eval_SNIPS, eval_doubly_robust
@@ -43,7 +43,7 @@ from recommendation.task.model.contextual_bandits import DirectEstimatorTraining
 _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
     percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, 
-    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, none=None)
+    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None)
 
 
 def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],
@@ -398,7 +398,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
             total=len(orders_df)))
 
         orders_df["rhat_merchant_idx"] = list(tqdm(
-            starmap(lambda sorted_merchant_idx_list, scores_merchant_idx_list: sorted_merchant_idx_list[0], zip(orders_df["sorted_merchant_idx_list"], orders_df["scores_merchant_idx_list"])),
+            starmap(lambda sorted_merchant_idx_list, scores_merchant_idx_list: -1, zip(orders_df["sorted_merchant_idx_list"], orders_df["scores_merchant_idx_list"])),
             total=len(orders_df)))
 
         print("Creating direct estimator rewards merchant list...")

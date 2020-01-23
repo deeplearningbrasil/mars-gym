@@ -100,6 +100,22 @@ class RandomPolicy(BanditPolicy):
 
         return action
 
+class FixedPolicy(BanditPolicy):
+    def __init__(self, reward_model: nn.Module, arg: int = 0, seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._arg = arg
+
+    def _compute_prob(self, arm_scores):
+        n_arms     = len(arm_scores)
+        arms_probs = np.zeros(n_arms)
+        arms_probs[self._arg] = 1.0
+        return arms_probs
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
+        return int(self._arg)
+
 class ModelPolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
         super().__init__(reward_model)

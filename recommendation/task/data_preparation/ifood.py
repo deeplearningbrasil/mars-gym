@@ -82,12 +82,13 @@ class CheckDataset(luigi.Task):
 
 
 class CleanSessionDataset(BasePySparkTask):
+    sample_size: int = luigi.IntParameter(default=-1)
 
     def requires(self):
         return CheckDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "info_session_cleaned"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "info_session_cleaned_s=%d" % (self.sample_size)))
 
     def main(self, sc: SparkContext, *args):
         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
@@ -111,18 +112,26 @@ class CleanSessionDataset(BasePySparkTask):
         df = df_buy.select(df.columns)\
                 .union(df_only_visit.select(df.columns))
 
+        # Filter dataset
+        if self.sample_size > 0:
+            df = df.sort("click_timestamp").limit(self.sample_size)
+
         # Save
         df.write.parquet(self.output().path)
 
 
 class AddAdditionallInformationDataset(BasePySparkTask):
+    test_size: float = luigi.FloatParameter(default=0.10)
+    sample_size: int = luigi.IntParameter(default=-1)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+
     def requires(self):
-        return CheckDataset(), CleanSessionDataset()
+        return CheckDataset(), CleanSessionDataset(sample_size=self.sample_size)
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "shifts.csv")), \
-                    luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "availability")), \
-                        luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "shifts_%.2f_k=%d_s=%d.csv" % (self.test_size,self.minimum_interactions,self.sample_size))), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "availability_%.2f_k=%d_s=%d" % (self.test_size,self.minimum_interactions,self.sample_size))), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_%.2f_k=%d_s=%d" % (self.test_size,self.minimum_interactions,self.sample_size)))
 
 
     def add_history_buy_visits(self, df):
@@ -180,76 +189,6 @@ class AddAdditionallInformationDataset(BasePySparkTask):
         # Save files
         availability_df.write.parquet(self.output()[1].path)
         session_df.write.parquet(self.output()[2].path)
-
-
-
-# class CreateShiftIndices(BasePySparkTask):
-
-#     def requires(self):
-#         return CheckDataset()
-
-
-#     def output(self):
-#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "shifts.csv"))
-
-#     def main(self, sc: SparkContext, *args):
-#         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
-
-#         spark = SparkSession(sc)
-
-#         availability_df = spark.read.parquet(self.input()[0].path)
-
-#         shift_df = availability_df.select("shift").distinct().toPandas()
-
-#         shift_df.to_csv(self.output().path, index_label="shift_idx")
-
-
-# class AddShiftIdxAndFixWeekDayForAvailabilityDataset(BasePySparkTask):
-#     def requires(self):
-#         return CheckDataset(), CreateShiftIndices()
-
-#     def output(self):
-#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "availability"))
-
-#     def main(self, sc: SparkContext, *args):
-#         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
-
-#         spark = SparkSession(sc)
-
-#         df = spark.read.parquet(self.input()[0][0].path)
-
-#         df = df.withColumn("day_of_week", df["day_of_week"] - 1)
-
-#         shift_df = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
-#         df = df.join(shift_df, "shift")
-
-#         df.write.parquet(self.output().path)
-
-
-# class AddShiftAndWeekDayToSessionDataset(BasePySparkTask):
-#     def requires(self):
-#         return CheckDataset(), CreateShiftIndices()
-
-#     def output(self):
-#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session"))
-
-#     def main(self, sc: SparkContext, *args):
-#         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
-
-#         spark = SparkSession(sc)
-
-#         date_to_day_of_week_udf = udf(date_to_day_of_week, IntegerType())
-#         datetime_to_shift_udf = udf(datetime_to_shift, StringType())
-
-#         df = spark.read.parquet(self.input()[0][6].path)
-
-#         df = df.withColumn("day_of_week", date_to_day_of_week_udf(df.dt_partition))
-#         df = df.withColumn("shift", datetime_to_shift_udf(df.click_timestamp))
-
-#         shift_df = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
-#         df = df.join(shift_df, "shift")
-
-#         df.write.parquet(self.output().path)
 
 
 class PrepareRestaurantContentDataset(BasePySparkTask):
@@ -465,7 +404,10 @@ class SplitSessionDataset(BasePySparkTask):
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
     def requires(self):
-        return AddAdditionallInformationDataset()
+        return AddAdditionallInformationDataset(
+                    test_size=self.test_size, 
+                    sample_size=self.sample_size, 
+                    minimum_interactions=self.minimum_interactions)
 
     def output(self):
         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_train_%.2f_k=%d_s=%d" % (self.test_size,
@@ -491,91 +433,17 @@ class SplitSessionDataset(BasePySparkTask):
 
         df = spark.read.parquet(self.input()[2].path)
 
-        # Filter dataset
-        if self.sample_size > 0:
-            df = df.sort("click_timestamp").limit(self.sample_size)
-
         count    = df.count()
         n_test   = int(self.test_size) if self.test_size > 1 else math.ceil(self.test_size * count)
 
         train_df = df.sort("click_timestamp").limit(count - n_test)
         test_df  = df.sort("click_timestamp", ascending=False).limit(n_test)
-
+        
         train_df = self.filter_train_session(train_df, self.minimum_interactions)
 
         train_df.write.parquet(self.output()[0].path)
         test_df.write.parquet(self.output()[1].path)
 
-
-# class AddVisitsBuysForInteractionDataset(luigi.Task):
-#     test_size: float = luigi.FloatParameter(default=0.10)
-#     sample_size: int = luigi.IntParameter(default=-1)
-#     minimum_interactions: int = luigi.FloatParameter(default=5)
-
-#     def requires(self):
-#         return SplitSessionDataset(test_size=self.test_size, 
-#                                     sample_size=self.sample_size, 
-#                                     minimum_interactions=self.minimum_interactions)
-
-#     def output(self):
-#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_train_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
-#                                                                                         self.minimum_interactions, self.sample_size))), \
-#                 luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "session_test_buys_visits_%.2f_k=%d_s=%d" % (self.test_size,
-#                                                                                         self.minimum_interactions, self.sample_size)))
-
-#     def add_visits_buys(self, df):
-#         user_total_buys     = []
-#         user_total_visits   = []
-#         item_total_buys     = []
-#         item_total_visits   = []        
-#         hist_buys           = []
-#         hist_visits         = []
-
-#         user_buys_dict      = defaultdict(int)
-#         user_visits_dict    = defaultdict(int)
-
-#         item_buys_dict      = defaultdict(int)
-#         item_visits_dict    = defaultdict(int)
-
-#         hist_buys_dict      = defaultdict(int)
-#         hist_visits_dict    = defaultdict(int)
-
-#         for _, row in tqdm(df.iterrows(), total=df.shape[0]):
-#             merchant, account = row['merchant_id'], row['account_id']
-#             hist_tup = tuple([merchant, account])
-            
-#             user_total_buys.append(user_buys_dict[account])
-#             user_total_visits.append(user_visits_dict[account])
-#             item_total_buys.append(item_buys_dict[merchant])
-#             item_total_visits.append(item_visits_dict[merchant])
-#             hist_buys.append(hist_buys_dict[hist_tup])
-#             hist_visits.append(hist_visits_dict[hist_tup])
-            
-#             user_buys_dict[account]     += row['buy']
-#             user_visits_dict[account]   += 1
-#             item_buys_dict[merchant]    += row['buy']
-#             item_visits_dict[merchant]  += 1            
-#             hist_buys_dict[hist_tup]    += row['buy']
-#             hist_visits_dict[hist_tup]  += 1
-            
-#         df['user_total_buys']   = user_total_buys
-#         df['user_total_visits'] = user_total_visits
-#         df['item_total_buys']   = item_total_buys
-#         df['item_total_visits'] = item_total_visits        
-#         df['hist_buys']         = hist_buys
-#         df['hist_visits']       = hist_visits    
-
-#         return df                                                                                
-
-#     def run(self):
-#         train_df = pd.read_parquet(self.input()[0].path).sort_values("click_timestamp")
-#         test_df  = pd.read_parquet(self.input()[1].path).sort_values("click_timestamp")
-
-#         train_df = self.add_visits_buys(train_df)
-#         test_df  = self.add_visits_buys(test_df)
-
-#         train_df.to_parquet(self.output()[0].path)
-#         test_df.to_parquet(self.output()[1].path)
 
 class GenerateIndicesForAccountsAndMerchantsDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
