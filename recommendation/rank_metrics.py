@@ -285,4 +285,5 @@ def prediction_coverage_at_k(predicted: List[list], catalog: list, k: int) -> fl
 
 
 def personalization_at_k(predicted: List[list], k: int) -> float:
+    k = min(min(len(p) for p in predicted), k)
     return personalization(_get_predicted_at_k(predicted, k))
