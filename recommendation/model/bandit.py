@@ -17,6 +17,7 @@ from recommendation.utils import chunks
 class BanditPolicy(object, metaclass=abc.ABCMeta):
     def __init__(self, reward_model: nn.Module) -> None:
         self._reward_model = reward_model
+        self._limit = None
 
     def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
         pass
@@ -53,10 +54,10 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
         assert len(arm_indices) == len(arm_scores)
-
+        self._limit = limit
         ranked_arms = []
         arm_indices = list(arm_indices)
-        arm_scores = list(arm_scores)
+        arm_scores  = list(arm_scores)
 
         if with_probs:
             prob_ranked_arms = []
@@ -278,7 +279,7 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         self._percentile = percentile
         self._t = 0
         self._first_evaluation = True
-
+    
     def _compute_prob(self, arm_scores):
         n_arms = len(arm_scores)
         max_score = max(arm_scores)
@@ -299,6 +300,9 @@ class PercentileAdaptiveGreedy(BanditPolicy):
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
 
+        if pos not in self._best_arm_history:
+            self._best_arm_history[pos] = collections.deque([])
+
         if pos == 0:
             if not self._first_evaluation:
                 self._t += 1
@@ -306,8 +310,6 @@ class PercentileAdaptiveGreedy(BanditPolicy):
                 #As first evaluation, we do not need do update t
                 self._first_evaluation = False
 
-        if self._t == 0:
-            self._best_arm_history[pos] = collections.deque([])
 
         n_arms = len(arm_indices)
         arm_probas = np.ones(n_arms) / n_arms
