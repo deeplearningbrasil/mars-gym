@@ -142,9 +142,6 @@ class IterationEvaluationTask(BaseIterationEvaluation):
             gc.collect()
 
 
-            if i >= self.rounds:
-                break
-            
         # params.json
         self.save_params()
 
@@ -252,8 +249,6 @@ class IterationEvaluationWithoutModelTask(BaseIterationEvaluation): #WrapperTask
             # Save logs
             self.save_logs(logs)    
             
-            if i >= self.rounds:
-                break
 
         # params.json
         self.save_params()

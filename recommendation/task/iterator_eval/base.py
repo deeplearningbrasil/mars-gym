@@ -10,6 +10,7 @@ import random
 import math
 from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count, abs
 from pyspark.sql.types import IntegerType, StringType
+import pyspark.sql.functions as F
 
 from recommendation.task.model.base import BaseTorchModelTraining
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
@@ -36,6 +37,8 @@ _BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
 
 class BaseIterationEvaluation(luigi.Task):
     run_type: str = luigi.ChoiceParameter(choices=["supervised", 'reinforcement'], default="supervised")
+    filter_dish: str = luigi.Parameter(default="all")
+    rounds: int = luigi.IntParameter(default = 1)
 
     model_module: str = luigi.Parameter(default="recommendation.task.model.contextual_bandits")
     model_cls: str = luigi.Parameter(default="ContextualBanditsTraining")
@@ -44,15 +47,15 @@ class BaseIterationEvaluation(luigi.Task):
     model_task_id: str = luigi.Parameter()
     bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
-    rounds: int = luigi.IntParameter(default = 1000, significant=False)
 
     batch_size: int = luigi.IntParameter(default = 750000) # 750000 | 165000
     minimum_interactions: int = luigi.FloatParameter(default=5)
     no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
     limit_list_size: int = luigi.IntParameter(default=50, significant=False)
 
+
     def requires(self):
-        return BuildIteractionDatasetTask(run_type = self.run_type)
+        return BuildIteractionDatasetTask(run_type = self.run_type, filter_dish=self.filter_dish, rounds=self.rounds)
 
     def output(self):
         return  luigi.LocalTarget(os.path.join("output", "evaluation", self.__class__.__name__, 
@@ -98,10 +101,14 @@ class BaseIterationEvaluation(luigi.Task):
         return self.run_type == "reinforcement"    
 
 class BuildIteractionDatasetTask(BasePySparkTask):
-    run_type: str = luigi.ChoiceParameter(choices=["supervised", 'reinforcement'], default="supervised")
 
     # GroundTruth Dataset
     #
+    #     
+    run_type: str = luigi.ChoiceParameter(choices=["supervised", 'reinforcement'], default="supervised")
+    filter_dish: str = luigi.Parameter(default="all") #11345
+    rounds: int = luigi.IntParameter(default = 1)
+
     def requires(self):
         return CheckDataset()
 
@@ -117,6 +124,19 @@ class BuildIteractionDatasetTask(BasePySparkTask):
         if self.run_type == "reinforcement":
             df = df.filter(df.buy == 1)
 
+        if self.filter_dish != "all":
+            df_merchant = spark.read.parquet(self.input()[4].path)
+            
+            _df = df.join(df_merchant, "merchant_id")
+            df  = _df.filter(_df.dish_description.contains(self.filter_dish))\
+                     .select(df.columns)
+
+        _df = df
+        for i in range(self.rounds-1):
+            # Add 1 year per union
+            _df = _df.withColumn('click_timestamp', _df.click_timestamp + F.expr('INTERVAL 1 YEAR'))
+            df = df.union(_df)
+
         df.write.parquet(self.output().path)
 
 # PYTHONPATH="." luigi \
@@ -130,6 +150,8 @@ class MergeIteractionDatasetTask(BasePySparkTask):
     minimum_interactions: int = luigi.FloatParameter()
     evaluation_path: str = luigi.Parameter()
     batch_size: int = luigi.IntParameter() # 750000 | 165000
+
+
 
     def requires(self):
         return  BuildIteractionDatasetTask(),\
