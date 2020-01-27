@@ -76,7 +76,7 @@ def load_eval_params():
 def load_train_params():
   return json2df(fetch_training_path(), 'params.json', 'path')
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_iteractions_params(iteractions):
   if len(iteractions) == 0:
     return pd.DataFrame()
@@ -103,19 +103,19 @@ def load_iteractions_params(iteractions):
   
   return pd.concat(dfs)
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_data_iteractions_metrics(model):
   return pd.read_csv(os.path.join(fetch_iteraction_results_path()[model],'history.csv'))
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_data_orders_metrics(model):
   return pd.read_csv(os.path.join(fetch_results_path()[model],'orders_with_metrics.csv'))
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_history_train(model):
   return pd.read_csv(os.path.join(fetch_training_path()[model],'history.csv')).set_index('epoch')
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_all_iteraction_metrics(iteractions):
   if len(iteractions) == 0:
     return pd.DataFrame()
