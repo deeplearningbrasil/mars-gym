@@ -9,9 +9,8 @@ from pyspark.sql import SparkSession
 import random
 import math
 from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count, abs
-from pyspark.sql.types import IntegerType, StringType
+from pyspark.sql.types import IntegerType, StringType, DateType
 import pyspark.sql.functions as F
-
 from recommendation.task.model.base import BaseTorchModelTraining
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
     PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer
@@ -135,7 +134,7 @@ class BuildIteractionDatasetTask(BasePySparkTask):
         for i in range(self.rounds-1):
             # Add 1 year per union to stay at the end dataset
             _df = _df.withColumn('click_timestamp', _df.click_timestamp + F.expr('INTERVAL 1 YEAR'))\
-                    .withColumn('dt_partition', _df.dt_partition + F.expr('INTERVAL 1 YEAR'))
+                    .withColumn('dt_partition', (_df.dt_partition + F.expr('INTERVAL 1 YEAR')).cast(DateType()))
             df = df.union(_df)
 
         df.write.parquet(self.output().path)
