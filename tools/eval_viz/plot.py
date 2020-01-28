@@ -35,13 +35,21 @@ def plot_line(df, title="", yrange=[0, 1], cum=False):
 
   st.plotly_chart(fig)
 
-def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0, 1], cum=False):
+def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0, 1], cum=False, mean=False):
   data = []
   ymax = yrange[1] if yrange else 1
   
   for group, rows in df.groupby("iteraction"):
+    x    = [i+1 for i in range(len(rows))]
+
     #for i, row in rows.iterrows():
-    values = np.cumsum(rows[metric].values) if cum else rows[metric].values
+    values = rows[metric].values
+    if cum:
+      values = np.cumsum(values)
+
+    if mean:
+      values = np.cumsum(values)/x
+
     ymax   = np.max([np.max(values), ymax])
 
     try:
@@ -49,7 +57,7 @@ def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0,
     except:
       name   = group
 
-    data.append(go.Scatter(name=name, x=list(range(len(rows))), y=values))
+    data.append(go.Scatter(name=name, x=x, y=values))
     
   fig = go.Figure(data=data)
   # Change the bar mode

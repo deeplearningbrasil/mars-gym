@@ -76,7 +76,7 @@ def load_eval_params():
 def load_train_params():
   return json2df(fetch_training_path(), 'params.json', 'path')
 
-#@st.cache(allow_output_mutation=True)
+@st.cache(allow_output_mutation=True)
 def load_iteractions_params(iteractions):
   if len(iteractions) == 0:
     return pd.DataFrame()
@@ -237,6 +237,7 @@ def display_iteraction_result():
   input_metrics     = st.sidebar.selectbox("Metrics", sorted(load_data_metrics().columns), 
                             index=len(load_data_metrics().columns)-1)
   input_cum         = st.sidebar.checkbox('Cumulative')
+  input_mean        = st.sidebar.checkbox('Cumulative Mean')
 
   if len(input_iteraction) > 0 and input_metrics:
     df_params_eval = json2df(dict(metrics.groupby("iteraction").first()['eval_path'].loc[input_iteraction]), 'params.json', 'path')
@@ -252,7 +253,7 @@ def display_iteraction_result():
                             title="Metrics - "+input_metrics, 
                             legend=['iteraction', 'bandit'],
                             yrange=None, 
-                            cum=input_cum)
+                            cum=input_cum, mean=input_mean)
     #st.dataframe(df)
     st.markdown('## Models')
     for group, rows in metrics.groupby("iteraction"):
