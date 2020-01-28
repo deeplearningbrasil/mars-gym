@@ -9,7 +9,8 @@ import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count, abs, date_format
+from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count, abs, date_format, \
+    from_utc_timestamp, expr
 from pyspark.sql.functions import explode, posexplode
 from pyspark.sql.types import IntegerType, StringType
 from pyspark.sql.window import Window
@@ -164,8 +165,6 @@ class AddAdditionallInformationDataset(BasePySparkTask):
 
         # Save availability information
         availability_df = availability_df.withColumn("day_of_week", availability_df["day_of_week"] - 1)
-        availability_df = availability_df.withColumn("open_time", date_format(availability_df.open, "HH:mm:ss"))
-        availability_df = availability_df.withColumn("close_time", date_format(availability_df.close, "HH:mm:ss"))
         availability_df = availability_df.join(shift_df, "shift")
 
         # Session
@@ -173,9 +172,12 @@ class AddAdditionallInformationDataset(BasePySparkTask):
         datetime_to_shift_udf    = udf(datetime_to_shift, StringType())
         date_to_day_of_month_udf = udf(date_to_day_of_month, IntegerType())
 
+        session_df = session_df.withColumn("click_timestamp_brt", from_utc_timestamp("click_timestamp",
+                                                                                     "America/Sao_Paulo"))
+        session_df = session_df.withColumn("click_time", date_format(session_df.click_timestamp_brt, "HH:mm:ss"))
         session_df = session_df.withColumn("day_of_week", date_to_day_of_week_udf(session_df.dt_partition))
         session_df = session_df.withColumn("day_of_month", date_to_day_of_month_udf(session_df.dt_partition))
-        session_df = session_df.withColumn("shift", datetime_to_shift_udf(session_df.click_timestamp))
+        session_df = session_df.withColumn("shift", datetime_to_shift_udf(session_df.click_timestamp_brt))
         session_df = session_df.join(shift_df, "shift")
 
         session_df = self.add_history_buy_visits(session_df)
@@ -1057,13 +1059,25 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                         .select(test_df.columns).cache()
 
         # Join with merchant the same caracteristics to simulate merchants open
-        orders_df = orders_df.withColumn("click_time", date_format(orders_df.click_timestamp, "HH:mm:ss"))
         availability_df = availability_df.join(merchant_df.select(["merchant_id", "merchant_idx"]), "merchant_id",
                                                how="inner")
-        orders_df = orders_df.join(availability_df.select(["merchant_idx", "day_of_week", "open_time", "close_time"]),
-                                   [availability_df.day_of_week == orders_df.day_of_week,
-                                    availability_df.open_time <= orders_df.click_time,
-                                    availability_df.close_time >= orders_df.click_time], how="inner") \
+        availability_df = availability_df.withColumn("open_time", date_format(availability_df.open, "HH:mm:ss"))
+        availability_df = availability_df.withColumn("close_time", date_format(availability_df.close, "HH:mm:ss"))
+        availability_df = availability_df.withColumn(
+            "open_time_minus_30_min", date_format(availability_df.open - expr("INTERVAL 30 MINUTES"), "HH:mm:ss"))
+        availability_df = availability_df.withColumn(
+            "close_time_plus_30_min", date_format(availability_df.close + expr("INTERVAL 30 MINUTES"), "HH:mm:ss"))
+
+        orders_df = orders_df.join(
+            availability_df.select(["merchant_idx", "day_of_week", "open_time", "close_time", "open_time_minus_30_min",
+                                    "close_time_plus_30_min"]),
+            [
+                availability_df.day_of_week == orders_df.day_of_week,
+                (availability_df.open_time_minus_30_min <= orders_df.click_time) | (
+                        availability_df.open_time <= orders_df.click_time),
+                (availability_df.close_time_plus_30_min >= orders_df.click_time) | (
+                        availability_df.close_time >= orders_df.click_time)
+            ], how="left") \
             .drop(availability_df.day_of_week) \
             .select(test_df.columns + ["merchant_idx"])
 
@@ -1081,7 +1095,7 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
                     .select("session_id", "account_id", "dt_partition",
                             "account_idx", "merchant_idx", "shift", "shift_idx",
                             "mode_shift_idx", "mode_day_of_week", "day_of_week",
-                            "day_of_month", "count_buys", "count_visits",
+                            "day_of_month", "click_time", "count_buys", "count_visits",
                             "buy", "merchant_idx_list").dropDuplicates().cache()
         test_size = orders_df.count()
 
