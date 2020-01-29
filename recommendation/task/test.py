@@ -33,7 +33,7 @@ class EnvironmentTestTask(luigi.Task):
 
         env.seed(0)
 
-        episode_count = 100
+        episode_count = 1
         rewards = []
         interactions = 0
         done = False
@@ -44,11 +44,12 @@ class EnvironmentTestTask(luigi.Task):
                 interactions += len(ob)
                 action = agent.act(ob)
                 ob, reward, done, info = env.step(action)
+                if done:
+                    break
+
                 rewards.append(reward)
                 print(interactions)
                 print(np.mean(reward), np.std(reward))
-                if done:
-                    break
         
         env.close()
 
