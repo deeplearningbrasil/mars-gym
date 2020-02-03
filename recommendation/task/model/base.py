@@ -227,13 +227,13 @@ class BaseModelTraining(luigi.Task):
         return self._test_dataset
 
     @property
-    def n_users(self):
+    def n_users(self) -> int:
         if not hasattr(self, "_n_users"):
             self._n_users = int(self.train_data_frame.iloc[0][self.project_config.n_users_column])
         return self._n_users
 
     @property
-    def n_items(self):
+    def n_items(self) -> int:
         if not hasattr(self, "_n_items"):
             self._n_items = int(self.train_data_frame.iloc[0][self.project_config.n_items_column])
         return self._n_items

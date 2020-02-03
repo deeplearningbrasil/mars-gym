@@ -1,5 +1,5 @@
 import abc
-from typing import List, Union, Tuple, Dict
+from typing import List, Union, Tuple, Dict, Type
 
 import math
 import numpy as np
@@ -16,7 +16,7 @@ from recommendation.utils import chunks
 
 class BanditPolicy(object, metaclass=abc.ABCMeta):
     def __init__(self, reward_model: nn.Module) -> None:
-        self._reward_model = reward_model
+        self.reward_model = reward_model
         self._limit = None
 
     def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
@@ -33,7 +33,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
     def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
         inputs: torch.Tensor = default_convert(arm_contexts)
-        scores: torch.Tensor = self._reward_model(*inputs)
+        scores: torch.Tensor = self.reward_model(*inputs)
         return scores.detach().cpu().numpy().tolist()
 
     def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
@@ -470,3 +470,9 @@ class SoftmaxExplorer(BanditPolicy):
         arm_probs = self._compute_prob(arm_scores)
 
         return self._rng.choice(a=len(arm_scores), p=arm_probs)
+
+
+BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
+    epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
+    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy,
+    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None)
