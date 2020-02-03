@@ -2,13 +2,16 @@ import gym
 import numpy as np
 import luigi
 import pandas as pd
-from recommendation.gym_ifood.envs.ifood_recsys_env import iFoodRecSysEnv
+from typing import List
 
+from recommendation.gym_ifood.envs.ifood_recsys_env import IFoodRecSysEnv
+from recommendation.task.data_preparation.ifood import CreateInteractionDataset, \
+    IndexAccountsAndMerchantsOfSessionTrainDataset, CreateGroundTruthForInterativeEvaluation
 
 from recommendation.task.iterator_eval.base import BuildIteractionDatasetTask
 
 class RandomAgent():
-    def __init__(self, action_list):
+    def __init__(self, action_list: List[int]):
         self.action_list = action_list
     def act(self, obs):
         return np.random.choice(self.action_list, obs.shape[0])
@@ -16,18 +19,18 @@ class RandomAgent():
 #PYTHONPATH="." luigi --module recommendation.task.test EnvironmentTestTask --local-scheduler
 class EnvironmentTestTask(luigi.Task):
     obs_batch_size: int = luigi.IntParameter(default=2000)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
     filter_dish: str = luigi.Parameter(default="all")
     
     def requires(self):
-        return BuildIteractionDatasetTask(run_type = "reinforcement", filter_dish=self.filter_dish)
-
-    def _get_action_list(self, path):
-        return pd.read_parquet(path)['merchant_id'].unique().flatten()
+        return CreateGroundTruthForInterativeEvaluation(minimum_interactions=self.minimum_interactions,
+                                                        filter_dish=self.filter_dish)
 
     def run(self):
-        env= gym.make('ifood-recsys-v0', dynamics_dataset_path=self.input().path, obs_batch_size = self.obs_batch_size)
+        df = pd.read_parquet(self.input().path)
+        env= gym.make('ifood-recsys-v0', dataset=df, obs_batch_size = self.obs_batch_size)
 
-        action_list = self._get_action_list(self.input().path)
+        action_list = df['merchant_idx'].unique().flatten()
 
         agent = RandomAgent(action_list)
 

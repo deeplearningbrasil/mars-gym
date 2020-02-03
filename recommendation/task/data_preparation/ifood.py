@@ -508,12 +508,37 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
         train_df    = spark.read.parquet(self.input()[0][0].path)
         account_df  = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[1][1].path, header=True, inferSchema=True) \
-                        .select("merchant_idx", "merchant_id")
+                        .select("merchant_idx", "merchant_id", "dish_description")
 
         train_df = train_df.join(account_df, "account_id")
         train_df = train_df.join(merchant_df, "merchant_id")
 
         train_df.write.parquet(self.output().path)
+
+
+class CreateGroundTruthForInterativeEvaluation(BasePySparkTask):
+    minimum_interactions: int = luigi.FloatParameter(default=5)
+    filter_dish: str = luigi.Parameter(default="all")
+
+    def requires(self):
+        return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=0.0,
+                                                              minimum_interactions=self.minimum_interactions)
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "ground_truth_%s" % self.filter_dish))
+
+    def main(self, sc: SparkContext, *args):
+        os.makedirs(BaseDir().dataset_processed, exist_ok=True)
+
+        spark = SparkSession(sc)
+
+        df = spark.read.parquet(self.input().path)
+        df = df.filter(df.buy == 1)
+
+        if self.filter_dish != "all":
+            df = df.filter(df.dish_description.contains(self.filter_dish))
+
+        df.write.parquet(self.output().path)
 
 
 class LoggingPolicyPsDataset(BasePySparkTask):
