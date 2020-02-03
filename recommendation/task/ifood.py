@@ -24,7 +24,7 @@ import gc
 
 from recommendation.data import literal_eval_array_columns
 from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, FixedPolicy, \
-    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer
+    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer, BANDIT_POLICIES
 from recommendation.plot import plot_histogram, plot_tsne
 from recommendation.offpolicy_metrics import DirectEstimator, eval_IPS, eval_CIPS, eval_SNIPS, eval_doubly_robust
 from recommendation.rank_metrics import average_precision, ndcg_at_k, prediction_coverage_at_k, personalization_at_k, precision_at_k
@@ -39,11 +39,6 @@ from recommendation.task.evaluation import BaseEvaluationTask
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import chunks, parallel_literal_eval
 from recommendation.task.model.contextual_bandits import DirectEstimatorTraining
-
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
-    epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
-    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, 
-    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None)
 
 
 def _get_scores_per_tuple(account_idx: int, merchant_idx_list: List[int],
@@ -132,7 +127,7 @@ def _generate_relevance_list_from_merchant_scores(ordered_merchant_idx: int, mer
 class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     batch_size: int = luigi.IntParameter(default=100000)
     plot_histogram: bool = luigi.BoolParameter(default=False)
-    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
+    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     bandit_weights: str = luigi.Parameter(default='none')
     limit_list_size: int = luigi.IntParameter(default=50)
@@ -166,7 +161,7 @@ class SortMerchantListsForIfoodModel(BaseEvaluationTask):
     def load_bandit_model(self) -> BanditPolicy:
         # Load Bandit Modle
         if self.bandit_weights == 'none':
-            bandit_policy = _BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
+            bandit_policy = BANDIT_POLICIES[self.bandit_policy](reward_model=None, **self.bandit_policy_params)
         else:
             with open(self.bandit_weights, 'rb') as f:
                 bandit_policy = pickle.load(f)            
@@ -497,7 +492,7 @@ class SortMerchantListsForAutoEncoderIfoodModel(SortMerchantListsForIfoodModel):
 
 class EvaluateIfoodModel(BaseEvaluationTask):
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
-    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
+    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     bandit_weights: str = luigi.Parameter(default='none')
     batch_size: int = luigi.IntParameter(default=100000)
@@ -702,7 +697,7 @@ class EvaluateRandomIfoodModel(EvaluateIfoodModel):
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
 
-    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
+    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     bandit_weights: str = luigi.Parameter(default='none')
     plot_histogram: bool = luigi.BoolParameter(default=False)
@@ -797,7 +792,7 @@ class EvaluateMostPopularIfoodModel(EvaluateIfoodModel):
     test_size: float = luigi.FloatParameter(default=0.1)
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
-    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
+    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     bandit_weights: str = luigi.Parameter(default='none')
     plot_histogram: bool = luigi.BoolParameter(default=False)
@@ -902,7 +897,7 @@ class EvaluateMostPopularPerUserIfoodModel(EvaluateIfoodModel):
     test_size: float = luigi.FloatParameter(default=0.1)
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
-    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
+    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     bandit_weights: str = luigi.Parameter(default='none')
     buy_importance: float = luigi.FloatParameter(default=1.0)
