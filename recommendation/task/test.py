@@ -2,9 +2,13 @@ import gym
 import numpy as np
 import luigi
 import pandas as pd
+from typing import List
 import os
-from recommendation.gym_ifood.envs.ifood_recsys_env import iFoodRecSysEnv
+from recommendation.gym_ifood.envs.ifood_recsys_env import IFoodRecSysEnv
+from recommendation.task.data_preparation.ifood import CreateInteractionDataset, \
+    IndexAccountsAndMerchantsOfSessionTrainDataset, CreateGroundTruthForInterativeEvaluation
 from recommendation.gym_ifood.util.log_stats import LogStats
+
 from recommendation.task.iterator_eval.base import BuildIteractionDatasetTask
 from numpy.random.mtrand import RandomState
 from scipy.special import softmax, expit
@@ -12,7 +16,7 @@ from scipy.special import softmax, expit
 import json
 
 class RandomAgent():
-    def __init__(self, action_list):
+    def __init__(self, action_list: List[int]):
         self.action_list = action_list
     def act(self, obs):
         return np.random.choice(self.action_list, obs.shape[0])
@@ -48,11 +52,12 @@ class RandomAgent():
 #PYTHONPATH="." luigi --module recommendation.task.test EnvironmentTestTask --local-scheduler
 class EnvironmentTestTask(luigi.Task):
     obs_batch_size: int = luigi.IntParameter(default=2000)
+    minimum_interactions: int = luigi.FloatParameter(default=5)
     filter_dish: str = luigi.Parameter(default="all")
     
     def requires(self):
-        return BuildIteractionDatasetTask(run_type = "reinforcement", filter_dish=self.filter_dish)
-
+        return CreateGroundTruthForInterativeEvaluation(minimum_interactions=self.minimum_interactions,
+                                                        filter_dish=self.filter_dish)
     def output(self):
         return  luigi.LocalTarget(os.path.join("output", "reinforcement", self.__class__.__name__, 
                                     "results", self.task_id, "history.csv")), \
@@ -69,11 +74,10 @@ class EnvironmentTestTask(luigi.Task):
     def run(self):
         os.makedirs(os.path.split(self.output()[0].path)[0], exist_ok=True)
         log = LogStats()
-        env = gym.make('ifood-recsys-v0', 
-                        dynamics_dataset_path=self.input().path, 
-                        obs_batch_size = self.obs_batch_size)
+        env= gym.make('ifood-recsys-v0', dataset=df, obs_batch_size = self.obs_batch_size)
 
-        action_list = self._get_action_list(self.input().path)
+
+        action_list = df['merchant_idx'].unique().flatten()
 
         agent = RandomAgent(action_list)
         #agent = EgreedyAgent(action_list=action_list)

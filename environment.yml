@@ -32,4 +32,5 @@ dependencies:
   - mlflow==1.0.0
   - pytorch-nlp==0.4.1
   - unidecode==1.1.1
-  - streamlit==0.52.2 
+  - streamlit==0.52.2
+  - gym==0.15.4
