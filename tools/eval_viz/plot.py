@@ -35,7 +35,8 @@ def plot_line(df, title="", yrange=[0, 1], cum=False):
 
   st.plotly_chart(fig)
 
-def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0, 1], cum=False, mean=False):
+def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0, 1], 
+      cum=False, mean=False):
   data = []
   ymax = yrange[1] if yrange else 1
   

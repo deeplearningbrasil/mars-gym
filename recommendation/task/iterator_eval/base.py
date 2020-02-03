@@ -112,7 +112,7 @@ class BuildIteractionDatasetTask(BasePySparkTask):
         return CheckDataset()
 
     def output(self):
-        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "info_session", "ground_truth"))
+        return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "info_session", "ground_truth", self.task_id))
 
     def main(self, sc: SparkContext, *args):
         #os.makedirs(os.path.join(BaseDir().dataset_processed, exist_ok=True)
@@ -121,7 +121,7 @@ class BuildIteractionDatasetTask(BasePySparkTask):
         df = spark.read.parquet(self.input()[6].path)
 
         if self.run_type == "reinforcement":
-            df = df.filter(df.buy == 1)
+            df = df.na.drop().dropDuplicates().filter(df.buy == 1)
 
         if self.filter_dish != "all":
             df_merchant = spark.read.parquet(self.input()[4].path)
