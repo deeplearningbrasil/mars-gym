@@ -2,7 +2,7 @@ import ast
 import os
 from math import sqrt
 from multiprocessing.pool import Pool
-from typing import List, Union
+from typing import List, Union, Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,7 @@ from tqdm import tqdm
 from datetime import datetime
 
 from recommendation.files import get_params, get_task_dir
+
 
 def load_torch_model_training_from_task_dir(model_cls,
                                             task_dir: str):
@@ -81,6 +82,7 @@ def literal_eval_if_str(element):
         return ast.literal_eval(element)
     return element
 
+
 def _parallel_literal_eval(series: Union[pd.Series, np.ndarray], pool: Pool, use_tqdm: bool = True) -> list:
     if use_tqdm:
         return list(tqdm(pool.map(literal_eval_if_str, series), total=len(series)))
@@ -91,8 +93,10 @@ def _parallel_literal_eval(series: Union[pd.Series, np.ndarray], pool: Pool, use
 def date_to_day_of_week(date: str) -> int:
     return int(datetime.strptime(date, '%Y-%m-%d').strftime('%w'))
 
+
 def date_to_day_of_month(date: str) -> int:
     return int(datetime.strptime(date, '%Y-%m-%d').strftime('%d'))
+
 
 def datetime_to_shift(datetime_: str) -> str:
     datetime_: datetime = datetime_ if isinstance(datetime_, datetime) else datetime.strptime(datetime_,
@@ -114,3 +118,8 @@ def datetime_to_shift(datetime_: str) -> str:
     else:
         shift = "dinner"
     return "%s %s" % ("weekday" if day_of_week < 4 else "weekend", shift)
+
+
+def get_scores_per_tuples(account_idx: int, merchant_idx_list: List[int],
+                          scores_per_tuple: Dict[Tuple[int, int], float]) -> List[float]:
+    return list(map(lambda merchant_idx: scores_per_tuple.get((account_idx, merchant_idx), -1.0), merchant_idx_list))
