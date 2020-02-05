@@ -10,7 +10,7 @@ from util import *
 pd.set_option('display.max_colwidth', -1)
 
 PATH_EVALUATION = 'output/evaluation/'
-PATH_EVAL_REINFORCEMENT = 'output/reinforcement/'
+PATH_EVAL_REINFORCEMENT = 'output/interaction/'
 PATH_TRAIN      = 'output/models/'
 
 
@@ -59,7 +59,7 @@ def fetch_iteraction_results_path():
     paths  = []
     models = []
     for root, dirs, files in os.walk(PATH_EVAL_REINFORCEMENT):
-      if '/results' in root and 'EnvironmentTestTask' in root:
+      if '/results' in root and 'InteractionTraining' in root:
         for d in dirs:
           paths.append(os.path.join(root, d))
           models.append(d) #.replace("_"+d.split("_")[-1], "")

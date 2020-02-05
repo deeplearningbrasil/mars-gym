@@ -232,7 +232,9 @@ class ProcessRestaurantContentDataset(luigi.Task):
 
     def output(self):
         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurants_with_processed_contents.csv")), \
-               luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurant_text_vocabulary.csv"))
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "restaurant_text_vocabulary.csv")), \
+               luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "dish_description.csv"))
+
 
     def tokenizer(self, text):
         # print(text)
@@ -298,7 +300,9 @@ class ProcessRestaurantContentDataset(luigi.Task):
         context['category_names'] = context['category_names'].fillna('NAN').str.replace('|', ' ')
 
         encoder = LabelEncoder(context['dish_description'].values)
+        dish_df = context[['dish_description']]
         context['dish_description'] = encoder.batch_encode(context['dish_description'])
+        dish_df['id'] = context['dish_description']
 
         vocab = context['description'].values.tolist() + context['trading_name'].values.tolist() + \
                 context['category_names'].values.tolist() + context['menu_full_text'].values.tolist()
@@ -325,22 +329,9 @@ class ProcessRestaurantContentDataset(luigi.Task):
 
         context.to_csv(self.output()[0].path, index=False)
         pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
+        dish_df.drop_duplicates().set_index('id').to_csv(self.output()[2].path)
 
 
-# class DownloadStopWords(luigi.Task):
-#     def output(self):
-#         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "stopwords_pt.txt"))
-
-#     def run(self):
-#         os.makedirs(BaseDir().dataset_processed, exist_ok=True)
-
-#         url  = "https://raw.githubusercontent.com/stopwords-iso/stopwords-pt/master/stopwords-pt.txt"
-#         file = requests.get(url)
-
-#         with open(self.output().path, 'wb') as output:
-#             output.write(file.content)
-
-#         print(self.output().path)
 
 class BuildEmbeddingVocabulary(luigi.Task):
     menu_text_length: int = luigi.IntParameter(default=5000)
@@ -522,7 +513,8 @@ class CreateGroundTruthForInterativeEvaluation(BasePySparkTask):
 
     def requires(self):
         return IndexAccountsAndMerchantsOfSessionTrainDataset(test_size=0.0,
-                                                              minimum_interactions=self.minimum_interactions)
+                                                              minimum_interactions=self.minimum_interactions),\
+                ProcessRestaurantContentDataset()                                                              
 
     def output(self):
         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed, "ground_truth_%s" % self.filter_dish))
@@ -532,11 +524,14 @@ class CreateGroundTruthForInterativeEvaluation(BasePySparkTask):
 
         spark = SparkSession(sc)
 
-        df = spark.read.parquet(self.input().path)
-        df = df.na.drop().dropDuplicates().filter(df.buy == 1)
-
+        df = spark.read.parquet(self.input()[0].path)
+        df = df.filter(df.buy == 1)
+        
         if self.filter_dish != "all":
-            df = df.filter(df.dish_description.contains(self.filter_dish))
+            df_dish = spark.read.csv(self.input()[1][2].path, header=True, inferSchema=True)
+            df_dish = df_dish.filter(df_dish.dish_description.contains(self.filter_dish))
+
+            df = df.join(df_dish.select("id"), df.dish_description == df_dish.id)
 
         df.write.parquet(self.output().path)
 

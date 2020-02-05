@@ -95,6 +95,7 @@ class RandomPolicy(BanditPolicy):
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
 
         n_arms = len(arm_indices)
+
         arm_probas = np.ones(n_arms) / n_arms
 
         action = self._rng.choice(n_arms, p=arm_probas)

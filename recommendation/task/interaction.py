@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import List, Tuple, Dict, Any, Union
-
+import os
 import gym
 import luigi
 import numpy as np
@@ -17,7 +17,7 @@ from recommendation.task.data_preparation.ifood import CreateGroundTruthForInter
 from recommendation.task.model.contextual_bandits import ContextualBanditsTraining
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import get_scores_per_tuples_with_click_timestamp
-
+from recommendation.files import get_interaction_dir
 
 class BanditAgent(object):
 
@@ -37,14 +37,14 @@ class BanditAgent(object):
 
 
 class InteractionTraining(ContextualBanditsTraining):
-    project = "ifood_contextual_bandit"
-    test_size = 0.0
+    project              = "ifood_contextual_bandit"
+    test_size            = 0.0
 
-    obs_batch_size: int = luigi.IntParameter(default=2000)
-    filter_dish: str = luigi.Parameter(default="all")
+    obs_batch_size: int = luigi.IntParameter(default=10000)
+    filter_dish:    str = luigi.Parameter(default="all")
 
-    num_episodes: int = luigi.IntParameter(default=1)
-    full_refit: bool = luigi.BoolParameter(default=False)
+    num_episodes:   int = luigi.IntParameter(default=1)
+    full_refit:    bool = luigi.BoolParameter(default=False)
 
     bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="model")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
@@ -60,6 +60,9 @@ class InteractionTraining(ContextualBanditsTraining):
                    test_size=self.test_size,
                    sample_size=self.sample_size,
                    minimum_interactions=self.minimum_interactions)
+
+    def output(self):
+        return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
 
     def create_agent(self) -> BanditAgent:
         bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.create_module(), **self.bandit_policy_params)
@@ -98,17 +101,22 @@ class InteractionTraining(ContextualBanditsTraining):
         return self._availability_data_frame
 
     def _get_batch_of_arm_indices(self, ob: np.ndarray) -> List[List[int]]:
-        df = self.availability_data_frame
+        df           = self.availability_data_frame
         days_of_week = [int(click_timestamp.strftime('%w')) for click_timestamp in ob[:, 1]]
-        click_times = [datetime.time(click_timestamp) for click_timestamp in ob[:, 1]]
+        click_times  = [datetime.time(click_timestamp) for click_timestamp in ob[:, 1]]
+
         return [
-            df[
-                (df["day_of_week"] == day_of_week) &
-                ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
-                ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
-                ]["merchant_idx"].values.tolist()
+            np.unique(df["merchant_idx"].values.tolist())
             for click_time, day_of_week in zip(click_times, days_of_week)
         ]
+        # return [
+        #     df[
+        #         (df["day_of_week"] == day_of_week) &
+        #         ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
+        #         ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
+        #         ]["merchant_idx"].values.tolist()
+        #     for click_time, day_of_week in zip(click_times, days_of_week)
+        # ]
 
     def _get_scores_from_reward_model(self, agent: BanditAgent, ob: np.ndarray,
                                       batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
@@ -199,6 +207,17 @@ class InteractionTraining(ContextualBanditsTraining):
 
         self._known_observations_data_frame = df
 
+    def _save_log(self) -> None:
+        df = self.known_observations_data_frame.reset_index()
+        df = df[["account_idx", "merchant_idx", "buy"]]
+        df.columns = ['context', 'arm', 'reward']
+
+        df.reset_index().to_csv(self.output().path+'/history.csv', index=False)
+
+    def _save_metrics(self) -> None:
+        df = self.known_observations_data_frame.reset_index()
+        df.buy.describe().to_csv(self.output().path+'/stats.csv', index=False)
+
     @property
     def train_data_frame(self) -> pd.DataFrame:
         return self._train_data_frame
@@ -232,19 +251,19 @@ class InteractionTraining(ContextualBanditsTraining):
         return self._n_items
 
     def run(self):
+        
         self.ground_truth_data_frame = pd.read_parquet(self.input()[0].path)
         env: IFoodRecSysEnv = gym.make('ifood-recsys-v0', dataset=self.ground_truth_data_frame,
                                        obs_batch_size=self.obs_batch_size)
-
-        env.seed(0)
+        env.seed(42)
 
         agent: BanditAgent = None
         if not self.full_refit:
             agent = self.create_agent()
 
-        rewards = []
+        rewards      = []
         interactions = 0
-        done = False
+        done         = False
 
         for i in range(self.num_episodes):
             ob = env.reset()
@@ -255,22 +274,32 @@ class InteractionTraining(ContextualBanditsTraining):
                     agent = self.create_agent()
 
                 batch_of_arm_indices = self._get_batch_of_arm_indices(ob)
-                batch_of_arm_scores = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices) \
+                batch_of_arm_scores  = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices) \
                     if agent.bandit.reward_model else [True for _ in range(len(batch_of_arm_indices))]
+                
                 action = agent.act(batch_of_arm_indices, batch_of_arm_scores)
+
                 new_ob, reward, done, info = env.step(action)
-                rewards.append(reward)
+                rewards.extend(reward)
                 if done:
                     break
 
                 self._accumulate_known_observations(ob, action, reward)
+
                 ob = new_ob
                 self._reset_dataset()
                 if agent.bandit.reward_model:
-                    agent.fit(self.create_trial(agent.bandit.reward_model), self.get_train_generator(),
-                              self.get_val_generator(), self.epochs)
+                    agent.fit(self.create_trial(agent.bandit.reward_model), 
+                              self.get_train_generator(),
+                              self.get_val_generator(), 
+                              self.epochs)
 
-                print(interactions)
-                print(np.mean(reward), np.std(reward))
+                print(interactions, np.mean(rewards), np.sum(rewards))
 
         env.close()
+
+        # Save logs
+        os.makedirs(self.output().path, exist_ok=True)
+        self._save_params()
+        self._save_log()
+        self._save_metrics()

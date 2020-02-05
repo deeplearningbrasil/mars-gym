@@ -27,6 +27,8 @@ def get_tensorboard_logdir(task_id: str) -> str:
 def get_task_dir(model_cls: Type, task_id: str):
     return os.path.join("output", "models", model_cls.__name__, "results", task_id)
 
+def get_interaction_dir(model_cls: Type, task_id: str):
+    return os.path.join("output", "interaction", model_cls.__name__, "results", task_id)
 
 def get_operadoras_path():
     return os.path.join("input", "operadoras.csv")
