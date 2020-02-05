@@ -83,7 +83,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
 class RandomPolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
-        super().__init__(reward_model)
+        super().__init__(None)
         self._rng = RandomState(seed)
 
     def _compute_prob(self, arm_scores):
