@@ -36,7 +36,7 @@ class BanditAgent(object):
                          for arm_indices, arm_scores in zip(batch_of_arm_indices, batch_of_arm_scores)])
 
 
-class IteractionTraining(ContextualBanditsTraining):
+class InteractionTraining(ContextualBanditsTraining):
     project = "ifood_contextual_bandit"
     test_size = 0.0
 
