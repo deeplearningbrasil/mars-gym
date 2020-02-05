@@ -1,6 +1,5 @@
 import ast
-import os
-from math import sqrt
+from datetime import datetime
 from multiprocessing.pool import Pool
 from typing import List, Union, Dict, Tuple
 
@@ -8,9 +7,9 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+from math import sqrt
 from torch.nn.init import _calculate_fan_in_and_fan_out
 from tqdm import tqdm
-from datetime import datetime
 
 from recommendation.files import get_params, get_task_dir
 
@@ -123,3 +122,10 @@ def datetime_to_shift(datetime_: str) -> str:
 def get_scores_per_tuples(account_idx: int, merchant_idx_list: List[int],
                           scores_per_tuple: Dict[Tuple[int, int], float]) -> List[float]:
     return list(map(lambda merchant_idx: scores_per_tuple.get((account_idx, merchant_idx), -1.0), merchant_idx_list))
+
+
+def get_scores_per_tuples_with_click_timestamp(account_idx: int, merchant_idx_list: List[int],
+                                               click_timestamp: datetime,
+                                               scores_per_tuple: Dict[Tuple[int, int, datetime], float]) -> List[float]:
+    return list(map(lambda merchant_idx: scores_per_tuple.get((account_idx, merchant_idx, click_timestamp), -1.0),
+                    merchant_idx_list))

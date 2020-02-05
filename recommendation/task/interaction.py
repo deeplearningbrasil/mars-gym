@@ -6,6 +6,7 @@ import luigi
 import numpy as np
 import pandas as pd
 import torch
+from sklearn.model_selection import train_test_split
 from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 
@@ -15,7 +16,7 @@ from recommendation.task.data_preparation.ifood import CreateGroundTruthForInter
     GenerateIndicesForAccountsAndMerchantsDataset, AddAdditionallInformationDataset
 from recommendation.task.model.contextual_bandits import ContextualBanditsTraining
 from recommendation.torch import NoAutoCollationDataLoader
-from recommendation.utils import datetime_to_shift, get_scores_per_tuples
+from recommendation.utils import get_scores_per_tuples_with_click_timestamp
 
 
 class BanditAgent(object):
@@ -35,7 +36,7 @@ class BanditAgent(object):
                          for arm_indices, arm_scores in zip(batch_of_arm_indices, batch_of_arm_scores)])
 
 
-class IteractionTraining(ContextualBanditsTraining):
+class InteractionTraining(ContextualBanditsTraining):
     project = "ifood_contextual_bandit"
     test_size = 0.0
 
@@ -98,7 +99,6 @@ class IteractionTraining(ContextualBanditsTraining):
 
     def _get_batch_of_arm_indices(self, ob: np.ndarray) -> List[List[int]]:
         df = self.availability_data_frame
-        shifts = [datetime_to_shift(click_timestamp) for click_timestamp in ob[:, 1]]
         days_of_week = [int(click_timestamp.strftime('%w')) for click_timestamp in ob[:, 1]]
         click_times = [datetime.time(click_timestamp) for click_timestamp in ob[:, 1]]
         return [
@@ -107,15 +107,35 @@ class IteractionTraining(ContextualBanditsTraining):
                 ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
                 ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
                 ]["merchant_idx"].values.tolist()
-            for click_time, shift, day_of_week in zip(click_times, shifts, days_of_week)
+            for click_time, day_of_week in zip(click_times, days_of_week)
         ]
 
     def _get_scores_from_reward_model(self, agent: BanditAgent, ob: np.ndarray,
-                                      batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int], float]:
-        tuples_df = pd.DataFrame(columns=["account_idx", "merchant_idx"],
-                                 data=set((account_idx, merchant_idx)
-                                          for account_idx, merchant_idx_list in zip(ob[:, 0], batch_of_arm_indices)
-                                          for merchant_idx in merchant_idx_list), dtype=np.int)
+                                      batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
+        tuples_df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp"],
+                                 data=[(account_idx, merchant_idx, click_timestamp)
+                                       for account_idx, merchant_idx_list, click_timestamp
+                                       in zip(ob[:, 0], batch_of_arm_indices, ob[:, 1])
+                                       for merchant_idx in merchant_idx_list])
+
+        def _get_hist_visits(row: pd.Series) -> int:
+            try:
+                return len(
+                    self.known_observations_data_frame.loc[row["account_idx"], row["merchant_idx"],
+                    :row["click_timestamp"]])
+            except KeyError:
+                return 0
+
+        def _get_hist_buys(row: pd.Series) -> int:
+            try:
+                return self.known_observations_data_frame.loc[row["account_idx"], row["merchant_idx"],
+                       :row["click_timestamp"]]["buy"].sum()
+            except KeyError:
+                return 0
+
+        tuples_df["hist_visits"] = tuples_df.apply(_get_hist_visits, axis=1)
+        tuples_df["hist_buys"] = tuples_df.apply(_get_hist_buys, axis=1)
+
         if self.project_config.output_column.name not in tuples_df.columns:
             tuples_df[self.project_config.output_column.name] = 1
         for auxiliar_output_column in self.project_config.auxiliar_output_columns:
@@ -127,22 +147,26 @@ class IteractionTraining(ContextualBanditsTraining):
             dataset, batch_size=self.batch_size, shuffle=False,
             num_workers=self.generator_workers,
             pin_memory=self.pin_memory if self.device == "cuda" else False)
-        trial = Trial(agent.bandit.reward_model).with_test_generator(generator).to(self.torch_device) \
-            .eval()
+        trial = Trial(agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device,
+                                                                                     requires_grad=True)) \
+            .with_test_generator(generator).to(self.torch_device).eval()
         with torch.no_grad():
             model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=2)
         scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
         scores: np.ndarray = scores_tensor.cpu().numpy()
         return {
-            (account_idx, merchant_idx): score
-            for account_idx, merchant_idx, score in zip(tuples_df["account_idx"], tuples_df["merchant_idx"], scores)
+            (account_idx, merchant_idx, click_timestamp): score
+            for account_idx, merchant_idx, click_timestamp, score in
+            zip(tuples_df["account_idx"], tuples_df["merchant_idx"],
+                tuples_df["click_timestamp"], scores)
         }
 
-    def _get_batch_of_arm_scores(self, agent: BanditAgent, ob: np.ndarray, arm_indices: List[List[int]]) -> List[
-        List[float]]:
+    def _get_batch_of_arm_scores(self, agent: BanditAgent, ob: np.ndarray,
+                                 arm_indices: List[List[int]]) -> List[List[float]]:
         scores_per_tuple = self._get_scores_from_reward_model(agent, ob, arm_indices)
-        return [get_scores_per_tuples(account_idx, merchant_idx_list, scores_per_tuple)
-                for account_idx, merchant_idx_list in zip(ob[:, 0], arm_indices)]
+        return [get_scores_per_tuples_with_click_timestamp(account_idx, merchant_idx_list, click_timestamp,
+                                                           scores_per_tuple)
+                for account_idx, merchant_idx_list, click_timestamp in zip(ob[:, 0], arm_indices, ob[:, 1])]
 
     def _create_arm_contexts(self, ob: np.ndarray) -> List[Tuple[np.ndarray, ...]]:
         pass
@@ -150,23 +174,50 @@ class IteractionTraining(ContextualBanditsTraining):
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_known_observations_data_frame"):
-            self._known_observations_data_frame = pd.DataFrame(columns=["account_idx", "merchant_idx", "buy"])
+            df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp", "buy"])
+            df = df.astype({
+                "account_idx": np.int,
+                "merchant_idx": np.int,
+                "click_timestamp": np.datetime64,
+                "buy": np.int,
+            })
+            df = df.set_index(["account_idx", "merchant_idx", "click_timestamp"], drop=False).sort_index()
+            df.index.set_names(["index_account_idx", "index_merchant_idx", "index_click_timestamp"], inplace=True)
+            self._known_observations_data_frame = df
         return self._known_observations_data_frame
 
     def _accumulate_known_observations(self, ob: np.ndarray, action: np.ndarray, reward: np.ndarray):
-        pass
+        df = self.known_observations_data_frame
+        df = pd.concat([df, pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp", "buy"],
+                         data={"account_idx": ob[:, 0], "merchant_idx": action, "click_timestamp": ob[:, 1],
+                               "buy": reward})]).sort_index()
+        df["hist_visits"] = 1
+        df["hist_visits"] = df.groupby(["account_idx", "merchant_idx"])["hist_visits"].transform("cumsum")
+        df["hist_buys"] = df.groupby(["account_idx", "merchant_idx"])["buy"].transform("cumsum")
+
+        df["ps"] = 1.0  # TODO: Calculate the PS
+
+        self._known_observations_data_frame = df
 
     @property
     def train_data_frame(self) -> pd.DataFrame:
-        pass
+        return self._train_data_frame
 
     @property
     def val_data_frame(self) -> pd.DataFrame:
-        pass
+        return self._val_data_frame
+
+    @property
+    def test_data_frame(self) -> pd.DataFrame:
+        return pd.DataFrame()
 
     def _reset_dataset(self):
-        del self._train_dataset
-        del self._val_dataset
+        self._train_data_frame, self._val_data_frame = train_test_split(
+            self.known_observations_data_frame, test_size=self.val_size, random_state=self.seed)
+        if hasattr(self, "_train_dataset"):
+            del self._train_dataset
+        if hasattr(self, "_val_dataset"):
+            del self._val_dataset
 
     @property
     def n_users(self) -> int:
@@ -204,17 +255,20 @@ class IteractionTraining(ContextualBanditsTraining):
                     agent = self.create_agent()
 
                 batch_of_arm_indices = self._get_batch_of_arm_indices(ob)
-                batch_of_arm_scores = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices)
+                batch_of_arm_scores = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices) \
+                    if agent.bandit.reward_model else [True for _ in range(len(batch_of_arm_indices))]
                 action = agent.act(batch_of_arm_indices, batch_of_arm_scores)
-                ob, reward, done, info = env.step(action)
+                new_ob, reward, done, info = env.step(action)
                 rewards.append(reward)
                 if done:
                     break
 
                 self._accumulate_known_observations(ob, action, reward)
+                ob = new_ob
                 self._reset_dataset()
-                agent.fit(self.create_trial(agent.bandit.reward_model), self.get_train_generator(),
-                          self.get_val_generator(), self.epochs)
+                if agent.bandit.reward_model:
+                    agent.fit(self.create_trial(agent.bandit.reward_model), self.get_train_generator(),
+                              self.get_val_generator(), self.epochs)
 
                 print(interactions)
                 print(np.mean(reward), np.std(reward))
