@@ -107,7 +107,7 @@ def load_iteractions_params(iteractions):
 
 @st.cache(allow_output_mutation=True)
 def load_data_iteractions_metrics(model):
-  return pd.read_csv(os.path.join(fetch_iteraction_results_path()[model],'history.csv'))#.sample(10000)
+  return pd.read_csv(os.path.join(fetch_iteraction_results_path()[model],'data_log.csv'))#.sample(10000)
 
 @st.cache(allow_output_mutation=True)
 def load_data_orders_metrics(model):

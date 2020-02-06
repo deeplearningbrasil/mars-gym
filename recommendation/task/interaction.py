@@ -13,7 +13,7 @@ from torchbearer import Trial
 from recommendation.gym_ifood.envs import IFoodRecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.task.data_preparation.ifood import CreateGroundTruthForInterativeEvaluation, \
-    GenerateIndicesForAccountsAndMerchantsDataset, AddAdditionallInformationDataset
+    GenerateIndicesForAccountsAndMerchantsDataset, AddAdditionallInformationDataset, ProcessRestaurantContentDataset
 from recommendation.task.model.contextual_bandits import ContextualBanditsTraining
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import get_scores_per_tuples_with_click_timestamp
@@ -32,7 +32,7 @@ class BanditAgent(object):
         self.bandit.fit(train_loader.dataset)
 
     def act(self, batch_of_arm_indices: List[List[int]], batch_of_arm_scores: List[List[float]]) -> np.ndarray:
-        return np.array([self.bandit.select_idx(arm_indices, arm_scores=arm_scores)
+        return np.array([self.bandit.select(arm_indices, arm_scores=arm_scores)
                          for arm_indices, arm_scores in zip(batch_of_arm_indices, batch_of_arm_scores)])
 
 
@@ -59,7 +59,8 @@ class InteractionTraining(ContextualBanditsTraining):
                AddAdditionallInformationDataset(
                    test_size=self.test_size,
                    sample_size=self.sample_size,
-                   minimum_interactions=self.minimum_interactions)
+                   minimum_interactions=self.minimum_interactions),\
+               ProcessRestaurantContentDataset()
 
     def output(self):
         return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
@@ -90,16 +91,15 @@ class InteractionTraining(ContextualBanditsTraining):
     def availability_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_availability_data_frame"):
             df    = pd.read_parquet(self.input()[2][1].path)
-            gt_df = pd.read_parquet(self.input()[0].path, columns=["merchant_id"]).drop_duplicates()
 
             # Merge with merchant availability information and merchant Ground-truth 
-            df = df\
-                    .merge(
-                        self.merchant_data_frame[["merchant_id", "merchant_idx"]], on="merchant_id")\
-                    .merge(
-                        gt_df, on="merchant_id")
+            df = df.merge(self.merchant_data_frame[["merchant_id", "merchant_idx", 'dish_description']], on="merchant_id")
             
-                        
+            if self.filter_dish != "all":
+                dish_df = pd.read_csv(self.input()[3][2].path)
+                dish_df = dish_df[dish_df.dish_description == self.filter_dish]
+                df      = df[df.dish_description.isin(dish_df['id'].values)]
+
             df["open_time"]  = df["open"].apply(datetime.time)
             df["close_time"] = df["close"].apply(datetime.time)
             df["open_time_minus_30_min"] = df["open"].apply(lambda dt: datetime.time(dt - timedelta(minutes=30)))
@@ -114,18 +114,19 @@ class InteractionTraining(ContextualBanditsTraining):
         days_of_week = [int(click_timestamp.strftime('%w')) for click_timestamp in ob[:, 1]]
         click_times  = [datetime.time(click_timestamp) for click_timestamp in ob[:, 1]]
 
-        return [
-            np.unique(df["merchant_idx"].values.tolist())
-            for click_time, day_of_week in zip(click_times, days_of_week)
-        ]
         # return [
-        #     df[
-        #         (df["day_of_week"] == day_of_week) &
-        #         ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
-        #         ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
-        #         ]["merchant_idx"].values.tolist()
+        #     np.unique(df["merchant_idx"].values.tolist())
         #     for click_time, day_of_week in zip(click_times, days_of_week)
         # ]
+        return [
+            np.unique(
+                df[
+                    (df["day_of_week"] == day_of_week) &
+                    ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
+                    ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
+                    ]["merchant_idx"].values.tolist())
+            for click_time, day_of_week in zip(click_times, days_of_week)
+        ]
 
     def _get_scores_from_reward_model(self, agent: BanditAgent, ob: np.ndarray,
                                       batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
@@ -189,7 +190,7 @@ class InteractionTraining(ContextualBanditsTraining):
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_known_observations_data_frame"):
-            df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp", "buy"])
+            df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp", "ps", "buy"])
             df = df.astype({
                 "account_idx": np.int,
                 "merchant_idx": np.int,
@@ -210,17 +211,15 @@ class InteractionTraining(ContextualBanditsTraining):
         df = pd.concat([df, df_append]).reset_index(drop=True)
         
         df["hist_visits"]  = 1
+        account_visits     = df.groupby(["account_idx"])["hist_visits"].transform("cumsum")
         df["hist_visits"]  = df.groupby(["account_idx", "merchant_idx"])["hist_visits"].transform("cumsum")
         df["hist_buys"]    = df.groupby(["account_idx", "merchant_idx"])["buy"].transform("cumsum")
 
-        df["ps"]           = 1.0  # TODO: Calculate the PS
+        df["ps"]           = df["hist_visits"]/account_visits
 
         df['account_idx']  = df['account_idx'].astype(int)
         df['merchant_idx'] = df['merchant_idx'].astype(int)
         
-        print(df.head())
-        print(df.tail())
-        print(len(df))
         self._known_observations_data_frame = df
 
     def _save_log(self) -> None:
@@ -273,6 +272,7 @@ class InteractionTraining(ContextualBanditsTraining):
                                        obs_batch_size=self.obs_batch_size)
         env.seed(42)
 
+
         agent: BanditAgent = None
         if not self.full_refit:
             agent = self.create_agent()
@@ -280,7 +280,7 @@ class InteractionTraining(ContextualBanditsTraining):
         rewards      = []
         interactions = 0
         done         = False
-
+        k            = 0
         for i in range(self.num_episodes):
             ob = env.reset()
             while True:
@@ -288,18 +288,14 @@ class InteractionTraining(ContextualBanditsTraining):
 
                 if self.full_refit:
                     agent = self.create_agent()
-
                 batch_of_arm_indices = self._get_batch_of_arm_indices(ob)
                 batch_of_arm_scores  = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices) \
-                    if agent.bandit.reward_model else [True for _ in range(len(batch_of_arm_indices))]
+                    if agent.bandit.reward_model else [list(np.ones(len(batch_of_arm_indices[0]))) for _ in range(len(batch_of_arm_indices))]
 
                 action = agent.act(batch_of_arm_indices, batch_of_arm_scores)
-                print("batch_of_arm_indices: ", batch_of_arm_indices[0][:5])
-                print("batch_of_arm_scores: ", batch_of_arm_scores[0][:5])
-                #print("action", action)
+
                 new_ob, reward, done, info = env.step(action)
                 rewards.extend(reward)
-                print("action", action[:10])
                 self._accumulate_known_observations(ob, action, reward)
 
                 if done:
@@ -314,7 +310,9 @@ class InteractionTraining(ContextualBanditsTraining):
                               self.get_val_generator(), 
                               self.epochs)
 
-                print("===>", interactions, np.mean(rewards), np.sum(rewards))
+                
+                print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
+                k+=1
 
         env.close()
 
