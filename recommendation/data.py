@@ -695,6 +695,7 @@ class ContextualBanditsDataset(InteractionsDataset):
             indices = [indices]
 
         rows: pd.Series = self._data_frame.iloc[indices]
+        
         user_indices    = rows[self._input_columns[0]].values
         item_indices    = rows[self._input_columns[1]].values
         user_item_visits = rows[self._input_columns[2]].values

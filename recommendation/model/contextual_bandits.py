@@ -244,9 +244,9 @@ class ContextualBandit(nn.Module):
         user_emb = self.user_embeddings(user_ids.long())
 
         if self.use_normalize:
-            out = self.normalize(user_emb)
+            user_emb = self.normalize(user_emb)
         
-        return out
+        return user_emb
 
     def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, name: torch.Tensor, description: torch.Tensor,
                 category: torch.Tensor, info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor) -> torch.Tensor:

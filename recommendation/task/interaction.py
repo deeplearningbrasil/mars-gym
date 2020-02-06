@@ -90,7 +90,11 @@ class InteractionTraining(ContextualBanditsTraining):
     def availability_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_availability_data_frame"):
             df = pd.read_parquet(self.input()[2][1].path)
+
+            #TODO Filter dish description
+
             df = df.merge(self.merchant_data_frame[["merchant_id", "merchant_idx"]], on="merchant_id")
+
             df["open_time"] = df["open"].apply(datetime.time)
             df["close_time"] = df["close"].apply(datetime.time)
             df["open_time_minus_30_min"] = df["open"].apply(lambda dt: datetime.time(dt - timedelta(minutes=30)))
@@ -126,23 +130,15 @@ class InteractionTraining(ContextualBanditsTraining):
                                        in zip(ob[:, 0], batch_of_arm_indices, ob[:, 1])
                                        for merchant_idx in merchant_idx_list])
 
-        def _get_hist_visits(row: pd.Series) -> int:
-            try:
-                return len(
-                    self.known_observations_data_frame.loc[row["account_idx"], row["merchant_idx"],
-                    :row["click_timestamp"]])
-            except KeyError:
-                return 0
+        
+        if len(self.known_observations_data_frame) > 0:
+            hist_count_df = self.known_observations_data_frame.groupby(["account_idx", "merchant_idx"])\
+                         .agg({"hist_visits": 'max', 'hist_buys': 'max'}).reset_index()
+            tuples_df = tuples_df.merge(hist_count_df, how='left', on=["account_idx", "merchant_idx"])
+        else:
+            tuples_df["hist_visits"] = 0
+            tuples_df["hist_buys"]   = 0
 
-        def _get_hist_buys(row: pd.Series) -> int:
-            try:
-                return self.known_observations_data_frame.loc[row["account_idx"], row["merchant_idx"],
-                       :row["click_timestamp"]]["buy"].sum()
-            except KeyError:
-                return 0
-
-        tuples_df["hist_visits"] = tuples_df.apply(_get_hist_visits, axis=1)
-        tuples_df["hist_buys"] = tuples_df.apply(_get_hist_buys, axis=1)
 
         if self.project_config.output_column.name not in tuples_df.columns:
             tuples_df[self.project_config.output_column.name] = 1
@@ -201,9 +197,12 @@ class InteractionTraining(ContextualBanditsTraining):
                                "buy": reward})]).sort_index()
         df["hist_visits"] = 1
         df["hist_visits"] = df.groupby(["account_idx", "merchant_idx"])["hist_visits"].transform("cumsum")
-        df["hist_buys"] = df.groupby(["account_idx", "merchant_idx"])["buy"].transform("cumsum")
+        df["hist_buys"]   = df.groupby(["account_idx", "merchant_idx"])["buy"].transform("cumsum")
 
         df["ps"] = 1.0  # TODO: Calculate the PS
+
+        df['account_idx']  = df['account_idx'].astype(int)
+        df['merchant_idx'] = df['merchant_idx'].astype(int)
 
         self._known_observations_data_frame = df
 
@@ -212,7 +211,7 @@ class InteractionTraining(ContextualBanditsTraining):
         df = df[["account_idx", "merchant_idx", "buy"]]
         df.columns = ['context', 'arm', 'reward']
 
-        df.reset_index().to_csv(self.output().path+'/history.csv', index=False)
+        df.reset_index().to_csv(self.output().path+'/data_log.csv', index=False)
 
     def _save_metrics(self) -> None:
         df = self.known_observations_data_frame.reset_index()
@@ -274,6 +273,7 @@ class InteractionTraining(ContextualBanditsTraining):
                     agent = self.create_agent()
 
                 batch_of_arm_indices = self._get_batch_of_arm_indices(ob)
+                print(batch_of_arm_indices)
                 batch_of_arm_scores  = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices) \
                     if agent.bandit.reward_model else [True for _ in range(len(batch_of_arm_indices))]
                 
@@ -281,20 +281,22 @@ class InteractionTraining(ContextualBanditsTraining):
 
                 new_ob, reward, done, info = env.step(action)
                 rewards.extend(reward)
-                if done:
-                    break
 
                 self._accumulate_known_observations(ob, action, reward)
 
+                if done:
+                    break
+
                 ob = new_ob
                 self._reset_dataset()
+
                 if agent.bandit.reward_model:
                     agent.fit(self.create_trial(agent.bandit.reward_model), 
                               self.get_train_generator(),
                               self.get_val_generator(), 
                               self.epochs)
 
-                print(interactions, np.mean(rewards), np.sum(rewards))
+                print("===>", interactions, np.mean(rewards), np.sum(rewards))
 
         env.close()
 

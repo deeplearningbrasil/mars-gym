@@ -38,9 +38,10 @@ class IFoodRecSysEnv(gym.Env, utils.EzPickle):
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, bool, dict]:
         rewards = self._compute_rewards(action)
-        info = self._compute_stats(action)
-        done = False
-        if self.init_batch == len(self.dataset) - 1:
+        info    = self._compute_stats(action)
+        done    = False
+
+        if self.end_batch == (len(self.dataset) - 1):
             done = True
             next_obs = np.array([])
         else:
