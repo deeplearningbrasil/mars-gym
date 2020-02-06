@@ -89,13 +89,18 @@ class InteractionTraining(ContextualBanditsTraining):
     @property
     def availability_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_availability_data_frame"):
-            df = pd.read_parquet(self.input()[2][1].path)
+            df    = pd.read_parquet(self.input()[2][1].path)
+            gt_df = pd.read_parquet(self.input()[0].path, columns=["merchant_id"]).drop_duplicates()
 
-            #TODO Filter dish description
-
-            df = df.merge(self.merchant_data_frame[["merchant_id", "merchant_idx"]], on="merchant_id")
-
-            df["open_time"] = df["open"].apply(datetime.time)
+            # Merge with merchant availability information and merchant Ground-truth 
+            df = df\
+                    .merge(
+                        self.merchant_data_frame[["merchant_id", "merchant_idx"]], on="merchant_id")\
+                    .merge(
+                        gt_df, on="merchant_id")
+            
+                        
+            df["open_time"]  = df["open"].apply(datetime.time)
             df["close_time"] = df["close"].apply(datetime.time)
             df["open_time_minus_30_min"] = df["open"].apply(lambda dt: datetime.time(dt - timedelta(minutes=30)))
             df["close_time_plus_30_min"] = df["close"].apply(lambda dt: datetime.time(dt + timedelta(minutes=30)))
@@ -133,8 +138,8 @@ class InteractionTraining(ContextualBanditsTraining):
         
         if len(self.known_observations_data_frame) > 0:
             hist_count_df = self.known_observations_data_frame.groupby(["account_idx", "merchant_idx"])\
-                         .agg({"hist_visits": 'max', 'hist_buys': 'max'}).reset_index()
-            tuples_df = tuples_df.merge(hist_count_df, how='left', on=["account_idx", "merchant_idx"])
+                                    .agg({"hist_visits": 'max', 'hist_buys': 'max'}).reset_index()
+            tuples_df     = tuples_df.merge(hist_count_df, how='left', on=["account_idx", "merchant_idx"]).fillna(0)
         else:
             tuples_df["hist_visits"] = 0
             tuples_df["hist_buys"]   = 0
@@ -145,19 +150,24 @@ class InteractionTraining(ContextualBanditsTraining):
         for auxiliar_output_column in self.project_config.auxiliar_output_columns:
             if auxiliar_output_column.name not in tuples_df.columns:
                 tuples_df[auxiliar_output_column.name] = 0
-        dataset = self.project_config.dataset_class(tuples_df, self.metadata_data_frame, self.project_config,
-                                                    negative_proportion=0.0)
+        
+
+        dataset   = self.project_config.dataset_class(tuples_df, self.metadata_data_frame, self.project_config, negative_proportion=0.0)
         generator = NoAutoCollationDataLoader(
-            dataset, batch_size=self.batch_size, shuffle=False,
-            num_workers=self.generator_workers,
-            pin_memory=self.pin_memory if self.device == "cuda" else False)
+                        dataset, batch_size=self.batch_size, shuffle=False,
+                        num_workers=self.generator_workers,
+                        pin_memory=self.pin_memory if self.device == "cuda" else False)
+        
         trial = Trial(agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device,
                                                                                      requires_grad=True)) \
-            .with_test_generator(generator).to(self.torch_device).eval()
+                    .with_test_generator(generator).to(self.torch_device).eval()
+
         with torch.no_grad():
             model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=2)
         scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
-        scores: np.ndarray = scores_tensor.cpu().numpy()
+        scores: np.ndarray = scores_tensor.cpu().numpy().reshape(-1)
+        
+        
         return {
             (account_idx, merchant_idx, click_timestamp): score
             for account_idx, merchant_idx, click_timestamp, score in
@@ -168,6 +178,7 @@ class InteractionTraining(ContextualBanditsTraining):
     def _get_batch_of_arm_scores(self, agent: BanditAgent, ob: np.ndarray,
                                  arm_indices: List[List[int]]) -> List[List[float]]:
         scores_per_tuple = self._get_scores_from_reward_model(agent, ob, arm_indices)
+
         return [get_scores_per_tuples_with_click_timestamp(account_idx, merchant_idx_list, click_timestamp,
                                                            scores_per_tuple)
                 for account_idx, merchant_idx_list, click_timestamp in zip(ob[:, 0], arm_indices, ob[:, 1])]
@@ -191,19 +202,25 @@ class InteractionTraining(ContextualBanditsTraining):
         return self._known_observations_data_frame
 
     def _accumulate_known_observations(self, ob: np.ndarray, action: np.ndarray, reward: np.ndarray):
-        df = self.known_observations_data_frame
-        df = pd.concat([df, pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp", "buy"],
-                         data={"account_idx": ob[:, 0], "merchant_idx": action, "click_timestamp": ob[:, 1],
-                               "buy": reward})]).sort_index()
-        df["hist_visits"] = 1
-        df["hist_visits"] = df.groupby(["account_idx", "merchant_idx"])["hist_visits"].transform("cumsum")
-        df["hist_buys"]   = df.groupby(["account_idx", "merchant_idx"])["buy"].transform("cumsum")
+        df        = self.known_observations_data_frame
+        df_append = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp", "buy"],
+                                data={"account_idx": ob[:, 0], "merchant_idx": action, "click_timestamp": ob[:, 1],
+                                        "buy": reward})
+        
+        df = pd.concat([df, df_append]).reset_index(drop=True)
+        
+        df["hist_visits"]  = 1
+        df["hist_visits"]  = df.groupby(["account_idx", "merchant_idx"])["hist_visits"].transform("cumsum")
+        df["hist_buys"]    = df.groupby(["account_idx", "merchant_idx"])["buy"].transform("cumsum")
 
-        df["ps"] = 1.0  # TODO: Calculate the PS
+        df["ps"]           = 1.0  # TODO: Calculate the PS
 
         df['account_idx']  = df['account_idx'].astype(int)
         df['merchant_idx'] = df['merchant_idx'].astype(int)
-
+        
+        print(df.head())
+        print(df.tail())
+        print(len(df))
         self._known_observations_data_frame = df
 
     def _save_log(self) -> None:
@@ -273,15 +290,16 @@ class InteractionTraining(ContextualBanditsTraining):
                     agent = self.create_agent()
 
                 batch_of_arm_indices = self._get_batch_of_arm_indices(ob)
-                print(batch_of_arm_indices)
                 batch_of_arm_scores  = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices) \
                     if agent.bandit.reward_model else [True for _ in range(len(batch_of_arm_indices))]
-                
-                action = agent.act(batch_of_arm_indices, batch_of_arm_scores)
 
+                action = agent.act(batch_of_arm_indices, batch_of_arm_scores)
+                print("batch_of_arm_indices: ", batch_of_arm_indices[0][:5])
+                print("batch_of_arm_scores: ", batch_of_arm_scores[0][:5])
+                #print("action", action)
                 new_ob, reward, done, info = env.step(action)
                 rewards.extend(reward)
-
+                print("action", action[:10])
                 self._accumulate_known_observations(ob, action, reward)
 
                 if done:
