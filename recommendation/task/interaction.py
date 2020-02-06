@@ -31,9 +31,15 @@ class BanditAgent(object):
 
         self.bandit.fit(train_loader.dataset)
 
-    def act(self, batch_of_arm_indices: List[List[int]], batch_of_arm_scores: List[List[float]]) -> np.ndarray:
-        return np.array([self.bandit.select(arm_indices, arm_scores=arm_scores)
-                         for arm_indices, arm_scores in zip(batch_of_arm_indices, batch_of_arm_scores)])
+    def act(self, batch_of_arm_indices: List[List[int]], 
+                  batch_of_arm_context: Tuple[np.ndarray, ...],
+                  batch_of_arm_scores: List[List[float]]) -> np.ndarray:
+
+        # return np.array([self.bandit.select(arm_indices,  arm_scores=arm_scores)
+        #                  for arm_indices, arm_scores in zip(batch_of_arm_indices, batch_of_arm_scores)])
+
+       return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts[0], arm_scores=arm_scores)
+                        for arm_indices, arm_contexts, arm_scores in zip(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)])
 
 
 class InteractionTraining(ContextualBanditsTraining):
@@ -130,30 +136,8 @@ class InteractionTraining(ContextualBanditsTraining):
 
     def _get_scores_from_reward_model(self, agent: BanditAgent, ob: np.ndarray,
                                       batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
-        tuples_df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp"],
-                                 data=[(account_idx, merchant_idx, click_timestamp)
-                                       for account_idx, merchant_idx_list, click_timestamp
-                                       in zip(ob[:, 0], batch_of_arm_indices, ob[:, 1])
-                                       for merchant_idx in merchant_idx_list])
 
-        
-        if len(self.known_observations_data_frame) > 0:
-            hist_count_df = self.known_observations_data_frame.groupby(["account_idx", "merchant_idx"])\
-                                    .agg({"hist_visits": 'max', 'hist_buys': 'max'}).reset_index()
-            tuples_df     = tuples_df.merge(hist_count_df, how='left', on=["account_idx", "merchant_idx"]).fillna(0)
-        else:
-            tuples_df["hist_visits"] = 0
-            tuples_df["hist_buys"]   = 0
-
-
-        if self.project_config.output_column.name not in tuples_df.columns:
-            tuples_df[self.project_config.output_column.name] = 1
-        for auxiliar_output_column in self.project_config.auxiliar_output_columns:
-            if auxiliar_output_column.name not in tuples_df.columns:
-                tuples_df[auxiliar_output_column.name] = 0
-        
-
-        dataset   = self.project_config.dataset_class(tuples_df, self.metadata_data_frame, self.project_config, negative_proportion=0.0)
+        tuples_df, dataset = self._create_batch_dataset(ob, batch_of_arm_indices)
         generator = NoAutoCollationDataLoader(
                         dataset, batch_size=self.batch_size, shuffle=False,
                         num_workers=self.generator_workers,
@@ -165,6 +149,7 @@ class InteractionTraining(ContextualBanditsTraining):
 
         with torch.no_grad():
             model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=2)
+        
         scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
         scores: np.ndarray = scores_tensor.cpu().numpy().reshape(-1)
         
@@ -184,8 +169,40 @@ class InteractionTraining(ContextualBanditsTraining):
                                                            scores_per_tuple)
                 for account_idx, merchant_idx_list, click_timestamp in zip(ob[:, 0], arm_indices, ob[:, 1])]
 
-    def _create_arm_contexts(self, ob: np.ndarray) -> List[Tuple[np.ndarray, ...]]:
-        pass
+    def _create_batch_dataset(self, ob: np.ndarray,
+                                    batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
+
+        tuples_df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp"],
+                                 data=[(account_idx, merchant_idx, click_timestamp)
+                                       for account_idx, merchant_idx_list, click_timestamp
+                                       in zip(ob[:, 0], batch_of_arm_indices, ob[:, 1])
+                                       for merchant_idx in merchant_idx_list])
+
+        if len(self.known_observations_data_frame) > 0:
+            hist_count_df = self.known_observations_data_frame.groupby(["account_idx", "merchant_idx"])\
+                                    .agg({"hist_visits": 'max', 'hist_buys': 'max'}).reset_index()
+            tuples_df     = tuples_df.merge(hist_count_df, how='left', on=["account_idx", "merchant_idx"]).fillna(0)
+        else:
+            tuples_df["hist_visits"] = 0
+            tuples_df["hist_buys"]   = 0
+
+
+        if self.project_config.output_column.name not in tuples_df.columns:
+            tuples_df[self.project_config.output_column.name] = 1
+        for auxiliar_output_column in self.project_config.auxiliar_output_columns:
+            if auxiliar_output_column.name not in tuples_df.columns:
+                tuples_df[auxiliar_output_column.name] = 0
+        
+        dataset   = self.project_config.dataset_class(tuples_df, self.metadata_data_frame, self.project_config, negative_proportion=0.0)
+
+        return tuples_df, dataset
+
+    def _create_arm_contexts(self, ob: np.ndarray,
+                                    batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
+        
+        _, dataset = self._create_batch_dataset(ob, batch_of_arm_indices)
+
+        return dataset
 
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
@@ -288,12 +305,14 @@ class InteractionTraining(ContextualBanditsTraining):
 
                 if self.full_refit:
                     agent = self.create_agent()
+
                 batch_of_arm_indices = self._get_batch_of_arm_indices(ob)
+                batch_of_arm_context = self._create_arm_contexts(ob, batch_of_arm_indices)
                 batch_of_arm_scores  = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices) \
                     if agent.bandit.reward_model else [list(np.ones(len(batch_of_arm_indices[0]))) for _ in range(len(batch_of_arm_indices))]
 
-                action = agent.act(batch_of_arm_indices, batch_of_arm_scores)
-
+                action = agent.act(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)
+                
                 new_ob, reward, done, info = env.step(action)
                 rewards.extend(reward)
                 self._accumulate_known_observations(ob, action, reward)

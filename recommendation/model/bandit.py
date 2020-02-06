@@ -385,7 +385,7 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
-        X, arms = self._flatten_input_and_extract_arms(arm_contexts)
+        X, arms    = self._flatten_input_and_extract_arms(arm_contexts)
         arm_scores = [self._calculate_score(arm_score, x, arm)
                               for x, arm, arm_score in zip(X, arms, arm_scores)]
 
