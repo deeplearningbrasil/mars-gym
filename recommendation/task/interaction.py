@@ -114,19 +114,19 @@ class InteractionTraining(ContextualBanditsTraining):
         days_of_week = [int(click_timestamp.strftime('%w')) for click_timestamp in ob[:, 1]]
         click_times  = [datetime.time(click_timestamp) for click_timestamp in ob[:, 1]]
 
-        # return [
-        #     np.unique(df["merchant_idx"].values.tolist())
-        #     for click_time, day_of_week in zip(click_times, days_of_week)
-        # ]
         return [
-            np.unique(
-                df[
-                    (df["day_of_week"] == day_of_week) &
-                    ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
-                    ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
-                    ]["merchant_idx"].values.tolist())
+            np.unique(df["merchant_idx"].values.tolist())
             for click_time, day_of_week in zip(click_times, days_of_week)
         ]
+        # return [
+        #     np.unique(
+        #         df[
+        #             (df["day_of_week"] == day_of_week) &
+        #             ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
+        #             ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
+        #             ]["merchant_idx"].values.tolist())
+        #     for click_time, day_of_week in zip(click_times, days_of_week)
+        # ]
 
     def _get_scores_from_reward_model(self, agent: BanditAgent, ob: np.ndarray,
                                       batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
@@ -231,7 +231,7 @@ class InteractionTraining(ContextualBanditsTraining):
 
     def _save_metrics(self) -> None:
         df = self.known_observations_data_frame.reset_index()
-        df.buy.describe().to_csv(self.output().path+'/stats.csv', index=False)
+        df[["buy"]].describe().to_csv(self.output().path+'/stats.csv', index=False)
 
     @property
     def train_data_frame(self) -> pd.DataFrame:
@@ -266,7 +266,7 @@ class InteractionTraining(ContextualBanditsTraining):
         return self._n_items
 
     def run(self):
-        
+        os.makedirs(self.output().path, exist_ok=True)
         self.ground_truth_data_frame = pd.read_parquet(self.input()[0].path)
         env: IFoodRecSysEnv = gym.make('ifood-recsys-v0', dataset=self.ground_truth_data_frame,
                                        obs_batch_size=self.obs_batch_size)
@@ -310,14 +310,15 @@ class InteractionTraining(ContextualBanditsTraining):
                               self.get_val_generator(), 
                               self.epochs)
 
-                
-                print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
+                print("\n", k, "Interaction Stats")
+                print(self.known_observations_data_frame[['buy']].describe().transpose())
+                #print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
                 k+=1
+                self._save_log()
 
         env.close()
 
         # Save logs
-        os.makedirs(self.output().path, exist_ok=True)
         self._save_params()
         self._save_log()
         self._save_metrics()
