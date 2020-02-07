@@ -234,13 +234,16 @@ def display_iteraction_result():
   params            = load_iteractions_params(input_iteraction)
   input_metrics     = st.sidebar.selectbox("Metrics", ['Cumulative Reward', 'Cumulative Mean Reward'], index=0)
   
-  #input_cum         = st.sidebar.checkbox('Cumulative')
-  #input_mean        = st.sidebar.checkbox('Cumulative Mean')
+  st.sidebar.markdown("## Graph Options")
+
   if len(input_iteraction) > 0 and input_metrics:
     df = metrics.merge(params, on=['iteraction'], how='left').reset_index()
+
+    input_legend     = st.sidebar.multiselect("Legend", list(params.columns), default=['iteraction', 'bandit_policy'])
+
     plot_line_iteraction(df, 'reward', 
                           title=input_metrics, 
-                          legend=['iteraction', 'bandit'],
+                          legend=input_legend,
                           yrange=None, 
                           cum=(input_metrics == 'Cumulative Reward'), 
                           mean=(input_metrics == 'Cumulative Mean Reward'))

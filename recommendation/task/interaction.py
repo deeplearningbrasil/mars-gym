@@ -9,6 +9,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
+import pytz
 
 from recommendation.gym_ifood.envs import IFoodRecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
@@ -28,17 +29,13 @@ class BanditAgent(object):
 
     def fit(self, trial: Trial, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         trial.with_generators(train_generator=train_loader, val_generator=val_loader).run(epochs=epochs)
-
         self.bandit.fit(train_loader.dataset)
 
     def act(self, batch_of_arm_indices: List[List[int]], 
                   batch_of_arm_context: Tuple[np.ndarray, ...],
                   batch_of_arm_scores: List[List[float]]) -> np.ndarray:
 
-        # return np.array([self.bandit.select(arm_indices,  arm_scores=arm_scores)
-        #                  for arm_indices, arm_scores in zip(batch_of_arm_indices, batch_of_arm_scores)])
-
-       return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts[0], arm_scores=arm_scores)
+       return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
                         for arm_indices, arm_contexts, arm_scores in zip(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)])
 
 
@@ -106,10 +103,10 @@ class InteractionTraining(ContextualBanditsTraining):
                 dish_df = dish_df[dish_df.dish_description == self.filter_dish]
                 df      = df[df.dish_description.isin(dish_df['id'].values)]
 
-            df["open_time"]  = df["open"].apply(datetime.time)
-            df["close_time"] = df["close"].apply(datetime.time)
-            df["open_time_minus_30_min"] = df["open"].apply(lambda dt: datetime.time(dt - timedelta(minutes=30)))
-            df["close_time_plus_30_min"] = df["close"].apply(lambda dt: datetime.time(dt + timedelta(minutes=30)))
+            df["open_time"]               = df["open"].apply(datetime.time)
+            df["close_time"]              = df["close"].apply(datetime.time)
+            df["open_time_minus_30_min"]  = df["open"].apply(lambda dt: datetime.time(dt - timedelta(minutes=30)))
+            df["close_time_plus_30_min"]  = df["close"].apply(lambda dt: datetime.time(dt + timedelta(minutes=30)))
 
             self._availability_data_frame = df
 
@@ -117,22 +114,20 @@ class InteractionTraining(ContextualBanditsTraining):
 
     def _get_batch_of_arm_indices(self, ob: np.ndarray) -> List[List[int]]:
         df           = self.availability_data_frame
+        tmz  = pytz.timezone("America/Sao_Paulo")
+
         days_of_week = [int(click_timestamp.strftime('%w')) for click_timestamp in ob[:, 1]]
-        click_times  = [datetime.time(click_timestamp) for click_timestamp in ob[:, 1]]
+        click_times  = [datetime.time(click_timestamp - timedelta(minutes=180)) for click_timestamp in ob[:, 1]]
 
         return [
-            np.unique(df["merchant_idx"].values.tolist())
+            np.unique(
+                df[
+                    (df["day_of_week"] == day_of_week) &
+                    ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
+                    ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
+                    ]["merchant_idx"].values.tolist())
             for click_time, day_of_week in zip(click_times, days_of_week)
         ]
-        # return [
-        #     np.unique(
-        #         df[
-        #             (df["day_of_week"] == day_of_week) &
-        #             ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
-        #             ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
-        #             ]["merchant_idx"].values.tolist())
-        #     for click_time, day_of_week in zip(click_times, days_of_week)
-        # ]
 
     def _get_scores_from_reward_model(self, agent: BanditAgent, ob: np.ndarray,
                                       batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
@@ -200,9 +195,9 @@ class InteractionTraining(ContextualBanditsTraining):
     def _create_arm_contexts(self, ob: np.ndarray,
                                     batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
         
-        _, dataset = self._create_batch_dataset(ob, batch_of_arm_indices)
+        tuples_df, dataset = self._create_batch_dataset(ob, batch_of_arm_indices)
 
-        return dataset
+        return np.array(list(dataset))[:,0]
 
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:

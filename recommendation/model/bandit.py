@@ -354,7 +354,7 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
     def _flatten_input_and_extract_arms(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
         flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
-
+        #print(flattened_input)
         return np.delete(flattened_input, self._arm_index, axis=1), flattened_input[:, self._arm_index]
 
     def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
