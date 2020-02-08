@@ -526,7 +526,8 @@ class CreateGroundTruthForInterativeEvaluation(BasePySparkTask):
 
         df = spark.read.parquet(self.input()[0].path)
         df = df.filter(df.buy == 1)
-        
+        df = df.orderBy("click_timestamp")
+
         if self.filter_dish != "all":
             df_dish = spark.read.csv(self.input()[1][2].path, header=True, inferSchema=True)
             df_dish = df_dish.filter(df_dish.dish_description.contains(self.filter_dish))

@@ -340,13 +340,13 @@ class PercentileAdaptiveGreedy(BanditPolicy):
 
         return action
 
-
 class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
-    def __init__(self, reward_model: nn.Module, arm_index: int = 1, seed: int = 42) -> None:
+    def __init__(self, reward_model: nn.Module, arm_index: int = 1, scaler=False, seed: int = 42) -> None:
         super().__init__(reward_model)
         self._arm_index = arm_index
         self._Ainv_per_arm: Dict[int, np.ndarray] = {}
+        #self._scaler = StandardScaler()
 
     def _sherman_morrison_update(self, Ainv: np.ndarray, x: np.ndarray) -> None:
         ## x should have shape (n, 1)
@@ -354,7 +354,6 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
     def _flatten_input_and_extract_arms(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
         flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
-        #print(flattened_input)
         return np.delete(flattened_input, self._arm_index, axis=1), flattened_input[:, self._arm_index]
 
     def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
@@ -362,8 +361,9 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
         for indices in tqdm(chunks(range(n), batch_size), total=math.ceil(n / batch_size)):
             input_: Tuple[np.ndarray, ...] = dataset[indices][0]
-            X, arms = self._flatten_input_and_extract_arms(input_)
+            output_: Tuple[np.ndarray, ...] = dataset[indices][1]
 
+            X, arms = self._flatten_input_and_extract_arms(input_)
             for x, arm in zip(X, arms):
                 if arm not in self._Ainv_per_arm:
                     self._Ainv_per_arm[arm] = np.eye(x.shape[0])
@@ -385,7 +385,9 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
         X, arms    = self._flatten_input_and_extract_arms(arm_contexts)
+        
         arm_scores = [self._calculate_score(arm_score, x, arm)
                               for x, arm, arm_score in zip(X, arms, arm_scores)]
 
@@ -425,6 +427,7 @@ class LinUCB(_LinBanditPolicy):
         if Ainv is None:
             Ainv = np.eye(x.shape[0])
         confidence_bound = self._alpha * np.sqrt(np.linalg.multi_dot([x.T, Ainv, x]))
+        
         return original_score + confidence_bound
 
 

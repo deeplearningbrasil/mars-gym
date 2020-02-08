@@ -31,6 +31,7 @@ class IFoodRecSysEnv(gym.Env, utils.EzPickle):
 
     def _compute_rewards(self, action: np.ndarray) -> np.ndarray:
         merchant_list = self.dataset[self.init_batch: self.end_batch][['merchant_idx']].values.flatten()
+
         return (action == merchant_list) * 1.0
 
     def _next_obs(self):

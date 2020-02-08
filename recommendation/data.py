@@ -705,7 +705,7 @@ class ContextualBanditsDataset(InteractionsDataset):
         positive_items = self._get_items(item_indices, user_item_visits, user_item_buys)
         ps             = rows[self._auxiliar_output_columns[0]].values.astype(float)
         output         = rows[self._output_column].values
-
+        
         return (user_indices, *positive_items), (output, ps)
 
 class DirectEstimatorDataset(InteractionsDataset):

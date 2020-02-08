@@ -10,7 +10,8 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 import pytz
-
+from tqdm import tqdm
+tqdm.pandas()
 from recommendation.gym_ifood.envs import IFoodRecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.task.data_preparation.ifood import CreateGroundTruthForInterativeEvaluation, \
@@ -28,14 +29,15 @@ class BanditAgent(object):
         self.bandit = bandit
 
     def fit(self, trial: Trial, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
-        trial.with_generators(train_generator=train_loader, val_generator=val_loader).run(epochs=epochs)
         self.bandit.fit(train_loader.dataset)
+
+        trial.with_generators(train_generator=train_loader, val_generator=val_loader).run(epochs=epochs)
 
     def act(self, batch_of_arm_indices: List[List[int]], 
                   batch_of_arm_context: Tuple[np.ndarray, ...],
                   batch_of_arm_scores: List[List[float]]) -> np.ndarray:
 
-       return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
+        return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
                         for arm_indices, arm_contexts, arm_scores in zip(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)])
 
 
@@ -169,9 +171,9 @@ class InteractionTraining(ContextualBanditsTraining):
 
         tuples_df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp"],
                                  data=[(account_idx, merchant_idx, click_timestamp)
-                                       for account_idx, merchant_idx_list, click_timestamp
-                                       in zip(ob[:, 0], batch_of_arm_indices, ob[:, 1])
-                                       for merchant_idx in merchant_idx_list])
+                                        for account_idx, merchant_idx_list, click_timestamp
+                                            in zip(ob[:, 0], batch_of_arm_indices, ob[:, 1])
+                                                for merchant_idx in merchant_idx_list])
 
         if len(self.known_observations_data_frame) > 0:
             hist_count_df = self.known_observations_data_frame.groupby(["account_idx", "merchant_idx"])\
@@ -195,10 +197,23 @@ class InteractionTraining(ContextualBanditsTraining):
     def _create_arm_contexts(self, ob: np.ndarray,
                                     batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
         
-        tuples_df, dataset = self._create_batch_dataset(ob, batch_of_arm_indices)
 
-        return np.array(list(dataset))[:,0]
+        tuples_df, dataset =self._create_batch_dataset(ob, batch_of_arm_indices)
 
+        # _create_dictionary_of_dataset_indices
+        dataset_indices_per_tuple = {(account_idx, merchant_idx): i for account_idx, merchant_idx, i
+                                    in tqdm(zip(tuples_df["account_idx"], tuples_df["merchant_idx"],
+                                                range(len(tuples_df))),
+                                            total=len(tuples_df))}
+
+        # create dataset per batch
+        batch_contexts = []
+        for account_idx, merchant_idx_list in zip(ob[:, 0], batch_of_arm_indices):
+            dataset_indices = [dataset_indices_per_tuple[(account_idx, merchant_idx)] for merchant_idx in merchant_idx_list]
+            batch_contexts.append(dataset[dataset_indices][0]) 
+
+        return batch_contexts
+        
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_known_observations_data_frame"):
@@ -292,6 +307,7 @@ class InteractionTraining(ContextualBanditsTraining):
         k            = 0
         for i in range(self.num_episodes):
             ob = env.reset()
+
             while True:
                 interactions += len(ob)
 
@@ -301,7 +317,7 @@ class InteractionTraining(ContextualBanditsTraining):
                     if agent.bandit.reward_model else [list(np.ones(len(batch_of_arm_indices[0]))) for _ in range(len(batch_of_arm_indices))]
 
                 action = agent.act(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)
-                
+
                 new_ob, reward, done, info = env.step(action)
                 rewards.extend(reward)
                 self._accumulate_known_observations(ob, action, reward)
