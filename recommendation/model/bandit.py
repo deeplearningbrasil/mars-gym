@@ -99,7 +99,7 @@ class RandomPolicy(BanditPolicy):
         n_arms = len(arm_indices)
 
         arm_probas = np.ones(n_arms) / n_arms
-
+        
         action = self._rng.choice(n_arms, p=arm_probas)
 
         return action

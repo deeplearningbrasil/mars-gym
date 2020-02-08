@@ -284,10 +284,7 @@ class InteractionTraining(ContextualBanditsTraining):
                                        obs_batch_size=self.obs_batch_size)
         env.seed(42)
 
-
-        agent: BanditAgent = None
-        if not self.full_refit:
-            agent = self.create_agent()
+        agent: BanditAgent = self.create_agent()
 
         rewards      = []
         interactions = 0
@@ -297,9 +294,6 @@ class InteractionTraining(ContextualBanditsTraining):
             ob = env.reset()
             while True:
                 interactions += len(ob)
-
-                if self.full_refit:
-                    agent = self.create_agent()
 
                 batch_of_arm_indices = self._get_batch_of_arm_indices(ob)
                 batch_of_arm_context = self._create_arm_contexts(ob, batch_of_arm_indices)
@@ -319,13 +313,18 @@ class InteractionTraining(ContextualBanditsTraining):
                 self._reset_dataset()
 
                 if agent.bandit.reward_model:
+
+                    if self.full_refit:
+                        agent.bandit.reward_model = self.create_module()
+                                            
                     agent.fit(self.create_trial(agent.bandit.reward_model), 
                               self.get_train_generator(),
                               self.get_val_generator(), 
                               self.epochs)
 
-                print("\n", k, "Interaction Stats")
-                print(self.known_observations_data_frame[['buy']].describe().transpose())
+                
+                print("\n", k,": Interaction Stats")
+                print(self.known_observations_data_frame[['buy']].describe().transpose(), "\n")
                 #print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
                 k+=1
                 self._save_log()

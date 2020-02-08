@@ -54,7 +54,7 @@ def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0,
     ymax   = np.max([np.max(values), ymax])
 
     try:
-      name   = " - ".join(list(rows.iloc[0][legend]))
+      name   = " - ".join(list(rows.iloc[0][legend].astype(str)))
     except:
       name   = group
 

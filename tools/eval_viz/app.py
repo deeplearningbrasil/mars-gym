@@ -239,7 +239,7 @@ def display_iteraction_result():
   if len(input_iteraction) > 0 and input_metrics:
     df = metrics.merge(params, on=['iteraction'], how='left').reset_index()
 
-    input_legend     = st.sidebar.multiselect("Legend", list(params.columns), default=['iteraction', 'bandit_policy'])
+    input_legend     = st.sidebar.multiselect("Legend", list(params.columns), default=['iteraction'])
 
     plot_line_iteraction(df, 'reward', 
                           title=input_metrics, 
