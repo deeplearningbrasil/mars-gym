@@ -38,7 +38,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
 
     def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
-                   arm_scores: List[float] = None, pos: int = None) -> Union[int, Tuple[int, float]]:
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
         assert arm_contexts is not None or arm_scores is not None
 
         if not arm_scores:
@@ -141,27 +141,33 @@ class ModelPolicy(BanditPolicy):
 
 class ExploreThenExploit(BanditPolicy):
     #TODO: Tune breakpoint parameter
-    def __init__(self, reward_model: nn.Module, breakpoint_explore: int = 50000, breakpoint_exploit: int = 0, 
-                exploration_decay: int = 10000, seed: int = 42) -> None:
+    def __init__(self, reward_model: nn.Module, 
+                 explore_rounds: int = 500, 
+                 decay_rate: float = 0.997, 
+                 seed: int = 42) -> None:
         super().__init__(reward_model)
-        self._breakpoint_explore = breakpoint_explore
-        self._breakpoint_exploit = breakpoint_exploit
-        self._exploration_decay = exploration_decay
+        self._explore_rounds = explore_rounds
+        self._exploit_rounds = explore_rounds
+        self._decay_rate     = decay_rate
+        
         self._rng = RandomState(seed)
         self._t = 0
         self.exploring = True
 
     def _update_state(self):
-        if self.exploring and self._t > self._breakpoint_explore:
-                self._t = 0
-                self.exploring = False
-                if self._breakpoint_explore >= 0:
-                    self._breakpoint_explore -= self._exploration_decay
-        elif not self.exploring and self._t > self._breakpoint_exploit:
-                self._t = 0
-                self.exploring = True
-                if self._breakpoint_explore >= 0:
-                    self._breakpoint_exploit += self._exploration_decay
+
+        if self._explore_rounds > 1:
+            if self.exploring and self._t > self._explore_rounds:
+                    self._t = 0
+                    self.exploring = False
+                    self._explore_rounds *= self._decay_rate
+            elif not self.exploring and self._t > self._exploit_rounds:
+                    self._t = 0
+                    self.exploring = True
+                    self._exploit_rounds /= self._decay_rate
+        else: 
+            self.exploring = False
+
 
     def _compute_prob(self, arm_scores):
         n_arms = len(arm_scores)
@@ -271,7 +277,7 @@ class AdaptiveGreedy(BanditPolicy):
 
 class PercentileAdaptiveGreedy(BanditPolicy):
     #TODO: Tune these parameters: window_size, exploration_threshold, percentile, percentile_decay
-    def __init__(self, reward_model: nn.Module, window_size: int = 500, exploration_threshold: float = 0.7, percentile = 35, percentile_decay: float = 1.0,
+    def __init__(self, reward_model: nn.Module, window_size: int = 500, exploration_threshold: float = 0.5, percentile = 35, percentile_decay: float = 1.0,
          seed: int = 42) -> None:
         super().__init__(reward_model)
         self._window_size = window_size
@@ -281,7 +287,6 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         self._rng = RandomState(seed)
         self._percentile = percentile
         self._t = 0
-        self._first_evaluation = True
     
     def _compute_prob(self, arm_scores):
         n_arms = len(arm_scores)
@@ -307,17 +312,12 @@ class PercentileAdaptiveGreedy(BanditPolicy):
             self._best_arm_history[pos] = collections.deque([])
 
         if pos == 0:
-            if not self._first_evaluation:
-                self._t += 1
-            else:
-                #As first evaluation, we do not need do update t
-                self._first_evaluation = False
+            self._t += 1
 
-
-        n_arms = len(arm_indices)
+        n_arms     = len(arm_indices)
         arm_probas = np.ones(n_arms) / n_arms
 
-        max_score = max(arm_scores)
+        max_score  = max(arm_scores)
 
         exploration_threshold = np.percentile(self._best_arm_history[pos], self._percentile) \
             if len(self._best_arm_history[pos]) >= self._window_size else self._initial_exploration_threshold
