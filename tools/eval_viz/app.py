@@ -238,7 +238,7 @@ def display_iteraction_result():
 
   if len(input_iteraction) > 0 and input_metrics:
     df = metrics.merge(params, on=['iteraction'], how='left')\
-                .merge(metrics.groupby("iteraction").agg({'reward': 'sum'}).rename(columns={'reward': 'sum_reward'}).reset_index(), 
+                .merge(metrics.groupby("iteraction").agg({'reward': 'mean'}).rename(columns={'reward': 'sum_reward'}).reset_index(), 
                         on=['iteraction'], how='left')\
                 .reset_index().sort_values('sum_reward', ascending=False)
         
