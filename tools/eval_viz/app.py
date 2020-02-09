@@ -243,7 +243,7 @@ def display_iteraction_result():
                 .reset_index().sort_values('sum_reward', ascending=False)
         
 
-    input_legend     = st.sidebar.multiselect("Legend", list(params.columns), default=['iteraction'])
+    input_legend       = st.sidebar.multiselect("Legend", list(params.columns), default=['iteraction'])
 
     plot_line_iteraction(df, 'reward', 
                           title=input_metrics, 
@@ -255,10 +255,14 @@ def display_iteraction_result():
     st.dataframe(df.head())
 
     st.markdown('## Models')
+    input_explorate = {}
     for group, rows in df.groupby("iteraction", sort=False):
       st.markdown("### "+group)
+      input_explorate[group]    = st.checkbox("Show Explorate Viz", key="input_explorate_"+group)
       
-      plot_exploration_arm(df[df.iteraction == group], title=group)
+      if input_explorate[group]:
+        plot_exploration_arm(df[df.iteraction == group], title=group)
+
       st.markdown('### Params')
       st.dataframe(params[params.iteraction == group].transpose())
 
