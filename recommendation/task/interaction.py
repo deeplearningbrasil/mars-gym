@@ -294,6 +294,8 @@ class InteractionTraining(ContextualBanditsTraining):
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
+        self._save_params()
+                
         self.ground_truth_data_frame = pd.read_parquet(self.input()[0].path)
         env: IFoodRecSysEnv = gym.make('ifood-recsys-v0', dataset=self.ground_truth_data_frame,
                                        obs_batch_size=self.obs_batch_size)
@@ -348,6 +350,6 @@ class InteractionTraining(ContextualBanditsTraining):
         env.close()
 
         # Save logs
-        self._save_params()
+
         self._save_log()
         self._save_metrics()

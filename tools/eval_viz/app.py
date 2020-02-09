@@ -237,7 +237,11 @@ def display_iteraction_result():
   st.sidebar.markdown("## Graph Options")
 
   if len(input_iteraction) > 0 and input_metrics:
-    df = metrics.merge(params, on=['iteraction'], how='left').reset_index()
+    df = metrics.merge(params, on=['iteraction'], how='left')\
+                .merge(metrics.groupby("iteraction").agg({'reward': 'sum'}).rename(columns={'reward': 'sum_reward'}).reset_index(), 
+                        on=['iteraction'], how='left')\
+                .reset_index().sort_values('sum_reward', ascending=False)
+        
 
     input_legend     = st.sidebar.multiselect("Legend", list(params.columns), default=['iteraction'])
 
@@ -251,11 +255,15 @@ def display_iteraction_result():
     st.dataframe(df.head())
 
     st.markdown('## Models')
-    for group, rows in params.groupby("iteraction"):
+    for group, rows in df.groupby("iteraction", sort=False):
       st.markdown("### "+group)
+      
+      plot_exploration_arm(df[df.iteraction == group], title=group)
       st.markdown('### Params')
       st.dataframe(params[params.iteraction == group].transpose())
 
+
+    
   #st.markdown('## Params')
   #st.dataframe(load_iteractions_params(input_iteraction).transpose())
 

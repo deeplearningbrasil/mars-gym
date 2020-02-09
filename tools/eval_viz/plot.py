@@ -36,14 +36,13 @@ def plot_line(df, title="", yrange=[0, 1], cum=False):
   st.plotly_chart(fig)
 
 def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0, 1], 
-      cum=False, mean=False):
+                        cum=False, mean=False):
   data = []
   ymax = yrange[1] if yrange else 1
   
-  for group, rows in df.groupby("iteraction"):
+  for group, rows in df.groupby("iteraction", sort=False):
     x    = [i+1 for i in range(len(rows))]
 
-    #for i, row in rows.iterrows():
     values = rows[metric].values
     if cum:
       values = np.cumsum(values)
@@ -68,6 +67,42 @@ def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0,
 
   st.plotly_chart(fig)
 
+def plot_exploration_arm(df, title=""):
+    rounds = len(df)
+    arms   = np.unique(df['arm'].values)
+    arms_rewards = df['arm'].values
+
+    count_per_arms = {}
+    
+    for a in arms:
+        count_per_arms[a] = np.zeros(rounds)
+
+    for r in range(rounds):
+        count_per_arms[arms_rewards[r]][r] = 1
+    
+    fig = go.Figure()
+    x   = (np.array(range(rounds)) + 1)
+
+    for arm, values in count_per_arms.items():    
+        fig.add_trace(go.Scatter(
+            name="Arm "+str(arm),
+            x=x, y=np.cumsum(values),
+            hoverinfo='x+y',
+            mode='lines',
+            line=dict(width=0.5),
+            stackgroup='one',
+            groupnorm='percent' # define stack group
+        ))
+
+    fig.update_layout(template=TEMPLATE, 
+                  xaxis_title_text='Time Step', 
+                  yaxis_title_text="Cummulative Exploration Arm",
+                  title="Cumulative Exploration Arms over time - "+title,
+                  yaxis_range=(0, 100))
+
+    st.plotly_chart(fig)
+
+    return fig  
 
 def plot_radar(df, title=""):
   data = []
