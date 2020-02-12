@@ -527,7 +527,7 @@ class SoftmaxExplorer(BanditPolicy):
 
 
 BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
-    epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, custom_reward_model_lin_ucb=CustomRewardModelLinUCB,
+    epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, custom_lin_ucb=CustomRewardModelLinUCB,
     lin_ts=LinThompsonSampling, random=RandomPolicy, percentile_adaptive=PercentileAdaptiveGreedy,
     adaptive=AdaptiveGreedy, model=ModelPolicy, softmax_explorer = SoftmaxExplorer,
     explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None)

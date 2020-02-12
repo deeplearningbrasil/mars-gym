@@ -126,16 +126,22 @@ class InteractionTraining(ContextualBanditsTraining):
 
         days_of_week = [int(click_timestamp.strftime('%w')) for click_timestamp in ob[:, 1]]
         click_times  = [datetime.time(click_timestamp - timedelta(minutes=180)) for click_timestamp in ob[:, 1]]
-
+        
         return [
             np.unique(
-                df[
-                    (df["day_of_week"] == day_of_week) &
-                    ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
-                    ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
-                    ]["merchant_idx"].values.tolist())
+                df["merchant_idx"].values.tolist())
             for click_time, day_of_week in zip(click_times, days_of_week)
         ]
+
+        # return [
+        #     np.unique(
+        #         df[
+        #             (df["day_of_week"] == day_of_week) &
+        #             ((df["open_time_minus_30_min"] <= click_time) | (df["open_time"] <= click_time)) &
+        #             ((df["close_time_plus_30_min"] >= click_time) | (df["close_time"] >= click_time))
+        #             ]["merchant_idx"].values.tolist())
+        #     for click_time, day_of_week in zip(click_times, days_of_week)
+        # ]
 
     def _get_scores_from_reward_model(self, agent: BanditAgent, ob: np.ndarray,
                                       batch_of_arm_indices: List[List[int]]) -> Dict[Tuple[int, int, datetime], float]:
