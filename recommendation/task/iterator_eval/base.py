@@ -12,8 +12,8 @@ from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, conc
 from pyspark.sql.types import IntegerType, StringType, DateType
 import pyspark.sql.functions as F
 from recommendation.task.model.base import BaseTorchModelTraining
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, \
-    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, CustomRewardModelLinUCB, RandomPolicy, ModelPolicy, \
+    PercentileAdaptiveGreedy, AdaptiveGreedy, LinThompsonSampling, ExploreThenExploit, SoftmaxExplorer, BANDIT_POLICIES
 from recommendation.task.data_preparation.ifood import CheckDataset, CleanSessionDataset, AddAdditionallInformationDataset, GenerateIndicesForAccountsAndMerchantsDataset
 from tqdm import tqdm
 from recommendation.files import get_task_dir, get_task_dir
@@ -29,10 +29,6 @@ import gc
 from recommendation.utils import parallel_literal_eval, datetime_to_shift, date_to_day_of_week, date_to_day_of_month
 
 LOCAL_TZ: str = str(get_localzone())
-_BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
-    epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
-    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy, 
-    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, none=None)
 
 class BaseIterationEvaluation(luigi.Task):
     run_type: str = luigi.ChoiceParameter(choices=["supervised", 'reinforcement'], default="supervised")
@@ -44,7 +40,7 @@ class BaseIterationEvaluation(luigi.Task):
     model_module_eval: str = luigi.Parameter(default="recommendation.task.ifood")    
     model_cls_eval: str = luigi.Parameter(default="EvaluateIfoodFullContentModel")
     model_task_id: str = luigi.Parameter()
-    bandit_policy: str = luigi.ChoiceParameter(choices=_BANDIT_POLICIES.keys(), default="none")
+    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="none")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
 
     batch_size: int = luigi.IntParameter(default = 750000) # 750000 | 165000

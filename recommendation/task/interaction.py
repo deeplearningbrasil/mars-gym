@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import List, Tuple, Dict, Any, Union
+from typing import List, Tuple, Dict, Any, Union, Optional
 import os
 import gym
 import luigi
@@ -28,17 +28,23 @@ class BanditAgent(object):
 
         self.bandit = bandit
 
-    def fit(self, trial: Trial, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
+    def fit(self, trial: Optional[Trial], train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         self.bandit.fit(train_loader.dataset)
 
-        trial.with_generators(train_generator=train_loader, val_generator=val_loader).run(epochs=epochs)
+        if trial:
+            trial.with_generators(train_generator=train_loader, val_generator=val_loader).run(epochs=epochs)
 
     def act(self, batch_of_arm_indices: List[List[int]], 
                   batch_of_arm_context: Tuple[np.ndarray, ...],
-                  batch_of_arm_scores: List[List[float]]) -> np.ndarray:
+                  batch_of_arm_scores: Optional[List[List[float]]]) -> np.ndarray:
 
-        return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
-                        for arm_indices, arm_contexts, arm_scores in zip(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)])
+        if batch_of_arm_scores:
+            return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
+                        for arm_indices, arm_contexts, arm_scores in zip(batch_of_arm_indices, batch_of_arm_context,
+                                                                         batch_of_arm_scores)])
+        else:
+            return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts)
+                             for arm_indices, arm_contexts in zip(batch_of_arm_indices, batch_of_arm_context)])
 
 
 class InteractionTraining(ContextualBanditsTraining):
@@ -316,7 +322,7 @@ class InteractionTraining(ContextualBanditsTraining):
                 batch_of_arm_indices = self._get_batch_of_arm_indices(ob)
                 batch_of_arm_context = self._create_arm_contexts(ob, batch_of_arm_indices)
                 batch_of_arm_scores  = self._get_batch_of_arm_scores(agent, ob, batch_of_arm_indices) \
-                    if agent.bandit.reward_model else [list(np.ones(len(batch_of_arm_indices[0]))) for _ in range(len(batch_of_arm_indices))]
+                    if agent.bandit.reward_model else None
 
                 action = agent.act(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)
 
@@ -330,15 +336,13 @@ class InteractionTraining(ContextualBanditsTraining):
                 ob = new_ob
                 self._reset_dataset()
 
-                if agent.bandit.reward_model:
+                if agent.bandit.reward_model and self.full_refit:
+                    agent.bandit.reward_model = self.create_module()
 
-                    if self.full_refit:
-                        agent.bandit.reward_model = self.create_module()
-                                            
-                    agent.fit(self.create_trial(agent.bandit.reward_model), 
-                              self.get_train_generator(),
-                              self.get_val_generator(), 
-                              self.epochs)
+                agent.fit(self.create_trial(agent.bandit.reward_model) if agent.bandit.reward_model else None,
+                          self.get_train_generator(),
+                          self.get_val_generator(),
+                          self.epochs)
 
                 
                 print("\n", k,": Interaction Stats")
