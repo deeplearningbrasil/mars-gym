@@ -10,7 +10,7 @@ import random
 import math
 import json
 from recommendation.task.model.base import BaseTorchModelTraining
-from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, LinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
+from recommendation.model.bandit import BanditPolicy, EpsilonGreedy, CustomRewardModelLinUCB, RandomPolicy, ModelPolicy, PercentileAdaptiveGreedy, AdaptiveGreedy
 from recommendation.task.data_preparation.ifood import CheckDataset, GenerateIndicesForAccountsAndMerchantsDataset
 from tqdm import tqdm
 from recommendation.files import get_params, get_task_dir

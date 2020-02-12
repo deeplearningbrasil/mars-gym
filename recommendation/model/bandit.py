@@ -1,5 +1,6 @@
 import abc
-from typing import List, Union, Tuple, Dict, Type
+import collections
+from typing import List, Union, Tuple, Dict, Type, Optional
 
 import math
 import numpy as np
@@ -9,7 +10,6 @@ from numpy.random.mtrand import RandomState
 from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
-import collections
 
 from recommendation.utils import chunks
 
@@ -35,7 +35,6 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         inputs: torch.Tensor = default_convert(arm_contexts)
         scores: torch.Tensor = self.reward_model(*inputs)
         return scores.detach().cpu().numpy().tolist()
-
 
     def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
@@ -93,8 +92,12 @@ class RandomPolicy(BanditPolicy):
         arms_probs = np.ones(n_arms) / n_arms
         return arms_probs
 
-    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+    def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+        return self._select_idx(arm_indices, arm_contexts, arm_scores, pos)
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
 
         n_arms = len(arm_indices)
 
@@ -346,6 +349,8 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
         super().__init__(reward_model)
         self._arm_index = arm_index
         self._Ainv_per_arm: Dict[int, np.ndarray] = {}
+        if reward_model is None:
+            self._b_per_arm: Dict[int, np.ndarray] = {}
         #self._scaler = StandardScaler()
 
     def _sherman_morrison_update(self, Ainv: np.ndarray, x: np.ndarray) -> None:
@@ -357,6 +362,10 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
         return np.delete(flattened_input, self._arm_index, axis=1), flattened_input[:, self._arm_index]
 
     def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
+        self._Ainv_per_arm.clear()
+        if hasattr(self, "_b_per_arm"):
+            self._b_per_arm.clear()
+
         n = len(dataset)
 
         for indices in tqdm(chunks(range(n), batch_size), total=math.ceil(n / batch_size)):
@@ -364,15 +373,21 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
             output_: Tuple[np.ndarray, ...] = dataset[indices][1]
 
             X, arms = self._flatten_input_and_extract_arms(input_)
-            for x, arm in zip(X, arms):
+            for x, arm, y in zip(X, arms, output_[0]):
                 if arm not in self._Ainv_per_arm:
                     self._Ainv_per_arm[arm] = np.eye(x.shape[0])
+                if hasattr(self, "_b_per_arm"):
+                    if arm not in self._b_per_arm:
+                        self._b_per_arm[arm] = np.zeros((x.shape[0], 1))
 
                 x = x.reshape((-1, 1))
                 self._sherman_morrison_update(self._Ainv_per_arm[arm], x)
+                if hasattr(self, "_b_per_arm"):
+                    self._b_per_arm[arm] += x * y
+
 
     @abc.abstractmethod
-    def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
+    def _calculate_score(self, original_score: Optional[float], x: np.ndarray, arm: int) -> float:
         pass
 
     def _compute_prob(self, arm_scores):
@@ -384,12 +399,16 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
         return arms_probs
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
-                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+                    arm_scores: Optional[List[float]], pos: int) -> Union[int, Tuple[int, float]]:
 
         X, arms    = self._flatten_input_and_extract_arms(arm_contexts)
-        
-        arm_scores = [self._calculate_score(arm_score, x, arm)
-                              for x, arm, arm_score in zip(X, arms, arm_scores)]
+
+        if arm_scores:
+            arm_scores = [self._calculate_score(arm_score, x, arm)
+                      for x, arm, arm_score in zip(X, arms, arm_scores)]
+        else:
+            arm_scores = [self._calculate_score(None, x, arm)
+                          for x, arm in zip(X, arms)]
 
         action = int(np.argmax(arm_scores))
 
@@ -417,7 +436,7 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
             return ranked_arms
 
 
-class LinUCB(_LinBanditPolicy):
+class CustomRewardModelLinUCB(_LinBanditPolicy):
     def __init__(self, reward_model: nn.Module, alpha: float = 1e-5, arm_index: int = 1, seed: int = 42) -> None:
         super().__init__(reward_model, arm_index)
         self._alpha = alpha
@@ -431,21 +450,50 @@ class LinUCB(_LinBanditPolicy):
         return original_score + confidence_bound
 
 
+class LinUCB(CustomRewardModelLinUCB):
+    def __init__(self, reward_model: nn.Module, alpha: float = 1e-5, arm_index: int = 1, seed: int = 42) -> None:
+        super().__init__(None, arm_index)
+        self._alpha = alpha
+
+    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+        X, arms = self._flatten_input_and_extract_arms(arm_contexts)
+        scores: List[float] = []
+
+        for x, arm in zip(X, arms):
+            Ainv = self._Ainv_per_arm.get(arm)
+            b = self._b_per_arm.get(arm)
+            if Ainv is None:
+                Ainv = np.eye(x.shape[0])
+            if b is None:
+                b = np.zeros((x.shape[0], 1))
+            scores.append(Ainv.dot(b).T.dot(x)[0])
+
+        return scores
+
+
 class LinThompsonSampling(_LinBanditPolicy):
     def __init__(self, reward_model: nn.Module, v_sq: float = 1.0, arm_index: int = 1) -> None:
         """
         :param v_sq: Parameter by which to multiply the covariance matrix (more means higher variance).
         """
-        super().__init__(reward_model, arm_index)
+        super().__init__(None, arm_index)
         self._v_sq = v_sq
+
+    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+        return None
 
     def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
         Ainv = self._Ainv_per_arm.get(arm)
+        b = self._b_per_arm.get(arm)
         if Ainv is None:
             Ainv = np.eye(x.shape[0])
+        if b is None:
+            b = np.zeros((x.shape[0], 1))
 
-        mu = np.random.multivariate_normal(original_score, self._v_sq * Ainv)
+        mu = (Ainv.dot(b)).reshape(-1)
+        mu = np.random.multivariate_normal(mu, self._v_sq * Ainv)
         return x.dot(mu)
+
 
 class SoftmaxExplorer(BanditPolicy):
     def __init__(self, reward_model: nn.Module, logit_multiplier: float = 1.0, reverse_sigmoid: bool = True, seed: int = 42) -> None:
@@ -479,6 +527,7 @@ class SoftmaxExplorer(BanditPolicy):
 
 
 BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
-    epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, lin_ts=LinThompsonSampling, random=RandomPolicy,
-    percentile_adaptive=PercentileAdaptiveGreedy, adaptive=AdaptiveGreedy, model=ModelPolicy,
-    softmax_explorer = SoftmaxExplorer, explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None)
+    epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, custom_reward_model_lin_ucb=CustomRewardModelLinUCB,
+    lin_ts=LinThompsonSampling, random=RandomPolicy, percentile_adaptive=PercentileAdaptiveGreedy,
+    adaptive=AdaptiveGreedy, model=ModelPolicy, softmax_explorer = SoftmaxExplorer,
+    explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None)
