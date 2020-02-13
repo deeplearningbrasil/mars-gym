@@ -4,9 +4,6 @@ from itertools import combinations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from recommendation.model.embedding import UserAndItemEmbedding
-from recommendation.model.attention import Attention
 from recommendation.utils import lecun_normal_init
 import numpy as np
 

@@ -32,42 +32,30 @@ from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from torchbearer.callbacks.torch_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau, StepLR
 
-from recommendation.data import SupportBasedCorruptionTransformation, \
-    MaskingNoiseCorruptionTransformation, SaltAndPepperNoiseCorruptionTransformation, NegativeIndicesGenerator
+from recommendation.data import NegativeIndicesGenerator
 from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
-from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss, VAELoss, \
-    FocalVAELoss, AttentiveVAELoss, WeightedTripletLoss, ImplicitFeedbackBCELoss, RelativeTripletLoss, \
-    CounterfactualRiskMinimization
+from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization
 from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
-from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, \
-    NoAutoCollationDataLoader, RAdam, FasterBatchSampler
+from recommendation.torch import MLFlowLogger, NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from recommendation.utils import lecun_normal_init, he_init
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransformation,
-                                  masking_noise=MaskingNoiseCorruptionTransformation,
-                                  salt_and_pepper_noise=SaltAndPepperNoiseCorruptionTransformation,
-                                  none=None)
+TORCH_DATA_TRANSFORMATIONS = dict(none=None)
+
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax,
                         radam=RAdam)
 TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss,
-                            mlm=nn.MultiLabelMarginLoss, relative_triplet=RelativeTripletLoss,
-                            focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
-                            bpr_triplet=BayesianPersonalizedRankingTripletLoss, vae_loss=VAELoss,
-                            focal_vae_loss=FocalVAELoss, attentive_vae_loss=AttentiveVAELoss,
-                            weighted_triplet=WeightedTripletLoss, implicit_feedback_bce=ImplicitFeedbackBCELoss,
+                            mlm=nn.MultiLabelMarginLoss, implicit_feedback_bce=ImplicitFeedbackBCELoss,
                             crm=CounterfactualRiskMinimization)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)
-TORCH_LR_SCHEDULERS = dict(step=StepLR, exponential=ExponentialLR, cosine_annealing=CosineAnnealingLR,
-                           cosine_annealing_with_restarts=CosineAnnealingWithRestartsLR, cyclic=CyclicLR,
-                           reduce_on_plateau=ReduceLROnPlateau)
+TORCH_LR_SCHEDULERS = dict()
 
 SEED = 42
 
