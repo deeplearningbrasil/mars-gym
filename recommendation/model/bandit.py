@@ -10,8 +10,13 @@ from numpy.random.mtrand import RandomState
 from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
-
-from recommendation.utils import chunks
+from torchbearer import Trial
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from recommendation.utils import chunks, flatten
+from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
+from torch.utils.data import DataLoader
 
 
 class BanditPolicy(object, metaclass=abc.ABCMeta):
@@ -494,6 +499,226 @@ class LinThompsonSampling(_LinBanditPolicy):
         mu = np.random.multivariate_normal(mu, self._v_sq * Ainv)
         return x.dot(mu)
 
+from recommendation.utils import lecun_normal_init
+from typing import Tuple, Callable, Union, Type, List
+
+class MDNPolicy(BanditPolicy, metaclass=abc.ABCMeta):
+
+    def __init__(self, reward_model: nn.Module, input_dim: int, seed: int = 42) -> None:
+        super().__init__(None)
+        self._input_dim  = input_dim
+        self._model_beta = self._create_model_beta()
+        
+        #self._scaler = StandardScaler()
+
+    def _create_model_beta(self):
+
+        class MLP(nn.Module):
+            def __init__(self, input_dim: int, hidden_layers = [12]):
+                super(MLP, self).__init__()
+                #weight_init: Callable = lecun_normal_init
+
+                self.hidden_layers = nn.ModuleList([
+                    nn.Linear(
+                        input_dim if i == 0 else hidden_layers[i - 1],
+                        layer_size
+                    ) for i, layer_size in enumerate(hidden_layers)
+                    ]
+                )
+                self.activation   = nn.SELU()
+                
+                self.mu     = nn.Linear(hidden_layers[-1], 1)
+                self.sigma  = nn.Linear(hidden_layers[-1], 1)
+            
+                #self.weight_init = weight_init
+                #self.apply(self.init_weights)
+            
+            # def init_weights(self, module: nn.Module):
+            #     if type(module) == nn.Linear:
+            #         self.weight_init(module.weight)
+            #         module.bias.data.fill_(0.1)
+
+            def forward(self, x: torch.Tensor):
+                e = 1.+1e-5
+
+                for layer in self.hidden_layers:
+                    x = self.activation(layer(x))
+                
+                #print(self.mu.weight)
+                #return self.mu(x), F.elu(self.sigma(x))+1
+                return F.elu(self.mu(x))+e, F.elu(self.sigma(x))+e
+
+        return MLP(input_dim=self._input_dim)      
+    
+    # def _mdn_cost(self, mu, sigma, y):
+    #     dist = torch.distributions.Beta(mu, sigma)
+    #     return torch.mean(-dist.log_prob(y))        
+
+    def _mdn_cost(self, mu, sigma, y):
+        
+        dist = torch.distributions.Beta(mu, sigma)
+        loss = torch.mean(-dist.log_prob(y))     
+        #print("_mdn_cost",mu, sigma, loss)
+        return loss   
+
+        
+    def fit(self, dataset: Dataset, batch_size: int = 100) -> None:
+        self._model_beta = self._create_model_beta()
+        epochs         = 200
+        criterion      = self._mdn_cost
+        learning_rate  = 0.001
+        optimizer      = torch.optim.Adam(self._model_beta.parameters(), lr=learning_rate)
+
+        n = len(dataset)
+        mean_loss = []
+        for e in range(epochs):
+            for indices in tqdm(chunks(range(n), batch_size), total=math.ceil(n / batch_size)):
+                input_: Tuple[np.ndarray, ...]  = dataset[indices][0]
+                output_: Tuple[np.ndarray, ...] = dataset[indices][1][0]
+
+                X      = torch.Tensor([list(flatten(x)) for x in zip(*input_)])
+                y      = torch.Tensor(output_).reshape(-1, 1) 
+
+                # model train mode
+                self._model_beta.train()
+
+                # Predictions
+                mu_pred, sigma_pred = self._model_beta(X)
+                
+                #print("output", X[:2], mu_pred[:2], sigma_pred[:2])
+                
+                # Computes loss
+                loss   = criterion(mu_pred, sigma_pred, y)
+                
+                # Computes Gradients
+                loss.backward()
+
+                # Update parameters
+                optimizer.step()
+                optimizer.zero_grad()
+
+                # loss
+                #print("loss.item()", loss.item())
+                mean_loss.append(loss.item())
+                
+            print(e, np.mean(mean_loss))
+        
+    def _calculate_scores(self, arm_contexts) -> float:
+        X      = torch.Tensor([list(flatten(x)) for x in zip(*arm_contexts)])
+
+        mu_pred, sigma_pred = self._model_beta(X)
+        
+        return [
+            torch.distributions.Beta(mu, sigma).sample() for mu, sigma in zip(mu_pred, sigma_pred)
+        ]
+
+    def _compute_prob(self, arm_scores):
+        #In this case, we expected arm_scores to be arms_scores_with_cb
+        n_arms = len(arm_scores)
+        arms_probs = np.zeros(n_arms)
+        argmax = int(np.argmax(arm_scores))
+        arms_probs[argmax] = 1.0
+        return arms_probs
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
+        action = int(np.argmax(arm_scores))
+
+        return action
+
+    def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+             arm_scores: List[float] = None, with_probs: bool = False,
+             limit: int = None) -> Union[List[int], Tuple[List[int], List[float]]]:
+        assert arm_contexts is not None or arm_scores is not None
+        arm_scores = self._calculate_scores(arm_contexts)
+        assert len(arm_indices) == len(arm_scores)
+
+        ranked_arms = [arm_id for _, arm_id in sorted(zip(arm_scores, arm_indices), reverse=True)]
+        if limit is not None:
+            ranked_arms = ranked_arms[:limit]
+
+        if with_probs:
+            return ranked_arms, self._compute_prob(arm_scores)
+        else:
+            return ranked_arms
+
+class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
+
+    def __init__(self, reward_model: nn.Module, arm_index: int = 1, scaler=False, seed: int = 42) -> None:
+        super().__init__(reward_model)
+        self._arm_index = arm_index
+        self._Ainv_per_arm: Dict[int, np.ndarray] = {}
+        #self._scaler = StandardScaler()
+
+    def _sherman_morrison_update(self, Ainv: np.ndarray, x: np.ndarray) -> None:
+        ## x should have shape (n, 1)
+        Ainv -= np.linalg.multi_dot([Ainv, x, x.T, Ainv]) / (1.0 + np.linalg.multi_dot([x.T, Ainv, x]))
+
+    def _flatten_input_and_extract_arms(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
+        flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
+        return np.delete(flattened_input, self._arm_index, axis=1), flattened_input[:, self._arm_index]
+
+    def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
+        n = len(dataset)
+
+        for indices in tqdm(chunks(range(n), batch_size), total=math.ceil(n / batch_size)):
+            input_: Tuple[np.ndarray, ...] = dataset[indices][0]
+            output_: Tuple[np.ndarray, ...] = dataset[indices][1]
+
+            X, arms = self._flatten_input_and_extract_arms(input_)
+            for x, arm in zip(X, arms):
+                if arm not in self._Ainv_per_arm:
+                    self._Ainv_per_arm[arm] = np.eye(x.shape[0])
+
+                x = x.reshape((-1, 1))
+                self._sherman_morrison_update(self._Ainv_per_arm[arm], x)
+
+    @abc.abstractmethod
+    def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
+        pass
+
+    def _compute_prob(self, arm_scores):
+        #In this case, we expected arm_scores to be arms_scores_with_cb
+        n_arms = len(arm_scores)
+        arms_probs = np.zeros(n_arms)
+        argmax = int(np.argmax(arm_scores))
+        arms_probs[argmax] = 1.0
+        return arms_probs
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
+                    arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
+
+        X, arms    = self._flatten_input_and_extract_arms(arm_contexts)
+        
+        arm_scores = [self._calculate_score(arm_score, x, arm)
+                              for x, arm, arm_score in zip(X, arms, arm_scores)]
+
+        action = int(np.argmax(arm_scores))
+
+        return action
+
+    def rank(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+             arm_scores: List[float] = None, with_probs: bool = False,
+             limit: int = None) -> Union[List[int], Tuple[List[int], List[float]]]:
+        assert arm_contexts is not None or arm_scores is not None
+        if not arm_scores:
+            arm_scores = self._calculate_scores(arm_contexts)
+        assert len(arm_indices) == len(arm_scores)
+
+        X, arms = self._flatten_input_and_extract_arms(arm_contexts)
+        arm_scores = [self._calculate_score(arm_score, x, arm)
+                              for x, arm, arm_score in zip(X, arms, arm_scores)]
+
+        ranked_arms = [arm_id for _, arm_id in sorted(zip(arm_scores, arm_indices), reverse=True)]
+        if limit is not None:
+            ranked_arms = ranked_arms[:limit]
+
+        if with_probs:
+            return ranked_arms, self._compute_prob(arm_scores)
+        else:
+            return ranked_arms
+
 
 class SoftmaxExplorer(BanditPolicy):
     def __init__(self, reward_model: nn.Module, logit_multiplier: float = 1.0, reverse_sigmoid: bool = True, seed: int = 42) -> None:
@@ -530,4 +755,4 @@ BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, custom_lin_ucb=CustomRewardModelLinUCB,
     lin_ts=LinThompsonSampling, random=RandomPolicy, percentile_adaptive=PercentileAdaptiveGreedy,
     adaptive=AdaptiveGreedy, model=ModelPolicy, softmax_explorer = SoftmaxExplorer,
-    explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None)
+    explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, mdn_explorer=MDNPolicy, none=None)

@@ -130,3 +130,18 @@ def get_scores_per_tuples_with_click_timestamp(account_idx: int, merchant_idx_li
                                                scores_per_tuple: Dict[Tuple[int, int, datetime], float]) -> List[float]:
     return list(map(lambda merchant_idx: scores_per_tuple.get((account_idx, merchant_idx, click_timestamp), -1.0),
                     merchant_idx_list))
+
+import collections
+
+def flatten(t):
+    """
+    Generator flattening the structure
+    
+    >>> list(flatten([2, [2, (4, 5, [7], [2, [6, 2, 6, [6], 4]], 6)]]))
+    [2, 2, 4, 5, 7, 2, 6, 2, 6, 6, 4, 6]
+    """
+    for x in t:
+        if not isinstance(x, collections.Iterable):
+            yield x
+        else:
+            yield from flatten(x)
