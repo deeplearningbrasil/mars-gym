@@ -140,9 +140,11 @@ class ContextualBandit(nn.Module):
         self.activation_function = activation_function
         self.predictor = predictor
 
-        user_input_dim = 0
-        item_input_dim = 0
-        context_input_dim = 0
+        user_input_dim    = 0
+        item_input_dim    = 0
+        context_input_dim = n_factors
+
+        self.shift_embeddings = nn.Embedding(10, n_factors)
 
         if self.user_embeddings:
             self.user_embeddings = nn.Embedding(n_users, n_factors)
@@ -230,8 +232,11 @@ class ContextualBandit(nn.Module):
 
         return x
 
-    def compute_context_embeddings(self, info, visits, buys):
+    def compute_context_embeddings(self, shift_ids, info, visits, buys):
         x : torch.Tensor = None
+
+        shift_embs = self.shift_embeddings(shift_ids.long())
+        x          = shift_embs if self.none_tensor(x) else torch.cat((x, shift_embs), dim=1)
 
         if self.use_numerical_content:
             x = info if self.none_tensor(x) else torch.cat((x, info), dim=1)
@@ -252,9 +257,8 @@ class ContextualBandit(nn.Module):
         
         return user_emb
 
-    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, shift_ids: torch.Tensor, name: torch.Tensor, 
-                    description: torch.Tensor, category: torch.Tensor, info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor) -> torch.Tensor:
-
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, name: torch.Tensor, 
+                    description: torch.Tensor, category: torch.Tensor, info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor, shift_ids: torch.Tensor) -> torch.Tensor:
 
         if self.use_original_content:
 
@@ -270,7 +274,7 @@ class ContextualBandit(nn.Module):
 
             prob = self.predictor.predict(all_representation)
         else:
-            context_representation = self.compute_context_embeddings(info, visits, buys)
+            context_representation = self.compute_context_embeddings(shift_ids, info, visits, buys)
             item_representation    = self.compute_item_embeddings(item_ids, name, description, category)
             user_representation    = self.compute_user_embeddings(user_ids) if self.user_embeddings else None
 
