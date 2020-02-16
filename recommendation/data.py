@@ -142,7 +142,7 @@ class NegativeIndicesGenerator(object):
             if indices not in self._non_zero_indices:
                 return indices
 
-
+from sklearn.preprocessing import StandardScaler
 class ContextualBanditsDataset(InteractionsDataset):
 
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
@@ -194,18 +194,19 @@ class ContextualBanditsDataset(InteractionsDataset):
             indices = [indices]
 
         rows: pd.Series = self._data_frame.iloc[indices]
-        
+
         user_indices    = rows[self._input_columns[0]].values
         item_indices    = rows[self._input_columns[1]].values
-        user_item_visits = rows[self._input_columns[2]].values
-        user_item_buys  = rows[self._input_columns[3]].values
+        shift_indices   = rows[self._input_columns[2]].values
+        user_item_visits = rows[self._input_columns[3]].values
+        user_item_buys  = rows[self._input_columns[4]].values
 
         # Propensity Score - Probability
         positive_items = self._get_items(item_indices, user_item_visits, user_item_buys)
         ps             = rows[self._auxiliar_output_columns[0]].values.astype(float)
         output         = rows[self._output_column].values
         
-        return (user_indices, *positive_items), (output, ps)
+        return (user_indices, shift_indices, *positive_items), (output, ps)
 
 class DirectEstimatorDataset(InteractionsDataset):
 

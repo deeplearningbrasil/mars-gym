@@ -8,6 +8,7 @@ from recommendation.utils import lecun_normal_init
 import numpy as np
 
 
+
 class LogisticRegression(nn.Module):
     def __init__(self, n_factors: int, weight_init: Callable = lecun_normal_init):
         super(LogisticRegression, self).__init__()
@@ -31,6 +32,10 @@ class LogisticRegression(nn.Module):
         if not self.none_tensor(item_representation):
             x = item_representation if self.none_tensor(x) else torch.cat((x, item_representation), dim=1)
 
+        return torch.sigmoid(self.linear(x))
+
+class SimpleLogisticRegression(LogisticRegression):
+    def predict(self, x):
         return torch.sigmoid(self.linear(x))
 
 
@@ -114,7 +119,7 @@ class DeepFactorizationMachine(nn.Module):
 class ContextualBandit(nn.Module):
 
     def __init__(self, n_users: int, n_items: int, n_factors: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, 
-                filter_sizes: List[int] = [1, 3, 5], weight_init: Callable = lecun_normal_init, 
+                filter_sizes: List[int] = [1, 3, 5], weight_init: Callable = lecun_normal_init, use_original_content: bool = False,
                 use_buys_visits: bool = False, user_embeddings: bool = False, item_embeddings: bool = False, use_numerical_content: bool = False,
                 numerical_content_dim: int = None, context_embeddings: bool = False,
                 use_textual_content: bool = False, use_normalize: bool = False, content_layers=[1], binary: bool = False,
@@ -124,6 +129,7 @@ class ContextualBandit(nn.Module):
 
 
         self.binary = binary
+        self.use_original_content = use_original_content
         self.user_embeddings = user_embeddings
         self.item_embeddings = item_embeddings
         self.context_embeddings = context_embeddings
@@ -165,7 +171,9 @@ class ContextualBandit(nn.Module):
             if self.use_numerical_content:
                 context_input_dim += numerical_content_dim
 
-        if predictor == "logistic_regression":
+        if predictor == "simple_logistic_regression":
+            self.predictor = SimpleLogisticRegression(n_factors, weight_init)
+        elif predictor == "logistic_regression":
             self.predictor = LogisticRegression(item_input_dim + context_input_dim + user_input_dim, weight_init)
         elif predictor == "factorization_machine":
             self.predictor = DeepFactorizationMachine(n_factors, context_input_dim, item_input_dim, user_input_dim, fm_order, \
@@ -236,7 +244,6 @@ class ContextualBandit(nn.Module):
 
         return x
 
-
     def compute_user_embeddings(self, user_ids):
         user_emb = self.user_embeddings(user_ids.long())
 
@@ -245,13 +252,29 @@ class ContextualBandit(nn.Module):
         
         return user_emb
 
-    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, name: torch.Tensor, description: torch.Tensor,
-                category: torch.Tensor, info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor) -> torch.Tensor:
-        context_representation = self.compute_context_embeddings(info, visits, buys)
-        item_representation = self.compute_item_embeddings(item_ids, name, description, category)
-        user_representation = self.compute_user_embeddings(user_ids) if self.user_embeddings else None
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, shift_ids: torch.Tensor, name: torch.Tensor, 
+                    description: torch.Tensor, category: torch.Tensor, info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor) -> torch.Tensor:
 
-        prob = self.predictor.predict(item_representation, user_representation, context_representation)
+
+        if self.use_original_content:
+
+            all_representation = torch.cat((user_ids.float().unsqueeze(1), 
+                                            item_ids.float().unsqueeze(1), 
+                                            shift_ids.float().unsqueeze(1), 
+                                            name.float(),
+                                            description.float(),
+                                            category.float(),
+                                            info,
+                                            visits.unsqueeze(1), 
+                                            buys.unsqueeze(1)), dim=1).float()
+
+            prob = self.predictor.predict(all_representation)
+        else:
+            context_representation = self.compute_context_embeddings(info, visits, buys)
+            item_representation    = self.compute_item_embeddings(item_ids, name, description, category)
+            user_representation    = self.compute_user_embeddings(user_ids) if self.user_embeddings else None
+
+            prob = self.predictor.predict(item_representation, user_representation, context_representation)
         
         return prob
 

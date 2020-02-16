@@ -30,6 +30,7 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
     dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     content_layers: List[int] = luigi.ListParameter(default=[200, 128])
+    use_original_content: bool = luigi.BoolParameter(default=False)
     use_buys_visits: bool = luigi.BoolParameter(default=False)
     user_embeddings: bool = luigi.BoolParameter(default=False)
     item_embeddings: bool = luigi.BoolParameter(default=False)
@@ -38,7 +39,7 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
     use_textual_content: bool = luigi.BoolParameter(default=False)
     use_normalize: bool = luigi.BoolParameter(default=False)
     binary: bool = luigi.BoolParameter(default=False)
-    predictor: str = luigi.ChoiceParameter(choices=["logistic_regression", "factorization_machine"], default="logistic_regression")
+    predictor: str = luigi.ChoiceParameter(choices=["simple_logistic_regression", "logistic_regression", "factorization_machine"], default="logistic_regression")
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
     activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
     word_embeddings_size: int = luigi.IntParameter(default=128)
@@ -88,6 +89,7 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
             n_users=self.n_users,
             n_items=self.n_items,
             n_factors=self.n_factors,
+            use_original_content=self.use_original_content,
             use_buys_visits=self.use_buys_visits,
             user_embeddings=self.user_embeddings,
             item_embeddings=self.item_embeddings,

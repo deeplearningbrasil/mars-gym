@@ -18,7 +18,7 @@ from recommendation.task.data_preparation.ifood import CreateGroundTruthForInter
     GenerateIndicesForAccountsAndMerchantsDataset, AddAdditionallInformationDataset, ProcessRestaurantContentDataset
 from recommendation.task.model.contextual_bandits import ContextualBanditsTraining
 from recommendation.torch import NoAutoCollationDataLoader
-from recommendation.utils import get_scores_per_tuples_with_click_timestamp
+from recommendation.utils import get_scores_per_tuples_with_click_timestamp, datetime_to_shift
 from recommendation.files import get_interaction_dir
 
 class BanditAgent(object):
@@ -81,6 +81,13 @@ class InteractionTraining(ContextualBanditsTraining):
         return BanditAgent(bandit)
 
     @property
+    def shift_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_shift_data_frame"):
+            self._shift_data_frame = pd.read_csv(self.input()[2][0].path)
+
+        return self._shift_data_frame
+
+    @property
     def metadata_data_frame_path(self) -> str:
         return self.input()[1][1].path
 
@@ -121,7 +128,7 @@ class InteractionTraining(ContextualBanditsTraining):
         return self._availability_data_frame
 
     def _get_batch_of_arm_indices(self, ob: np.ndarray) -> List[List[int]]:
-        df           = self.availability_data_frame
+        df   = self.availability_data_frame
         tmz  = pytz.timezone("America/Sao_Paulo")
 
         days_of_week = [int(click_timestamp.strftime('%w')) for click_timestamp in ob[:, 1]]
@@ -195,6 +202,10 @@ class InteractionTraining(ContextualBanditsTraining):
             tuples_df["hist_visits"] = 0
             tuples_df["hist_buys"]   = 0
 
+        # Add shift information
+        tuples_df['shift'] = tuples_df.click_timestamp.apply(lambda c: datetime_to_shift(c - timedelta(minutes=180))) 
+        tuples_df = tuples_df.merge(self.shift_data_frame, how='left', on='shift').fillna(0)
+
 
         if self.project_config.output_column.name not in tuples_df.columns:
             tuples_df[self.project_config.output_column.name] = 1
@@ -229,10 +240,11 @@ class InteractionTraining(ContextualBanditsTraining):
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_known_observations_data_frame"):
-            df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp", "ps", "buy"])
+            df = pd.DataFrame(columns=["account_idx", "merchant_idx", "click_timestamp", "shift_idx", "ps", "buy"])
             df = df.astype({
                 "account_idx": np.int,
                 "merchant_idx": np.int,
+                "shift_idx": np.int,
                 "click_timestamp": np.datetime64,
                 "buy": np.int,
             })
@@ -247,6 +259,11 @@ class InteractionTraining(ContextualBanditsTraining):
                                 data={"account_idx": ob[:, 0], "merchant_idx": action, "click_timestamp": ob[:, 1],
                                         "buy": reward})
         
+        # Add shift information
+        df_append['shift'] = df_append.click_timestamp.apply(lambda c: datetime_to_shift(c - timedelta(minutes=180))) 
+        df_append = df_append.merge(self.shift_data_frame, on='shift')
+
+
         df = pd.concat([df, df_append]).reset_index(drop=True)
         
         df["hist_visits"]  = 1
@@ -259,6 +276,7 @@ class InteractionTraining(ContextualBanditsTraining):
         df['account_idx']  = df['account_idx'].astype(int)
         df['merchant_idx'] = df['merchant_idx'].astype(int)
         
+
         self._known_observations_data_frame = df
 
     def _save_log(self) -> None:
