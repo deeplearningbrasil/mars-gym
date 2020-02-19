@@ -213,7 +213,7 @@ class InteractionTraining(ContextualBanditsTraining):
             if auxiliar_output_column.name not in tuples_df.columns:
                 tuples_df[auxiliar_output_column.name] = 0
         
-        dataset   = self.project_config.dataset_class(tuples_df, self.metadata_data_frame, self.project_config, negative_proportion=0.0)
+        dataset   = self.project_config.dataset_class(tuples_df, self.metadata_data_frame, self.project_config)
 
         return tuples_df, dataset
 

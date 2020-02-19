@@ -4,6 +4,7 @@ import json
 import logging
 import multiprocessing
 import os
+import random
 import shutil
 from contextlib import redirect_stdout
 from typing import Type, Dict, List, Optional
@@ -30,13 +31,11 @@ from torchbearer.callbacks.checkpointers import ModelCheckpoint
 from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
-from torchbearer.callbacks.torch_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau, StepLR
 
-from recommendation.data import NegativeIndicesGenerator
 from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
 from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization
-from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
+from recommendation.plot import plot_history
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
@@ -45,17 +44,13 @@ from recommendation.utils import lecun_normal_init, he_init
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-TORCH_DATA_TRANSFORMATIONS = dict(none=None)
-
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax,
                         radam=RAdam)
-TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss,
-                            mlm=nn.MultiLabelMarginLoss, implicit_feedback_bce=ImplicitFeedbackBCELoss,
-                            crm=CounterfactualRiskMinimization)
+TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss,
+                            implicit_feedback_bce=ImplicitFeedbackBCELoss, crm=CounterfactualRiskMinimization)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)
-TORCH_LR_SCHEDULERS = dict()
 
 SEED = 42
 
@@ -67,8 +62,6 @@ class BaseModelTraining(luigi.Task):
 
     project: str = luigi.ChoiceParameter(choices=PROJECTS.keys())
 
-    data_transformation: str = luigi.ChoiceParameter(choices=TORCH_DATA_TRANSFORMATIONS.keys(), default="none")
-    data_transformation_params: dict = luigi.DictParameter(default={})
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     session_test_size: float = luigi.FloatParameter(default=0.10)
@@ -77,7 +70,6 @@ class BaseModelTraining(luigi.Task):
     val_size: float = luigi.FloatParameter(default=0.2)
     n_splits: int = luigi.IntParameter(default=5)
     split_index: int = luigi.IntParameter(default=0)
-    negative_proportion: float = luigi.FloatParameter(default=1.0)
     data_frames_preparation_extra_params: dict = luigi.DictParameter(default={})
     sampling_strategy: str = luigi.ChoiceParameter(choices=["oversample", "undersample", "none"], default="none")
     balance_fields: List[str] = luigi.ListParameter(default=[])
@@ -125,11 +117,6 @@ class BaseModelTraining(luigi.Task):
         for key, value in self.param_kwargs.items():
             mlflow.log_param(key, value)
 
-    def get_data_transformation(self):
-        transformation = TORCH_DATA_TRANSFORMATIONS[self.data_transformation](**self.data_transformation_params) \
-            if self.data_transformation != "none" else None
-        return transformation
-
     @property
     def train_data_frame_path(self) -> str:
         return self.input()[0].path
@@ -175,43 +162,24 @@ class BaseModelTraining(luigi.Task):
         return self._test_data_frame
 
     @property
-    def negative_indices_generator(self) -> NegativeIndicesGenerator:
-        if not hasattr(self, "_negative_indices_generator"):
-            self._negative_indices_generator = NegativeIndicesGenerator(
-                pd.concat([self.train_data_frame, self.val_data_frame, self.test_data_frame]),
-                self.metadata_data_frame,
-                [input_column.name for input_column in self.project_config.input_columns
-                 if input_column.type == IOType.INDEX],
-                self.project_config.possible_negative_indices_columns)
-        return self._negative_indices_generator
-
-    @property
     def train_dataset(self) -> Dataset:
         if not hasattr(self, "_train_dataset"):
             self._train_dataset = self.project_config.dataset_class(
-                self.train_data_frame, self.metadata_data_frame, self.project_config,
-                transformation=self.get_data_transformation(),
-                negative_indices_generator=self.negative_indices_generator,
-                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
+                self.train_data_frame, self.metadata_data_frame, self.project_config)
         return self._train_dataset
 
     @property
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
             self._val_dataset = self.project_config.dataset_class(
-                self.val_data_frame, self.metadata_data_frame, self.project_config,
-                transformation=self.get_data_transformation(),
-                negative_indices_generator=self.negative_indices_generator,
-                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
+                self.val_data_frame, self.metadata_data_frame, self.project_config)
         return self._val_dataset
 
     @property
     def test_dataset(self) -> Dataset:
         if not hasattr(self, "_test_dataset"):
             self._test_dataset = self.project_config.dataset_class(
-                self.test_data_frame, self.metadata_data_frame, self.project_config,
-                negative_indices_generator=self.negative_indices_generator,
-                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
+                self.test_data_frame, self.metadata_data_frame, self.project_config)
         return self._test_dataset
 
     @property
@@ -235,8 +203,17 @@ class BaseModelTraining(luigi.Task):
             if hasattr(self, a):
                 delattr(self, a)
 
-    def run(self):
+    def seed_everything(self):
+        random.seed(self.seed)
+        os.environ['PYTHONHASHSEED'] = str(self.seed)
         np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+        torch.cuda.manual_seed(self.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    def run(self):
+        self.seed_everything()
 
         mlflow.set_experiment(self.__class__.__name__)
         with mlflow.start_run(run_name=self.task_id):
@@ -258,15 +235,11 @@ class BaseTorchModelTraining(BaseModelTraining):
 
     device: str = luigi.ChoiceParameter(choices=["cpu", "cuda"], default=DEFAULT_DEVICE)
 
-    mode: str = luigi.ChoiceParameter(choices=["fit", "lr_find"], default="fit")
-    lr_find_iterations: int = luigi.IntParameter(default=100)
     batch_size: int = luigi.IntParameter(default=500)
     epochs: int = luigi.IntParameter(default=100)
     optimizer: str = luigi.ChoiceParameter(choices=TORCH_OPTIMIZERS.keys(), default="adam")
     optimizer_params: dict = luigi.DictParameter(default={})
     learning_rate: float = luigi.FloatParameter(1e-3)
-    lr_scheduler: str = luigi.ChoiceParameter(choices=TORCH_LR_SCHEDULERS.keys(), default=None)
-    lr_scheduler_params: dict = luigi.DictParameter(default={})
     loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="mse")
     loss_function_params: dict = luigi.DictParameter(default={})
     gradient_norm_clipping: float = luigi.FloatParameter(default=0.0)
@@ -277,7 +250,6 @@ class BaseTorchModelTraining(BaseModelTraining):
     monitor_mode: str = luigi.Parameter(default="min")
     generator_workers: int = luigi.IntParameter(default=min(multiprocessing.cpu_count(), 20))
     pin_memory: bool = luigi.BoolParameter(default=False)
-    task_hash: str = luigi.Parameter(default='none')
 
     metrics = luigi.ListParameter(default=["loss"])
 
@@ -302,10 +274,6 @@ class BaseTorchModelTraining(BaseModelTraining):
         if self.device == "cuda":
             torch.cuda.set_device(self.device_id)
 
-        torch.manual_seed(self.seed)
-        dict(fit=self.fit, lr_find=self.lr_find)[self.mode]()
-
-    def fit(self):
         train_loader = self.get_train_generator()
         val_loader = self.get_val_generator()
         module = self.create_module()
@@ -335,31 +303,6 @@ class BaseTorchModelTraining(BaseModelTraining):
     def after_fit(self):
         pass
 
-    def lr_find(self):
-        train_loader = self.get_train_generator()
-
-        self.learning_rate = 1e-6
-        lr_finder = LearningRateFinder(min(len(train_loader), self.lr_find_iterations), self.learning_rate)
-
-        module = self.create_module()
-
-        trial = Trial(module, self._get_optimizer(module), self._get_loss_function(), callbacks=[lr_finder]) \
-            .with_train_generator(train_loader) \
-            .to(self.torch_device)
-
-        trial.run(epochs=1)
-
-        loss_per_lr_path = os.path.join(self.output().path, "loss_per_lr.jpg")
-        loss_derivatives_per_lr_path = os.path.join(self.output().path, "loss_derivatives_per_lr.jpg")
-
-        plot_loss_per_lr(lr_finder.learning_rates, lr_finder.loss_values) \
-            .savefig(loss_per_lr_path)
-        plot_loss_derivatives_per_lr(lr_finder.learning_rates, lr_finder.get_loss_derivatives(5)) \
-            .savefig(loss_derivatives_per_lr_path)
-
-        mlflow.log_artifact(loss_per_lr_path)
-        mlflow.log_artifact(loss_derivatives_per_lr_path)
-
     def create_trial(self, module: nn.Module) -> Trial:
         loss_function = self._get_loss_function()
         trial = Trial(module, self._get_optimizer(module), loss_function, callbacks=self._get_callbacks(),
@@ -387,8 +330,6 @@ class BaseTorchModelTraining(BaseModelTraining):
         ]
         if self.gradient_norm_clipping:
             callbacks.append(GradientNormClipping(self.gradient_norm_clipping, self.gradient_norm_clipping_type))
-        if self.lr_scheduler:
-            callbacks.append(TORCH_LR_SCHEDULERS[self.lr_scheduler](**self.lr_scheduler_params))
         return callbacks
 
     def _get_extra_callbacks(self):
