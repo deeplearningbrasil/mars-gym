@@ -10,7 +10,6 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import Sampler, Dataset
 from torch.utils.data.dataloader import DataLoader
 from torchbearer.callbacks import Callback
-import mlflow
 from torchbearer.callbacks.torch_scheduler import TorchScheduler, StepLR
 from torch.optim.optimizer import Optimizer, required
 
@@ -254,12 +253,6 @@ class AdamW(Optimizer):
 
         return loss
 
-class MLFlowLogger(Callback):
-    def on_end_epoch(self, state):
-        metrics: dict = state[torchbearer.METRICS]
-
-        for key, value in metrics.items():
-            mlflow.log_metric(key, value)
 
 class SparseTensorLoss(nn.Module):
     def __init__(self, loss: nn.Module) -> None:
@@ -270,6 +263,7 @@ class SparseTensorLoss(nn.Module):
         if target.layout == torch.sparse_coo:
             target = target.to_dense()
         return self._wrapped_loss.forward(input, target)
+
 
 class FasterBatchSampler(Sampler):
     def __init__(self, data_source: Dataset, batch_size: int, drop_last: bool = False, shuffle: bool = False):

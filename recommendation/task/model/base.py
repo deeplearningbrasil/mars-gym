@@ -10,7 +10,6 @@ from contextlib import redirect_stdout
 from typing import Type, Dict, List, Optional
 
 import luigi
-import mlflow
 import numpy as np
 import pandas as pd
 import torch
@@ -39,7 +38,7 @@ from recommendation.plot import plot_history
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
-from recommendation.torch import MLFlowLogger, NoAutoCollationDataLoader, RAdam, FasterBatchSampler
+from recommendation.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from recommendation.utils import lecun_normal_init, he_init
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -114,8 +113,6 @@ class BaseModelTraining(luigi.Task):
     def _save_params(self):
         with open(get_params_path(self.output().path), "w") as params_file:
             json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
-        for key, value in self.param_kwargs.items():
-            mlflow.log_param(key, value)
 
     @property
     def train_data_frame_path(self) -> str:
@@ -215,19 +212,17 @@ class BaseModelTraining(luigi.Task):
     def run(self):
         self.seed_everything()
 
-        mlflow.set_experiment(self.__class__.__name__)
-        with mlflow.start_run(run_name=self.task_id):
-            os.makedirs(self.output().path, exist_ok=True)
-            self._save_params()
-            try:
-                self.train()
-            except Exception:
-                shutil.rmtree(self.output().path)
-                raise
-            finally:
-                gc.collect()
-                if self.device == "cuda":
-                    CudaRepository.put_available_device(self.device_id)
+        os.makedirs(self.output().path, exist_ok=True)
+        self._save_params()
+        try:
+            self.train()
+        except Exception:
+            shutil.rmtree(self.output().path)
+            raise
+        finally:
+            gc.collect()
+            if self.device == "cuda":
+                CudaRepository.put_available_device(self.device_id)
 
 
 class BaseTorchModelTraining(BaseModelTraining):
@@ -283,7 +278,6 @@ class BaseTorchModelTraining(BaseModelTraining):
             with redirect_stdout(summary_file):
                 sample_input = default_convert(self.train_dataset[0][0])
                 summary(module, sample_input)
-        mlflow.log_artifact(summary_path)
 
         trial = self.create_trial(module)
 
@@ -296,7 +290,6 @@ class BaseTorchModelTraining(BaseModelTraining):
 
         plot_history(history_df).savefig(os.path.join(self.output().path, "history.jpg"))
 
-        mlflow.log_artifact(get_weights_path(self.output().path))
         self.after_fit()
         self.cache_cleanup()
 
@@ -325,7 +318,7 @@ class BaseTorchModelTraining(BaseModelTraining):
                             mode=self.monitor_mode),
             EarlyStopping(patience=self.early_stopping_patience, min_delta=self.early_stopping_min_delta,
                           monitor=self.monitor_metric, mode=self.monitor_mode),
-            CSVLogger(get_history_path(self.output().path)), MLFlowLogger(),
+            CSVLogger(get_history_path(self.output().path)),
             TensorBoard(get_tensorboard_logdir(self.task_id), write_graph=False),
         ]
         if self.gradient_norm_clipping:
