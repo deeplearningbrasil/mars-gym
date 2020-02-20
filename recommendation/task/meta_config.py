@@ -8,7 +8,8 @@ from recommendation.task.data_preparation.base import BasePrepareDataFrames
 class IOType(Enum):
     INDEX  = auto()
     NUMBER = auto()
-    ARRAY  = auto()
+    FLOAT_ARRAY  = auto()
+    INT_ARRAY  = auto()
 
 
 class RecommenderType(Enum):
@@ -27,7 +28,9 @@ class ProjectConfig(object):
     def __init__(self, base_dir: str,
                  prepare_data_frames_task: Type[BasePrepareDataFrames],
                  dataset_class: Type[Dataset],
-                 input_columns: List[Column],
+                 user_column: Column,
+                 item_column: Column,
+                 other_input_columns: List[Column],
                  output_column: Column,
                  recommender_type: RecommenderType,
                  dataset_extra_params: dict = {},
@@ -42,7 +45,9 @@ class ProjectConfig(object):
         self.prepare_data_frames_task = prepare_data_frames_task
         self.dataset_class = dataset_class
         self.dataset_extra_params = dataset_extra_params
-        self.input_columns = input_columns
+        self.user_column = user_column
+        self.item_column = item_column
+        self.other_input_columns = other_input_columns
         self.output_column = output_column
         self.auxiliar_output_columns = auxiliar_output_columns
         self.recommender_type = recommender_type
@@ -51,7 +56,3 @@ class ProjectConfig(object):
         self.default_balance_fields = default_balance_fields
         self.metadata_columns = metadata_columns
         self.possible_negative_indices_columns = possible_negative_indices_columns
-
-        @property
-        def input_columns(self):
-            pass

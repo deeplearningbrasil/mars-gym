@@ -256,11 +256,10 @@ class ContextualBandit(nn.Module):
         
         return user_emb
 
-    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, name: torch.Tensor, 
-                    description: torch.Tensor, category: torch.Tensor, info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor, shift_ids: torch.Tensor) -> torch.Tensor:
-
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, shift_ids: torch.Tensor, visits: torch.Tensor,
+                buys: torch.Tensor, name: torch.Tensor, description: torch.Tensor, category: torch.Tensor,
+                info: torch.Tensor) -> torch.Tensor:
         if self.use_original_content:
-
             all_representation = torch.cat((user_ids.float().unsqueeze(1), 
                                             item_ids.float().unsqueeze(1), 
                                             shift_ids.float().unsqueeze(1), 
