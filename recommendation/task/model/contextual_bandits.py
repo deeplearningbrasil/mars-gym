@@ -1,27 +1,12 @@
+from typing import List
+
 import luigi
 import torch.nn as nn
-import os
-import numpy as np
-from typing import Callable, List, Type, Union
 
-from recommendation.task.model.base import BaseTorchModelTraining, TORCH_LOSS_FUNCTIONS, TORCH_ACTIVATION_FUNCTIONS, TORCH_WEIGHT_INIT, \
-    TORCH_DROPOUT_MODULES
-from recommendation.model.contextual_bandits import ContextualBandit, DirectEstimator
+from recommendation.model.contextual_bandits import ContextualBandit
+from recommendation.task.model.base import BaseTorchModelTraining, TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 
-class DirectEstimatorTraining(BaseTorchModelTraining):
-    n_factors: int = luigi.IntParameter(default=100)
-    dropout_prob: float = luigi.FloatParameter(default=0.1)
-    learning_rate: float = luigi.FloatParameter(1e-4)
-    loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce")
-    epochs: int = luigi.IntParameter(default=50)
-
-    def create_module(self) -> nn.Module:
-        return DirectEstimator(
-            n_users=self.n_users,
-            n_items=self.n_items,
-            n_factors=self.n_factors,
-            dropout_prob=self.dropout_prob)
 
 class ContextualBanditsTraining(BaseTorchModelTraining):
     loss_function: str = luigi.ChoiceParameter(choices=["crm"], default="crm")
@@ -39,14 +24,13 @@ class ContextualBanditsTraining(BaseTorchModelTraining):
     use_textual_content: bool = luigi.BoolParameter(default=False)
     use_normalize: bool = luigi.BoolParameter(default=False)
     binary: bool = luigi.BoolParameter(default=False)
-    predictor: str = luigi.ChoiceParameter(choices=["simple_logistic_regression", "logistic_regression", "factorization_machine"], default="logistic_regression")
-    weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
-    activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
+    predictor: str = luigi.ChoiceParameter(
+        choices=["simple_logistic_regression", "logistic_regression", "factorization_machine"],
+        default="logistic_regression")
     word_embeddings_size: int = luigi.IntParameter(default=128)
     fm_order: int = luigi.IntParameter(default=1)
-    fm_hidden_layers: List[int] = luigi.ListParameter(default=[64,32])
+    fm_hidden_layers: List[int] = luigi.ListParameter(default=[64, 32])
     fm_deep: bool = luigi.BoolParameter(default=False)
-
 
     @property
     def non_textual_input_dim(self):

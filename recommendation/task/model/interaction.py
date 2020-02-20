@@ -12,7 +12,7 @@ from torchbearer import Trial
 import pytz
 from tqdm import tqdm
 tqdm.pandas()
-from recommendation.gym_ifood.envs import IFoodRecSysEnv
+from recommendation.gym.envs import IFoodRecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.task.data_preparation.ifood import CreateGroundTruthForInterativeEvaluation, \
     GenerateIndicesForAccountsAndMerchantsDataset, AddAdditionallInformationDataset, ProcessRestaurantContentDataset
@@ -20,6 +20,7 @@ from recommendation.task.model.contextual_bandits import ContextualBanditsTraini
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import get_scores_per_tuples_with_click_timestamp, datetime_to_shift
 from recommendation.files import get_interaction_dir
+
 
 class BanditAgent(object):
 

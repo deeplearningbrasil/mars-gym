@@ -127,7 +127,6 @@ class ContextualBandit(nn.Module):
                 fm_hidden_layers: List[int] = [64, 32]):
         super(ContextualBandit, self).__init__()
 
-
         self.binary = binary
         self.use_original_content = use_original_content
         self.user_embeddings = user_embeddings
@@ -281,88 +280,3 @@ class ContextualBandit(nn.Module):
             prob = self.predictor.predict(item_representation, user_representation, context_representation)
         
         return prob
-
-
-# PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits DirectEstimatorTraining 
-# --project ifood_offpolicy_direct_estimator --batch-size=512 --optimizer=radam --learning-rate=0.0001 
-# --loss-function=bce --n-factors=100 --epochs 305 --dropout-prob 0.1 --local-scheduler
-#
-#
-# DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', batch_size=512, epochs=305, 
-# optimizer='radam', learning_rate=0.0001, loss_function='bce', n_factors=100, dropout_prob=0.1)
-#
-class DirectEstimator(nn.Module):
-    def __init__(self, n_users: int, n_items: int, n_factors: int, dropout_prob: float,
-                    use_normalize: bool = False, weight_init: Callable = lecun_normal_init,
-                    dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
-        super(DirectEstimator, self).__init__()
-        self.linear = nn.Linear((n_factors * 3) + 24, 1)
-        self.weight_init = weight_init
-        self.apply(self.init_weights)
-
-        self.use_normalize   = use_normalize
-        self.user_embeddings = nn.Embedding(n_users, n_factors)
-        self.item_embeddings = nn.Embedding(n_items, n_factors)
-        self.shift_embeddings = nn.Embedding(10, n_factors)
-        
-        if dropout_prob:
-            self.dropout: nn.Module = dropout_module(dropout_prob)
-                
-        weight_init(self.user_embeddings.weight)
-        weight_init(self.item_embeddings.weight)
-        weight_init(self.shift_embeddings.weight)
-
-    def init_weights(self, module: nn.Module):
-        if type(module) == nn.Linear:
-            self.weight_init(module.weight)
-            module.bias.data.fill_(0.1)
-
-    def none_tensor(self, x):
-        return type(x) == type(None)
-
-    def compute_user_embeddings(self, user_ids):
-        user_emb = self.user_embeddings(user_ids.long())
-
-        if self.use_normalize:
-            user_emb = self.normalize(user_emb)
-        
-        return user_emb
-
-    def compute_item_embeddings(self, item_ids):
-        item_emb = self.item_embeddings(item_ids.long())
-
-        if self.use_normalize:
-            item_emb = self.normalize(item_emb)
-        
-        return item_emb
-
-    def compute_shift_embeddings(self, shift_ids):
-        shift_emb = self.shift_embeddings(shift_ids.long())
-
-        if self.use_normalize:
-            shift_emb = self.normalize(shift_emb)
-        
-        return shift_emb
-
-    def compute_context_embeddings(self, info, visits, buys):
-        x : torch.Tensor = None
-
-        x = info if self.none_tensor(x) else torch.cat((x, info), dim=1)
-        x = torch.cat((visits.unsqueeze(1), buys.unsqueeze(1)), dim=1) if self.none_tensor(x) else torch.cat((x, visits.unsqueeze(1), buys.unsqueeze(1)), dim=1)
-        
-        return x
-
-    def forward(self, user_ids: torch.Tensor, shift_ids: torch.Tensor, item_ids: torch.Tensor, category: torch.Tensor, 
-                    info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor) -> torch.Tensor:
-                    
-        context_representation = self.compute_context_embeddings(info, visits, buys)
-        shift_representation   = self.compute_shift_embeddings(shift_ids)
-        item_representation    = self.compute_item_embeddings(item_ids)
-        user_representation    = self.compute_user_embeddings(user_ids) 
-
-        x = torch.cat((context_representation, shift_representation, user_representation, item_representation), dim=1)
-
-        if hasattr(self, "dropout"):
-            x = self.dropout(x)
-
-        return torch.sigmoid(self.linear(x))#.reshape(-1)

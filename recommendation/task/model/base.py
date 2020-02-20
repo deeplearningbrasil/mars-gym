@@ -248,7 +248,7 @@ class BaseTorchModelTraining(BaseModelTraining):
     early_stopping_min_delta: float = luigi.FloatParameter(default=1e-3)
     monitor_metric: str = luigi.Parameter(default="val_loss")
     monitor_mode: str = luigi.Parameter(default="min")
-    generator_workers: int = luigi.IntParameter(default=min(multiprocessing.cpu_count(), 20))
+    generator_workers: int = luigi.IntParameter(default=0)
     pin_memory: bool = luigi.BoolParameter(default=False)
 
     metrics = luigi.ListParameter(default=["loss"])
