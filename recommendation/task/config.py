@@ -13,8 +13,8 @@ PROJECTS: Dict[str, ProjectConfig] = {
             Column("shift_idx", IOType.INDEX), Column("hist_visits", IOType.NUMBER), Column("hist_buys", IOType.NUMBER),
         ],
         metadata_columns=[
-            Column("trading_name", IOType.FLOAT_ARRAY), Column("description", IOType.FLOAT_ARRAY),
-            Column("category_names", IOType.FLOAT_ARRAY), Column("restaurant_complete_info", IOType.FLOAT_ARRAY),
+            Column("trading_name", IOType.INT_ARRAY), Column("description", IOType.INT_ARRAY),
+            Column("category_names", IOType.INT_ARRAY), Column("restaurant_complete_info", IOType.FLOAT_ARRAY),
         ],
         output_column=Column("buy", IOType.NUMBER),
         auxiliar_output_columns=[Column("ps", IOType.NUMBER)],

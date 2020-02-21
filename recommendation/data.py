@@ -18,7 +18,7 @@ class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
                  project_config: ProjectConfig) -> None:
         self._project_config = project_config
-        self._input_columns = [project_config.item_column, project_config.item_column] + [
+        self._input_columns = [project_config.user_column, project_config.item_column] + [
             input_column for input_column in project_config.other_input_columns]
 
         literal_eval_array_columns(data_frame, self._input_columns + [project_config.output_column])
@@ -64,8 +64,8 @@ class InteractionsDataset(Dataset):
         rows: pd.Series = self._data_frame.iloc[indices]
 
         inputs = tuple(self._convert_dtype(rows[column.name].values, column.type) for column in self._input_columns)
-        item_indices = inputs[1]
         if self._project_config.metadata_columns:
+            item_indices = inputs[1]
             inputs += tuple(
                 self._get_metadata(item_indices, column) for column in self._project_config.metadata_columns)
 
