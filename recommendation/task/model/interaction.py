@@ -1,3 +1,4 @@
+import abc
 from datetime import datetime, timedelta
 from typing import List, Tuple, Dict, Any, Union, Optional
 import os
@@ -11,12 +12,14 @@ from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 import pytz
 from tqdm import tqdm
+
+from recommendation.task.model.base import BaseTorchModelTraining
+
 tqdm.pandas()
 from recommendation.gym.envs import IFoodRecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.task.data_preparation.ifood import CreateGroundTruthForInterativeEvaluation, \
     GenerateIndicesForAccountsAndMerchantsDataset, AddAdditionallInformationDataset, ProcessRestaurantContentDataset
-from recommendation.task.model.contextual_bandits import ContextualBanditsTraining
 from recommendation.torch import NoAutoCollationDataLoader
 from recommendation.utils import get_scores_per_tuples_with_click_timestamp, datetime_to_shift
 from recommendation.files import get_interaction_dir
@@ -48,7 +51,7 @@ class BanditAgent(object):
                              for arm_indices, arm_contexts in zip(batch_of_arm_indices, batch_of_arm_context)])
 
 
-class InteractionTraining(ContextualBanditsTraining):
+class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     project              = "ifood_contextual_bandit"
     test_size            = 0.0
 

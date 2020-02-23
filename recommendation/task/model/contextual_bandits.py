@@ -4,11 +4,12 @@ import luigi
 import torch.nn as nn
 
 from recommendation.model.contextual_bandits import ContextualBandit
-from recommendation.task.model.base import BaseTorchModelTraining, TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES
+from recommendation.task.model.base import TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
+from recommendation.task.model.interaction import InteractionTraining
 
 
-class ContextualBanditsTraining(BaseTorchModelTraining):
+class ContextualBanditsTraining(InteractionTraining):
     loss_function: str = luigi.ChoiceParameter(choices=["crm"], default="crm")
     n_factors: int = luigi.IntParameter(default=128)
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
