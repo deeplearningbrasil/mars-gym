@@ -19,3 +19,9 @@ PYTHONPATH="." nohup luigi --module recommendation.task.interaction InteractionT
 PYTHONPATH="." nohup luigi --module recommendation.task.interaction InteractionTraining --filter-dish "Congelados" --optimizer=adam --learning-rate=0.001 --epochs 500 --use-normalize --use-buys-visits --binary --predictor=logistic_regression --item-embeddings --context-embeddings --use-numerical-content --user-embeddings --n-factors=10  --obs-batch-size 100 --batch-size 100 --num-episodes 50 --full-refit --bandit-policy softmax_explorer  --bandit-policy-params '{"logit_multiplier": 5}' --local-scheduler --generator-workers 0 > nohup10.0 &
 
 PYTHONPATH="." nohup luigi --module recommendation.task.interaction InteractionTraining --filter-dish "Congelados" --optimizer=adam --learning-rate=0.001 --epochs 500 --use-normalize --use-buys-visits --binary --predictor=logistic_regression --item-embeddings --context-embeddings --use-numerical-content --user-embeddings --n-factors=10  --obs-batch-size 100 --batch-size 100 --num-episodes 50 --full-refit --bandit-policy custom_lin_ucb  --local-scheduler --generator-workers 0 > nohup11.0 &
+
+
+
+# ---------------------------
+
+PYTHONPATH="."  luigi --module recommendation.task.model.trivago_bandits TrivagoBanditsTraining --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Paris, France"}' --n-factors 50 --learning-rate=0.0001 --epochs 52

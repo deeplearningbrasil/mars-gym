@@ -1,6 +1,7 @@
 import os
 import re
 from collections import Counter
+from pyspark.sql.functions import posexplode, explode#, arrays_zip
 
 import luigi
 import math
@@ -18,12 +19,13 @@ from torchnlp.encoders import LabelEncoder
 from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncoder
 from unidecode import unidecode
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from pyspark.sql.types import ArrayType
+from pyspark.sql.types import ArrayType, FloatType
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
 from recommendation.utils import parallel_literal_eval, datetime_to_shift, date_to_day_of_week, date_to_day_of_month, clean_filename, literal_eval_if_str
 from pyspark.sql.window import Window
 import pyspark.sql.functions as func
+from pyspark.sql.functions import when
 
 BASE_DIR: str = os.path.join("output", "trivago")
 DATASET_DIR: str = os.path.join("output", "trivago", "dataset")
@@ -40,15 +42,15 @@ class CheckDataset(luigi.Task):
             f"As seguintes pastas são esperadas com o dataset: {[output.path for output in self.output()]}")
 
 class FilterDataset(BasePySparkTask):
-    sample_size: int = luigi.IntParameter(default=0)
+    sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
 
     def requires(self):
       return CheckDataset()
 
     def output(self):
-      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__size=%d__.csv" % (self.sample_size))),\
-              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata__size=%d__.csv" % (self.sample_size)))
+      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__size=%d.csv" % (self.sample_size))),\
+              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata__size=%d.csv" % (self.sample_size)))
 
     def main(self, sc: SparkContext, *args):
       os.makedirs(os.path.join(DATASET_DIR, clean_filename(self.filter_city)), exist_ok=True)
@@ -71,14 +73,14 @@ class FilterDataset(BasePySparkTask):
       meta_df.toPandas().to_csv(self.output()[1].path, index=False)
 
 class TransformMetaDataset(luigi.Task):
-    sample_size: int = luigi.IntParameter(default=0)
+    sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
 
     def requires(self):
       return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city)
 
     def output(self):
-      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata_transform__size=%d__.csv" % (self.sample_size)))
+      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata_transform__size=%d.csv" % (self.sample_size)))
 
     # 'a|b|c' -> ['a', 'b', 'c']
     #
@@ -93,21 +95,22 @@ class TransformMetaDataset(luigi.Task):
       df_meta = pd.read_csv(self.input()[1].path)  
 
       tf_prop_meta = self.split_df_columns(df_meta, 'properties')
-      df_meta      = df_meta.join(tf_prop_meta).drop(['properties'], axis=1)
+      df_meta      = df_meta.join(tf_prop_meta).drop(['properties'], axis=1).shift(periods=1, fill_value=0)
       
-      
+      df_meta['list_metadata'] = df_meta.drop('item_id', 1).values.tolist()
+
       df_meta.to_csv(self.output().path, index=False)
 
 class TransformSessionDataset(luigi.Task):
-    sample_size: int = luigi.IntParameter(default=0)
+    sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
 
     def requires(self):
       return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city)
 
     def output(self):
-      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train_transform__size=%d__.csv" % (self.sample_size))),\
-              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "text_vocabulary__size=%d__.csv" % (self.sample_size)))
+      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train_transform__size=%d.csv" % (self.sample_size))),\
+              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "text_vocabulary__size=%d.csv" % (self.sample_size)))
 
     def run(self):
       df        = pd.read_csv(self.input()[0].path)  
@@ -164,20 +167,20 @@ class TransformSessionDataset(luigi.Task):
       pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
       
 class GenerateIndicesDataset(BasePySparkTask):
-    sample_size: int = luigi.IntParameter(default=0)
+    sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
 
     def requires(self):
       return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city)
 
     def output(self):
-      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_indices__size=%d__.csv" % (self.sample_size))),\
-            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "user_indices__size=%d__.csv" % (self.sample_size))),\
-            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "session_indices__size=%d__.csv" % (self.sample_size))),\
-            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "action_type_indices__size=%d__.csv" % (self.sample_size))),\
-            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "platform_indices__size=%d__.csv" % (self.sample_size))),\
+      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_indices__size=%d.csv" % (self.sample_size))),\
+            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "user_indices__size=%d.csv" % (self.sample_size))),\
+            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "session_indices__size=%d.csv" % (self.sample_size))),\
+            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "action_type_indices__size=%d.csv" % (self.sample_size))),\
+            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "platform_indices__size=%d.csv" % (self.sample_size))),\
             luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "city_indices__size=%d__csv" % (self.sample_size))),\
-            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "device_indices__size=%d__.csv" % (self.sample_size))),\
+            luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city),  "device_indices__size=%d.csv" % (self.sample_size))),\
 
     def main(self, sc: SparkContext, *args):
       os.makedirs(DATASET_DIR, exist_ok=True)
@@ -207,7 +210,7 @@ class GenerateIndicesDataset(BasePySparkTask):
       device_idx_df.to_csv(self.output()[6].path, index_label="device_idx")
 
 class CreateIndexDataset(BasePySparkTask):
-    sample_size: int = luigi.IntParameter(default=0)
+    sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
 
     def requires(self):
@@ -216,8 +219,8 @@ class CreateIndexDataset(BasePySparkTask):
               GenerateIndicesDataset(sample_size=self.sample_size, filter_city=self.filter_city)
 
     def output(self):
-      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train_indexed__size=%d__.csv" % (self.sample_size))),\
-              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata_indexed__size=%d__.csv" % (self.sample_size)))
+      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train_indexed__size=%d.csv" % (self.sample_size))),\
+              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata_indexed__size=%d.csv" % (self.sample_size)))
 
 
     def main(self, sc: SparkContext, *args):
@@ -255,10 +258,8 @@ class CreateIndexDataset(BasePySparkTask):
       # Index impressions
       #item_idx_df = item_idx_df.set_index('item_id')
 
-
       # Joint meta
       meta_df = meta_df.join(item_idx_df, "item_id")
-
 
       # Save
       df = train_df.select("timestamp","step", "user_idx", "session_idx", "action_type_idx", 
@@ -273,14 +274,15 @@ class CreateIndexDataset(BasePySparkTask):
       meta_df.toPandas().to_csv(self.output()[1].path, index=False)
 
 class CreateAggregateIndexDataset(BasePySparkTask):
-    sample_size: int = luigi.IntParameter(default=0)
+    sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
+    window_hist: int = luigi.IntParameter(default=5)
 
     def requires(self):
       return  CreateIndexDataset(sample_size=self.sample_size, filter_city=self.filter_city)
 
     def output(self):
-      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__agg_indexed__size=%d__.csv" % (self.sample_size)))
+      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__agg_indexed__size=%d_window=%d.csv" % (self.sample_size, self.window_hist)))
 
     def main(self, sc: SparkContext, *args):
       os.makedirs(DATASET_DIR, exist_ok=True)
@@ -301,35 +303,144 @@ class CreateAggregateIndexDataset(BasePySparkTask):
       win_over_session_with_current = Window.partitionBy('session_idx').orderBy('timestamp')\
                           .rangeBetween(Window.unboundedPreceding, 0)
 
+      def _pad_sequence(seq, pad) -> np.ndarray:
+        if seq is None:
+          return None
+        else:
+          return (([0] * pad) + seq)[-pad:]
+
       def to_array(xs):
           return [literal_eval_if_str(c) if isinstance(literal_eval_if_str(c), int) else literal_eval_if_str(c)[0] for c in literal_eval_if_str(xs)] if xs is not None else None
-      to_array_udf = udf(lambda y: to_array(y), ArrayType(IntegerType()))
+      to_array_udf = udf(lambda x: _pad_sequence(to_array(x), self.window_hist), ArrayType(IntegerType()))
 
 
       df_group = train_df.\
-                withColumn("timestamp_diff", F.sum(col("timestamp")).over(win_over_session_with_current)-col("timestamp")).\
-                withColumn("step", max("step").over(win_over_session)+lit(1)).\
-                withColumn("list_reference_search_for_poi", to_array_udf(collect_list("reference_search_for_poi").over(win_over_session))).\
-                withColumn("list_reference_change_of_sort_order", to_array_udf(collect_list("reference_change_of_sort_order").over(win_over_session))).\
-                withColumn("list_reference_search_for_destination", to_array_udf(collect_list("reference_search_for_destination").over(win_over_session))).\
-                withColumn("list_reference_filter_selection", to_array_udf(collect_list("reference_filter_selection").over(win_over_session))).\
-                withColumn("list_reference_interaction_item_image_idx", to_array_udf(collect_list("reference_interaction_item_image_idx").over(win_over_session))).\
-                withColumn("list_reference_interaction_item_rating_idx", to_array_udf(collect_list("reference_interaction_item_rating_idx").over(win_over_session))).\
-                withColumn("list_reference_clickout_item_idx", to_array_udf(collect_list("reference_clickout_item_idx").over(win_over_session))).\
-                withColumn("list_reference_interaction_item_deals_idx", to_array_udf(collect_list("reference_interaction_item_deals_idx").over(win_over_session))).\
-                withColumn("list_reference_search_for_item_idx", to_array_udf(collect_list("reference_search_for_item_idx").over(win_over_session))).\
-                withColumn("list_reference_interaction_item_info_idx", to_array_udf(collect_list("reference_interaction_item_info_idx").over(win_over_session))).\
-                withColumn("list_action_type_idx", collect_list("action_type_idx").over(win_over_session)).\
-                withColumn("list_current_filters", to_array_udf(collect_list("current_filters").over(win_over_session))).\
-                orderBy("session_idx", "timestamp")
+                  withColumn("timestamp_diff", F.sum(col("timestamp")).over(win_over_session_with_current)-col("timestamp")).\
+                  withColumn("step",                                  (max("step").over(win_over_session)+lit(1)).cast(IntegerType())).\
+                  withColumn("list_reference_search_for_poi",         to_array_udf(collect_list("reference_search_for_poi").over(win_over_session))).\
+                  withColumn("list_reference_change_of_sort_order",   to_array_udf(collect_list("reference_change_of_sort_order").over(win_over_session))).\
+                  withColumn("list_reference_search_for_destination", to_array_udf(collect_list("reference_search_for_destination").over(win_over_session))).\
+                  withColumn("list_reference_filter_selection",       to_array_udf(collect_list("reference_filter_selection").over(win_over_session))).\
+                  withColumn("list_reference_interaction_item_image_idx",   to_array_udf(collect_list("reference_interaction_item_image_idx").over(win_over_session))).\
+                  withColumn("list_reference_interaction_item_rating_idx",  to_array_udf(collect_list("reference_interaction_item_rating_idx").over(win_over_session))).\
+                  withColumn("list_reference_clickout_item_idx",      to_array_udf(collect_list("reference_clickout_item_idx").over(win_over_session))).\
+                  withColumn("list_reference_interaction_item_deals_idx",   to_array_udf(collect_list("reference_interaction_item_deals_idx").over(win_over_session))).\
+                  withColumn("list_reference_search_for_item_idx",    to_array_udf(collect_list("reference_search_for_item_idx").over(win_over_session))).\
+                  withColumn("list_reference_interaction_item_info_idx",    to_array_udf(collect_list("reference_interaction_item_info_idx").over(win_over_session))).\
+                  withColumn("list_action_type_idx",                  to_array_udf(collect_list("action_type_idx").over(win_over_session))).\
+                  withColumn("list_current_filters",                  to_array_udf(collect_list("current_filters").over(win_over_session))).\
+                  withColumn("action_type_item_idx",  when(train_df.action_type_idx == 0, col("reference_interaction_item_image_idx")).\
+                                          when(train_df.action_type_idx == 2, col("reference_interaction_item_rating_idx")).\
+                                          when(train_df.action_type_idx == 3, col("reference_clickout_item_idx")).\
+                                          when(train_df.action_type_idx == 4, col("reference_interaction_item_deals_idx")).\
+                                          when(train_df.action_type_idx == 6, col("reference_search_for_item_idx")).\
+                                          when(train_df.action_type_idx == 9, col("reference_interaction_item_info_idx")).\
+                                          otherwise(0)).\
+                  withColumn("clicked",   when(train_df.action_type_idx == 3, 1.0).otherwise(0.0)).\
+                  orderBy("session_idx", "timestamp")
 
       # Filter only action type - clickout item
       df_group = df_group.filter(df_group.action_type_idx == 3) # 3,clickout item
 
-      df_group = df_group.select('timestamp', 'timestamp_diff', 'step', 'user_idx', 'session_idx', 'action_type_idx',
+      df_group = df_group.select('timestamp', 'timestamp_diff', 'step', 'user_idx', 'session_idx', 'action_type_item_idx', 'action_type_idx',
                                 'list_action_type_idx', 'list_reference_search_for_poi', 'list_reference_change_of_sort_order',
                                 'list_reference_search_for_destination', 'list_reference_filter_selection', 'list_reference_interaction_item_image_idx',
                                 'list_reference_interaction_item_rating_idx', 'list_reference_clickout_item_idx', 'list_reference_interaction_item_deals_idx',
-                                'list_reference_search_for_item_idx', 'list_reference_interaction_item_info_idx', 'list_action_type_idx', 
-                                'list_current_filters', 'device_idx', 'current_filters', 'impressions', 'prices')
+                                'list_reference_search_for_item_idx', 'list_reference_interaction_item_info_idx', 
+                                'list_current_filters', 'platform_idx', 'device_idx', 'current_filters', 'impressions', 'prices', 'clicked')
+      
       df_group.toPandas().to_csv(self.output().path, index=False)
+
+
+class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
+    sample_size: int = luigi.IntParameter(default=-1)
+    filter_city: str = luigi.Parameter(default='all')
+    window_hist: int = luigi.IntParameter(default=5)
+
+    def requires(self):
+      return  CreateAggregateIndexDataset(sample_size=self.sample_size, filter_city=self.filter_city, window_hist=self.window_hist),\
+              GenerateIndicesDataset(sample_size=self.sample_size, filter_city=self.filter_city)
+
+    def output(self):
+      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__explode_indexed__size=%d_window=%d.csv" % (self.sample_size, self.window_hist)))
+
+    def to_array(self, xs):
+        return [literal_eval_if_str(c) if isinstance(literal_eval_if_str(c), int) or isinstance(literal_eval_if_str(c), float) else literal_eval_if_str(c)[0] 
+                    for c in literal_eval_if_str(xs)] if xs is not None else None
+
+
+    def main(self, sc: SparkContext, *args):
+      os.makedirs(DATASET_DIR, exist_ok=True)
+      spark = SparkSession(sc)
+      to_array_int_udf   = udf(lambda x: self.to_array(x), ArrayType(IntegerType()))
+      to_array_float_udf = udf(lambda x: self.to_array(x), ArrayType(FloatType()))
+
+      df          = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
+      item_idx_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+
+      count1 = df.count()
+      
+      # Expand impressions interactions
+      df = df.withColumn("impressions", to_array_int_udf(df.impressions)).\
+              withColumn("prices", to_array_float_udf(df.prices))
+
+      df = df.select("*", posexplode("impressions").alias("pos_item_idx", "item_id")).\
+            join(item_idx_df, "item_id")
+
+      df = df.withColumn("price", df["prices"].getItem(df.pos_item_idx)).\
+              withColumn("clicked", when(df.action_type_item_idx == df.item_idx, 1.0).otherwise(0.0))
+
+      count2 = df.count()
+
+      #print(df.select('user_idx', "action_type_item_idx", "pos_item_idx", "item_idx", "item_id", "impressions", "prices", "clicked").show(50))
+      #print("df.count()", count1, count2)
+      df.toPandas().to_csv(self.output().path, index=False)
+
+
+class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
+    sample_size: int = luigi.IntParameter(default=-1)
+    filter_city: str = luigi.Parameter(default='all')
+    window_hist: int = luigi.IntParameter(default=5)
+
+    def requires(self):
+        return CreateExplodeWithNoClickIndexDataset(sample_size=self.sample_size, filter_city=self.filter_city, window_hist=self.window_hist),\
+               CreateIndexDataset(sample_size=self.sample_size, filter_city=self.filter_city),\
+               GenerateIndicesDataset(sample_size=self.sample_size, filter_city=self.filter_city)
+
+    @property
+    def stratification_property(self) -> str:
+        return "clicked"
+
+    @property
+    def dataset_dir(self) -> str:
+        return os.path.join(DATASET_DIR, clean_filename(self.filter_city))
+
+    @property
+    def num_users(self):
+        if not hasattr(self, "_num_users"):
+            accounts_df = pd.read_csv(self.input()[2][1].path)
+            self._num_users = len(accounts_df)
+        return self._num_users
+
+    @property
+    def num_businesses(self):
+        if not hasattr(self, "_num_businesses"):
+            businesses_df = pd.read_csv(self.input()[2][0].path)
+            self._num_businesses = len(businesses_df)
+        return self._num_businesses
+
+    def read_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_read_data_frame"):
+            self._read_data_frame = pd.read_csv(self.input()[0].path)
+            
+
+            # TODO
+            self._read_data_frame['n_users'] = self.num_users
+            self._read_data_frame['n_items'] = self.num_businesses
+            self._read_data_frame['clicked'] = self._read_data_frame['clicked'].astype(float)
+
+        return self._read_data_frame
+
+    @property
+    def metadata_data_frame_path(self) -> str:
+        return self.input()[1][1].path

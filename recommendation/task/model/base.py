@@ -278,6 +278,7 @@ class BaseTorchModelTraining(BaseModelTraining):
             with redirect_stdout(summary_file):
                 sample_input = default_convert(self.train_dataset[0][0])
                 summary(module, sample_input)
+            summary(module, sample_input)
 
         trial = self.create_trial(module)
 
