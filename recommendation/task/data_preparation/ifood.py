@@ -112,7 +112,6 @@ class CleanSessionDataset(BasePySparkTask):
         # Save
         df.write.parquet(self.output().path)
 
-
 class AddAdditionallInformationDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
     sample_size: int = luigi.IntParameter(default=-1)
@@ -185,7 +184,6 @@ class AddAdditionallInformationDataset(BasePySparkTask):
         # Save files
         availability_df.write.parquet(self.output()[1].path)
         session_df.write.parquet(self.output()[2].path)
-
 
 class PrepareRestaurantContentDataset(BasePySparkTask):
     def requires(self):
@@ -331,8 +329,6 @@ class ProcessRestaurantContentDataset(luigi.Task):
         pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
         dish_df.drop_duplicates().set_index('id').to_csv(self.output()[2].path)
 
-
-
 class BuildEmbeddingVocabulary(luigi.Task):
     menu_text_length: int = luigi.IntParameter(default=5000)
     description_text_length: int = luigi.IntParameter(default=200)
@@ -431,7 +427,6 @@ class SplitSessionDataset(BasePySparkTask):
         train_df.write.parquet(self.output()[0].path)
         test_df.write.parquet(self.output()[1].path)
 
-
 class GenerateIndicesForAccountsAndMerchantsDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
     sample_size: int = luigi.IntParameter(default=-1)
@@ -469,7 +464,6 @@ class GenerateIndicesForAccountsAndMerchantsDataset(BasePySparkTask):
         account_df.toPandas().to_csv(self.output()[0].path, index_label="account_idx")
         merchant_df.toPandas().to_csv(self.output()[1].path, index_label="merchant_idx")
 
-
 class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
     sample_size: int = luigi.IntParameter(default=-1)
@@ -506,7 +500,6 @@ class IndexAccountsAndMerchantsOfSessionTrainDataset(BasePySparkTask):
 
         train_df.write.parquet(self.output().path)
 
-
 class CreateGroundTruthForInterativeEvaluation(BasePySparkTask):
     minimum_interactions: int = luigi.FloatParameter(default=5)
     filter_dish: str = luigi.Parameter(default="all")
@@ -535,7 +528,6 @@ class CreateGroundTruthForInterativeEvaluation(BasePySparkTask):
             df = df.join(df_dish.select("id"), df.dish_description == df_dish.id)
 
         df.write.parquet(self.output().path)
-
 
 class LoggingPolicyPsDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
@@ -582,7 +574,6 @@ class LoggingPolicyPsDataset(BasePySparkTask):
         p0 = self._evaluate_logging_policy(train_df)
 
         p0.to_csv(self.output().path, index=False)
-
 
 class CreateIntraSessionInteractionDataset(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
@@ -730,7 +721,6 @@ class CreateInteractionDataset(BasePySparkTask):
 
         train_df.write.parquet(self.output().path)
 
-
 class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
 
     def requires(self):
@@ -837,8 +827,6 @@ class PrepareIfoodIntraSessionInteractionsDataFrames(BasePrepareDataFrames):
     def metadata_data_frame_path(self) -> str:
         return self.input()[0][1].path
 
-
-
 class PrepareIfoodInteractionsDataFrames(BasePrepareDataFrames):
     def requires(self):
         return GenerateIndicesForAccountsAndMerchantsDataset(
@@ -885,7 +873,6 @@ class PrepareIfoodInteractionsDataFrames(BasePrepareDataFrames):
     def metadata_data_frame_path(self) -> str:
         return self.input()[0][1].path
 
-
 class PrepareIfoodVisitsBuysInteractionsDataFrames(PrepareIfoodInteractionsDataFrames):
 
     @property
@@ -900,7 +887,6 @@ class PrepareIfoodVisitsBuysInteractionsDataFrames(PrepareIfoodInteractionsDataF
         df["n_users"] = self.num_users
         df["n_items"] = self.num_businesses
         return df
-
 
 class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
     split_per_user: bool = luigi.BoolParameter(default=False)
@@ -962,7 +948,6 @@ class PrepareIfoodAccountMatrixWithBinaryBuysDataFrames(BasePrepareDataFrames):
             return self._transform_data_frame(df)
         return df
 
-
 class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodAccountMatrixWithBinaryBuysDataFrames):
 
     def _transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -975,7 +960,6 @@ class PrepareIfoodMerchantMatrixWithBinaryBuysAndContentDataFrames(PrepareIfoodA
         df["n_items"] = self.num_businesses
 
         return df
-
 
 class PrepareIfoodIndexedSessionTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)
@@ -1124,7 +1108,6 @@ class PrepareIfoodIndexedOrdersTestData(BasePySparkTask):
             orders_df.write.parquet(self.output().path)
         else:
             raise Exception("Test Data Empty after filtered...")
-
 
 class ListAccountMerchantTuplesForIfoodIndexedOrdersTestData(BasePySparkTask):
     test_size: float = luigi.FloatParameter(default=0.10)

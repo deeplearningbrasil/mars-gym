@@ -3,9 +3,9 @@ from typing import Tuple, List, Union, Optional, Dict
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
-
+import torch
 from recommendation.task.meta_config import ProjectConfig, IOType, Column
-from recommendation.utils import parallel_literal_eval
+from recommendation.utils import parallel_literal_eval, literal_eval_if_str
 
 
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
@@ -49,6 +49,10 @@ class InteractionsDataset(Dataset):
     def _convert_dtype(self, value: np.ndarray, type: IOType) -> np.ndarray:
         if type == IOType.INDEX:
             return value.astype(np.int64)
+        if type == IOType.INT_ARRAY:
+            return np.array([np.array(v, dtype=np.int64) for v in value])
+        if type == IOType.FLOAT_ARRAY:
+            return np.array([np.array(v, dtype=np.float64) for v in value])
         return value
 
     def _get_metadata(self, item_indices: np.ndarray, column: Column) -> np.ndarray:
