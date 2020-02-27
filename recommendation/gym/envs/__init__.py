@@ -1,1 +1,1 @@
-from recommendation.gym.envs.ifood import IFoodRecSysEnv
+from recommendation.gym.envs.recsys import RecSysEnv

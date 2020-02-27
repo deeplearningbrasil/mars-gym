@@ -10,7 +10,7 @@ from recommendation.utils import parallel_literal_eval
 
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
-        if column.type == IOType.FLOAT_ARRAY and column.name in data_frame:
+        if (column.type == IOType.FLOAT_ARRAY or column.type == IOType.INT_ARRAY) and column.name in data_frame:
             data_frame[column.name] = parallel_literal_eval(data_frame[column.name])
 
 

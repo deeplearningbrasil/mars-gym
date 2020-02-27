@@ -17,6 +17,8 @@ PROJECTS: Dict[str, ProjectConfig] = {
             Column("category_names", IOType.INT_ARRAY), Column("restaurant_complete_info", IOType.FLOAT_ARRAY),
         ],
         output_column=Column("buy", IOType.NUMBER),
+        hist_view_column_name="hist_visits",
+        hist_output_column_name="hist_buys",
         auxiliar_output_columns=[Column("ps", IOType.NUMBER)],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),

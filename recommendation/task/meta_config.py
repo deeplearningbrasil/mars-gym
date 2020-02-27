@@ -32,8 +32,11 @@ class ProjectConfig(object):
                  item_column: Column,
                  other_input_columns: List[Column],
                  output_column: Column,
+                 hist_view_column_name: str,
+                 hist_output_column_name: str,
                  recommender_type: RecommenderType,
                  dataset_extra_params: dict = {},
+                 propensity_score_column_name: str = "ps",
                  n_users_column: str = "n_users",
                  n_items_column: str = "n_items",
                  default_balance_fields: List[str] = [],
@@ -49,8 +52,11 @@ class ProjectConfig(object):
         self.item_column = item_column
         self.other_input_columns = other_input_columns
         self.output_column = output_column
+        self.hist_view_column_name = hist_view_column_name
+        self.hist_output_column_name = hist_output_column_name
         self.auxiliar_output_columns = auxiliar_output_columns
         self.recommender_type = recommender_type
+        self.propensity_score_column_name = propensity_score_column_name
         self.n_users_column = n_users_column
         self.n_items_column = n_items_column
         self.default_balance_fields = default_balance_fields

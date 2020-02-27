@@ -1,14 +1,15 @@
+from typing import Tuple
+
 import gym
 import numpy as np
 import pandas as pd
 from gym import utils
-from typing import List, Tuple
 
 
-class IFoodRecSysEnv(gym.Env, utils.EzPickle):
+class RecSysEnv(gym.Env, utils.EzPickle):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, dataset: pd.DataFrame, obs_batch_size: int = 2000):
+    def __init__(self, dataset: pd.DataFrame, item_column: str, obs_batch_size: int = 2000):
         self.init_batch = 0
         self.end_batch = 0
         self.obs_batch_size = obs_batch_size
@@ -16,8 +17,9 @@ class IFoodRecSysEnv(gym.Env, utils.EzPickle):
         # TODO
         # self.observation_space
         # self.action_space
-        self.dataset: pd.DataFrame = dataset[['account_idx', 'merchant_idx', 'click_timestamp']].sort_values(
-            "click_timestamp")
+        self.dataset = dataset
+        self.item_column = item_column
+        self.obs_dataset = dataset.drop(columns=[item_column])
 
     def _compute_end_batch(self):
         if self.end_batch + self.obs_batch_size < len(self.dataset):
@@ -30,17 +32,17 @@ class IFoodRecSysEnv(gym.Env, utils.EzPickle):
         return {}
 
     def _compute_rewards(self, action: np.ndarray) -> np.ndarray:
-        merchant_list = self.dataset[self.init_batch: self.end_batch][['merchant_idx']].values.flatten()
+        expected_items = self.dataset[self.init_batch: self.end_batch][[self.item_column]].values.flatten()
 
-        return (action == merchant_list) * 1.0
+        return (action == expected_items) * 1.0
 
-    def _next_obs(self):
-        return self.dataset[self.init_batch: self.end_batch][['account_idx', 'click_timestamp']].values
+    def _next_obs(self) -> np.ndarray:
+        return self.obs_dataset[self.init_batch: self.end_batch].values
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, bool, dict]:
         rewards = self._compute_rewards(action)
-        info    = self._compute_stats(action)
-        done    = False
+        info = self._compute_stats(action)
+        done = False
 
         if self.end_batch == (len(self.dataset) - 1):
             done = True
