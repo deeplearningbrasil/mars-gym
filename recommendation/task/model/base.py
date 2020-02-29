@@ -1,6 +1,5 @@
 import abc
 import gc
-import json
 import logging
 import multiprocessing
 import os
@@ -8,7 +7,7 @@ import random
 import shutil
 from contextlib import redirect_stdout
 from typing import Type, Dict, List, Optional
-
+import json
 import luigi
 import numpy as np
 import pandas as pd
@@ -24,6 +23,7 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
+import torchbearer
 from torchbearer import Trial
 from torchbearer.callbacks import GradientNormClipping
 from torchbearer.callbacks.checkpointers import ModelCheckpoint
@@ -65,7 +65,7 @@ class BaseModelTraining(luigi.Task):
     minimum_interactions: int = luigi.FloatParameter(default=5)
     session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
-    dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "k_fold"], default="holdout")
+    dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "column", "time", "k_fold"], default="holdout")
     val_size: float = luigi.FloatParameter(default=0.2)
     n_splits: int = luigi.IntParameter(default=5)
     split_index: int = luigi.IntParameter(default=0)
@@ -180,6 +180,12 @@ class BaseModelTraining(luigi.Task):
         return self._test_dataset
 
     @property
+    def vocab_size(self):
+        if not hasattr(self, "_vocab_size"):
+            self._vocab_size = int(self.train_data_frame.iloc[0]["vocab_size"])
+        return self._vocab_size
+
+    @property
     def n_users(self) -> int:
         if not hasattr(self, "_n_users"):
             self._n_users = int(self.train_data_frame.iloc[0][self.project_config.n_users_column])
@@ -269,9 +275,9 @@ class BaseTorchModelTraining(BaseModelTraining):
         if self.device == "cuda":
             torch.cuda.set_device(self.device_id)
 
-        train_loader = self.get_train_generator()
-        val_loader = self.get_val_generator()
-        module = self.create_module()
+        train_loader    = self.get_train_generator()
+        val_loader      = self.get_val_generator()
+        module          = self.create_module()
 
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
@@ -292,10 +298,24 @@ class BaseTorchModelTraining(BaseModelTraining):
         plot_history(history_df).savefig(os.path.join(self.output().path, "history.jpg"))
 
         self.after_fit()
+        self.evaluate()
         self.cache_cleanup()
+
 
     def after_fit(self):
         pass
+
+    def evaluate(self):
+        module      = self.get_trained_module()
+        val_loader  = self.get_val_generator()
+
+        print("================== Evaluate ========================")
+        trial = Trial(module, self._get_optimizer(module), self._get_loss_function(), callbacks=[],
+                      metrics=self.metrics).to(self.torch_device)\
+                    .with_generators(val_generator=val_loader).eval()
+
+        print(json.dumps((trial.evaluate(data_key=torchbearer.VALIDATION_DATA)), indent = 4))
+        
 
     def create_trial(self, module: nn.Module) -> Trial:
         loss_function = self._get_loss_function()

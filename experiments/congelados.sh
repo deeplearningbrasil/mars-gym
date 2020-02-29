@@ -25,3 +25,5 @@ PYTHONPATH="." nohup luigi --module recommendation.task.interaction InteractionT
 # ---------------------------
 
 PYTHONPATH="."  luigi --module recommendation.task.model.trivago_bandits TrivagoBanditsTraining --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Paris, France"}' --n-factors 50 --learning-rate=0.0001 --epochs 52
+
+PYTHONPATH="."  luigi --module recommendation.task.model.trivago_bandits TrivagoBanditsTraining --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Cartagena, Colombia"}' --n-factors 50 --learning-rate=0.0001 --optimizer radam --epochs 60

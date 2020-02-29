@@ -85,6 +85,7 @@ def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5,
     y_pred = (y_pred.float() > threshold).float()
     y_true = (y_true.float() > threshold).float()
 
+
     tp = (y_true * y_pred).sum().to(torch.float32)
     tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
     fp = ((1 - y_true) * y_pred).sum().to(torch.float32)

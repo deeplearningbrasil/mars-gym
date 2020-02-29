@@ -200,9 +200,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                                                        pd.read_csv(self.val_data_frame_path)])
         return self._interactions_data_frame
 
-    @property
-    def train_data_frame(self) -> pd.DataFrame:
-        return self._train_data_frame
+    #@property
+    #def train_data_frame(self) -> pd.DataFrame:
+    #    return self._train_data_frame
 
     @property
     def val_data_frame(self) -> pd.DataFrame:

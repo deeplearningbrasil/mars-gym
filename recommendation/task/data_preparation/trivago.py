@@ -26,6 +26,7 @@ from recommendation.utils import parallel_literal_eval, datetime_to_shift, date_
 from pyspark.sql.window import Window
 import pyspark.sql.functions as func
 from pyspark.sql.functions import when
+from sklearn.preprocessing import MinMaxScaler
 
 BASE_DIR: str = os.path.join("output", "trivago")
 DATASET_DIR: str = os.path.join("output", "trivago", "dataset")
@@ -52,6 +53,31 @@ class FilterDataset(BasePySparkTask):
       return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__size=%d.csv" % (self.sample_size))),\
               luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata__size=%d.csv" % (self.sample_size)))
 
+    # https://github.com/carlosvar9103/RecSys2019S/blob/master/src/RecSys2019_Carlos.ipynb
+    def clean_data(self, df):
+      # Remove sessions where reference=NA or the impressions list is empty for the clickout item:
+
+      #first: contruct dataframe with session_id and the reference at the last corresponding step (=LAST clickout)
+      last_ref = pd.DataFrame(df.groupby(['session_id']).reference.last(),columns=['reference'])
+      last_ref.reset_index(level=0, inplace=True) #convert index session_id to an actual column
+      
+      #second: same for impressions list: 
+      last_imp = pd.DataFrame(df.groupby(['session_id']).impressions.last(),columns=['impressions'])
+      last_imp.reset_index(level=0, inplace=True)
+      
+      #third: merge together => columns: sessions_id, reference, impressions
+      temp = pd.merge(last_ref, last_imp, left_on=["session_id"], right_on=["session_id"])
+      
+      
+      #fourth step: remove irrelevant sessions: 
+      temp2=temp[temp.reference.apply(lambda x: x.isnumeric())] #drop session if reference value is not a number
+      temp3= temp2.dropna(axis=0,subset=['impressions']) #drop session if impressions list is NaN
+
+      #fifth step: get back the original full dataset (=all columns)
+      out = pd.merge(df,pd.DataFrame(temp3["session_id"]),on=["session_id"])
+      
+      return out
+
     def main(self, sc: SparkContext, *args):
       os.makedirs(os.path.join(DATASET_DIR, clean_filename(self.filter_city)), exist_ok=True)
 
@@ -69,7 +95,7 @@ class FilterDataset(BasePySparkTask):
         train_df = train_df.sort("timestamp", ascending=False).limit(self.sample_size)
 
       # Save
-      train_df.toPandas().to_csv(self.output()[0].path, index=False)
+      self.clean_data(train_df.toPandas()).to_csv(self.output()[0].path, index=False)
       meta_df.toPandas().to_csv(self.output()[1].path, index=False)
 
 class TransformMetaDataset(luigi.Task):
@@ -405,15 +431,22 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
     def requires(self):
         return CreateExplodeWithNoClickIndexDataset(sample_size=self.sample_size, filter_city=self.filter_city, window_hist=self.window_hist),\
                CreateIndexDataset(sample_size=self.sample_size, filter_city=self.filter_city),\
-               GenerateIndicesDataset(sample_size=self.sample_size, filter_city=self.filter_city)
+               GenerateIndicesDataset(sample_size=self.sample_size, filter_city=self.filter_city), \
+               TransformSessionDataset(sample_size=self.sample_size, filter_city=self.filter_city)
 
     @property
     def stratification_property(self) -> str:
-        return "clicked"
+        return "user_idx"
 
     @property
     def dataset_dir(self) -> str:
         return os.path.join(DATASET_DIR, clean_filename(self.filter_city))
+
+    @property
+    def vocab_size(self):
+        if not hasattr(self, "_vocab_size"):
+            self._vocab_size = len(pd.read_csv(self.input()[3][1].path))
+        return self._vocab_size
 
     @property
     def num_users(self):
@@ -432,15 +465,30 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
     def read_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_read_data_frame"):
             self._read_data_frame = pd.read_csv(self.input()[0].path)
-            
-
-            # TODO
-            self._read_data_frame['n_users'] = self.num_users
-            self._read_data_frame['n_items'] = self.num_businesses
-            self._read_data_frame['clicked'] = self._read_data_frame['clicked'].astype(float)
 
         return self._read_data_frame
 
     @property
     def metadata_data_frame_path(self) -> str:
         return self.input()[1][1].path
+
+    def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
+        # TODO
+        df['n_users'] = self.num_users
+        df['n_items'] = self.num_businesses
+        df['clicked'] = df['clicked'].astype(float)
+        df['vocab_size'] = self.vocab_size
+
+        df['hist_visits'] = 1
+        df['hist_buys']   = 1
+
+        if not hasattr(self, "_scaler"):
+            self._scaler = MinMaxScaler()
+
+        if data_key == "TRAIN_DATA":
+          df['price'] = self._scaler.fit_transform(df[['price']]).reshape(-1)
+
+        elif data_key == "VALIDATION_DATA":
+          df['price'] = self._scaler.transform(df[['price']]).reshape(-1)
+        
+        return df        
