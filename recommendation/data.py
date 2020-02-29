@@ -49,6 +49,8 @@ class InteractionsDataset(Dataset):
     def _convert_dtype(self, value: np.ndarray, type: IOType) -> np.ndarray:
         if type == IOType.INDEX:
             return value.astype(np.int64)
+        if type == IOType.NUMBER:
+            return value.astype(np.float64)            
         if type == IOType.INT_ARRAY:
             return np.array([np.array(v, dtype=np.int64) for v in value])
         if type == IOType.FLOAT_ARRAY:
@@ -78,5 +80,4 @@ class InteractionsDataset(Dataset):
         if self._project_config.auxiliar_output_columns:
             output = tuple([output]) + tuple(self._convert_dtype(rows[column.name].values, column.type)
                                              for column in self._project_config.auxiliar_output_columns)
-
         return inputs, output

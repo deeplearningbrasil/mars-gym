@@ -289,11 +289,11 @@ class CreateIndexDataset(BasePySparkTask):
 
       # Save
       df = train_df.select("timestamp","step", "user_idx", "session_idx", "action_type_idx", 
-                      "reference_search_for_poi","reference_change_of_sort_order",
-                      "reference_search_for_destination","reference_filter_selection",
-                      "reference_interaction_item_image_idx","reference_interaction_item_rating_idx","reference_clickout_item_idx",
-                      "reference_interaction_item_deals_idx","reference_search_for_item_idx","reference_interaction_item_info_idx",
-                      "platform_idx", "city_idx", "device_idx", "current_filters", "impressions", "prices")\
+                          "reference_search_for_poi","reference_change_of_sort_order",
+                          "reference_search_for_destination","reference_filter_selection",
+                          "reference_interaction_item_image_idx","reference_interaction_item_rating_idx","reference_clickout_item_idx",
+                          "reference_interaction_item_deals_idx","reference_search_for_item_idx","reference_interaction_item_info_idx",
+                          "platform_idx", "city_idx", "device_idx", "current_filters", "impressions", "prices")\
               .toPandas()
       
       df.to_csv(self.output()[0].path, index=False)
@@ -377,7 +377,6 @@ class CreateAggregateIndexDataset(BasePySparkTask):
       
       df_group.toPandas().to_csv(self.output().path, index=False)
 
-
 class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
@@ -404,8 +403,6 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       df          = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
       item_idx_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
 
-      count1 = df.count()
-      
       # Expand impressions interactions
       df = df.withColumn("impressions", to_array_int_udf(df.impressions)).\
               withColumn("prices", to_array_float_udf(df.prices))
@@ -414,14 +411,23 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
             join(item_idx_df, "item_id")
 
       df = df.withColumn("price", df["prices"].getItem(df.pos_item_idx)).\
-              withColumn("clicked", when(df.action_type_item_idx == df.item_idx, 1.0).otherwise(0.0))
+              withColumn("clicked", when(df.action_type_item_idx == df.item_idx, 1.0).otherwise(0.0)).\
+              withColumn("view", lit(1.0))#.\  
 
-      count2 = df.count()
+      
+      # win_over_session = Window.partitionBy('user_idx', 'item_idx').orderBy('timestamp')\
+      #                     .rangeBetween(Window.unboundedPreceding, -1)
+      # win_over_session = Window.partitionBy('user_idx', 'item_idx').orderBy('timestamp')\
+      #                     .rangeBetween(Window.unboundedPreceding, -1)
+            
+      # df = df.withColumn("hist_views", F.sum(col("view")).over(win_over_session)).\
+      #         withColumn("hist_views", F.sum(col("view")).over(win_over_session)).\
+      #         withColumn("hist_clicked", F.sum(col("clicked")).over(win_over_session)).\
 
+      
       #print(df.select('user_idx', "action_type_item_idx", "pos_item_idx", "item_idx", "item_id", "impressions", "prices", "clicked").show(50))
       #print("df.count()", count1, count2)
       df.toPandas().to_csv(self.output().path, index=False)
-
 
 class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
     sample_size: int = luigi.IntParameter(default=-1)
@@ -478,9 +484,6 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
         df['n_items'] = self.num_businesses
         df['clicked'] = df['clicked'].astype(float)
         df['vocab_size'] = self.vocab_size
-
-        df['hist_visits'] = 1
-        df['hist_buys']   = 1
 
         if not hasattr(self, "_scaler"):
             self._scaler = MinMaxScaler()

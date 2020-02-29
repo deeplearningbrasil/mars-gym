@@ -18,7 +18,7 @@ from recommendation.task.model.base import BaseTorchModelTraining
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
-from recommendation.torch import NoAutoCollationDataLoader
+from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir
 
 
@@ -80,9 +80,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _get_batch_of_arm_scores(self, agent: BanditAgent, batch_dataset: Dataset,
                                  arm_indices: List[List[int]]) -> List[List[float]]:
+        
+        batch_sampler = FasterBatchSampler(batch_dataset, self.batch_size, shuffle=True)
         generator = NoAutoCollationDataLoader(
-            batch_dataset, batch_size=self.batch_size, shuffle=False,
-            num_workers=self.generator_workers,
+            batch_dataset,
+            batch_sampler=batch_sampler, num_workers=self.generator_workers,
             pin_memory=self.pin_memory if self.device == "cuda" else False)
 
         trial = Trial(agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device,
@@ -114,18 +116,18 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         ob_df = ob_df.join(indexed_arm_indices_df)
 
-        if len(self.known_observations_data_frame) > 0:
-            ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
-                                        self.project_config.hist_output_column_name])
-            hist_count_df = self.known_observations_data_frame.groupby(
-                [self.project_config.user_column.name, self.project_config.item_column.name]) \
-                .agg({self.project_config.hist_view_column_name: 'max',
-                      self.project_config.hist_output_column_name: 'max'}).reset_index()
-            ob_df = ob_df.merge(hist_count_df, how='left', on=[self.project_config.user_column.name,
-                                                               self.project_config.item_column.name]).fillna(0)
-        else:
-            ob_df[self.project_config.hist_view_column_name] = 0
-            ob_df[self.project_config.hist_output_column_name] = 0
+        # if len(self.known_observations_data_frame) > 0:
+        #     ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
+        #                                 self.project_config.hist_output_column_name])
+        #     hist_count_df = self.known_observations_data_frame.groupby(
+        #         [self.project_config.user_column.name, self.project_config.item_column.name]) \
+        #         .agg({self.project_config.hist_view_column_name: 'max',
+        #               self.project_config.hist_output_column_name: 'max'}).reset_index()
+        #     ob_df = ob_df.merge(hist_count_df, how='left', on=[self.project_config.user_column.name,
+        #                                                        self.project_config.item_column.name]).fillna(0)
+        # else:
+        #     ob_df[self.project_config.hist_view_column_name] = 0
+        #     ob_df[self.project_config.hist_output_column_name] = 0
 
         if self.project_config.output_column.name not in ob_df.columns:
             ob_df[self.project_config.output_column.name] = 1
@@ -150,36 +152,44 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_known_observations_data_frame"):
+            columns = self.obs_columns + [self.project_config.item_column.name,
+                                            self.project_config.output_column.name]
+
             self._known_observations_data_frame = pd.DataFrame(
-                columns=self.obs_columns + [self.project_config.item_column.name,
-                                            self.project_config.output_column.name])
+                columns=columns)\
+                        .astype(self.interactions_data_frame[columns].dtypes)
+            
         return self._known_observations_data_frame
 
     def _accumulate_known_observations(self, ob: np.ndarray, action: np.ndarray, reward: np.ndarray):
-        data = np.concatenate((ob, action.reshape(-1, 1), reward.reshape(-1, 1)), axis=1)
+        data      = np.concatenate((ob, action.reshape(-1, 1), reward.reshape(-1, 1)), axis=1)
+        
+        columns   = self.obs_columns + [self.project_config.item_column.name, self.project_config.output_column.name]
         df_append = pd.DataFrame(
-            columns=self.obs_columns + [self.project_config.item_column.name, self.project_config.output_column.name],
-            data=data)
+                    columns=columns,
+                    data=data).astype(self.known_observations_data_frame[columns].dtypes)
+        
 
         df = pd.concat([self.known_observations_data_frame, df_append])
+
 
         self._create_hist_columns(df)
         self._known_observations_data_frame = df
 
     def _create_hist_columns(self, df: pd.DataFrame):
-        user_column = self.project_config.user_column.name
-        item_column = self.project_config.item_column.name
-        output_column = self.project_config.output_column.name
-        hist_view_column = self.project_config.hist_view_column_name
-        hist_output_column = self.project_config.hist_output_column_name
-        ps_column = self.project_config.propensity_score_column_name
+        user_column             = self.project_config.user_column.name
+        item_column             = self.project_config.item_column.name
+        output_column           = self.project_config.output_column.name
+        hist_view_column        = self.project_config.hist_view_column_name
+        hist_output_column      = self.project_config.hist_output_column_name
+        ps_column               = self.project_config.propensity_score_column_name
 
-        df[hist_view_column] = 1
-        user_views = df.groupby([user_column])[hist_view_column].transform("cumsum")
-        df[hist_view_column] = df.groupby([user_column, item_column])[hist_view_column].transform("cumsum")
-        df[hist_output_column] = df.groupby([user_column, item_column])[output_column].transform("cumsum")
+        df[hist_view_column]    = 1
+        user_views              = df.groupby([user_column])[hist_view_column].transform("cumsum")
+        df[hist_view_column]    = df.groupby([user_column, item_column])[hist_view_column].transform("cumsum")
+        df[hist_output_column]  = df.groupby([user_column, item_column])[output_column].transform("cumsum")
 
-        df[ps_column] = df[hist_view_column] / user_views
+        df[ps_column]           = df[hist_view_column] / user_views
 
     def _save_log(self) -> None:
         df = self.known_observations_data_frame.reset_index()

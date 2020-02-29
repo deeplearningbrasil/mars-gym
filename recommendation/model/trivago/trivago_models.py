@@ -75,6 +75,7 @@ class SimpleCNNModel(nn.Module):
                 list_current_filters, 
                 list_metadata):
 
+
         # Geral embs
         user_emb           = self.user_embeddings(user_ids)
         item_emb           = self.item_embeddings(item_ids)

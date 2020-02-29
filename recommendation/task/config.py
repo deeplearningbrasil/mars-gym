@@ -52,8 +52,8 @@ PROJECTS: Dict[str, ProjectConfig] = {
             Column("list_metadata", IOType.INT_ARRAY),
         ],
         output_column=Column("clicked", IOType.NUMBER),
-        hist_view_column_name="hist_visits",
-        hist_output_column_name="hist_buys",
+        hist_view_column_name="hist_views",
+        hist_output_column_name="hist_clicked",
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),    
 }
