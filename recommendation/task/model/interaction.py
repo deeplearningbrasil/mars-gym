@@ -174,7 +174,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
 
         self._create_hist_columns(df)
-        self._known_observations_data_frame = df
+        self._known_observations_data_frame = df.reset_index(drop=True)
 
     def _create_hist_columns(self, df: pd.DataFrame):
         user_column             = self.project_config.user_column.name
@@ -210,9 +210,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                                                        pd.read_csv(self.val_data_frame_path)])
         return self._interactions_data_frame
 
-    #@property
-    #def train_data_frame(self) -> pd.DataFrame:
-    #    return self._train_data_frame
+    @property
+    def train_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_train_data_frame"):
+            self._train_data_frame = self.interactions_data_frame.sample(1)
+        return self._train_data_frame
 
     @property
     def val_data_frame(self) -> pd.DataFrame:
@@ -223,10 +225,14 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return pd.DataFrame()
 
     def _reset_dataset(self):
-        self._train_data_frame, self._val_data_frame = train_test_split(
-            self.known_observations_data_frame, test_size=self.val_size, random_state=self.seed)
+        self._train_data_frame, self._val_data_frame, _ = self.prepare_data_frames.split_dataset(self.known_observations_data_frame)
+
+        # self._train_data_frame, self._val_data_frame = train_test_split(
+        #     self.known_observations_data_frame, test_size=self.val_size, random_state=self.seed)
+        
         if hasattr(self, "_train_dataset"):
             del self._train_dataset
+        
         if hasattr(self, "_val_dataset"):
             del self._val_dataset
 
@@ -296,11 +302,21 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                           self.get_train_generator(),
                           self.get_val_generator(),
                           self.epochs)
-
+                
+                
                 print("\n", k, ": Interaction Stats")
                 print(
                     self.known_observations_data_frame[[self.project_config.output_column.name]].describe().transpose(),
                     "\n")
+                if hasattr(self, "train_data_frame"):
+                    print(
+                        self._train_data_frame[[self.project_config.output_column.name]].describe().transpose(),
+                        "\n")
+                if hasattr(self, "val_data_frame"):
+                    print(
+                        self._val_data_frame[[self.project_config.output_column.name]].describe().transpose(),
+                        "\n")                                    
+                
                 # print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
                 k += 1
                 self._save_log()

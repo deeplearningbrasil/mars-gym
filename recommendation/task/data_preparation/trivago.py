@@ -95,7 +95,7 @@ class FilterDataset(BasePySparkTask):
         train_df = train_df.sort("timestamp", ascending=False).limit(self.sample_size)
 
       # Save
-      self.clean_data(train_df.toPandas()).to_csv(self.output()[0].path, index=False)
+      train_df.toPandas().to_csv(self.output()[0].path, index=False)
       meta_df.toPandas().to_csv(self.output()[1].path, index=False)
 
 class TransformMetaDataset(luigi.Task):
@@ -121,8 +121,9 @@ class TransformMetaDataset(luigi.Task):
       df_meta = pd.read_csv(self.input()[1].path)  
 
       tf_prop_meta = self.split_df_columns(df_meta, 'properties')
-      df_meta      = df_meta.join(tf_prop_meta).drop(['properties'], axis=1).shift(periods=1, fill_value=0)
-      
+      df_meta      = df_meta.join(tf_prop_meta).drop(['properties'], axis=1)#.shift(periods=1, fill_value=0)
+      df_meta      = df_meta.append({'item_id': 0}, ignore_index=True).fillna(0) # Unknown
+      df_meta      = df_meta.astype(int)
       df_meta['list_metadata'] = df_meta.drop('item_id', 1).values.tolist()
 
       df_meta.to_csv(self.output().path, index=False)
@@ -197,7 +198,8 @@ class GenerateIndicesDataset(BasePySparkTask):
     filter_city: str = luigi.Parameter(default='all')
 
     def requires(self):
-      return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city)
+      return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city),\
+        TransformMetaDataset(sample_size=self.sample_size, filter_city=self.filter_city)
 
     def output(self):
       return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_indices__size=%d.csv" % (self.sample_size))),\
@@ -214,7 +216,7 @@ class GenerateIndicesDataset(BasePySparkTask):
       spark = SparkSession(sc)
 
       # Load
-      train_df = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
+      train_df = spark.read.csv(self.input()[0][0].path, header=True, inferSchema=True)
       meta_df  = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
 
       # Extract
@@ -227,7 +229,7 @@ class GenerateIndicesDataset(BasePySparkTask):
       device_idx_df   = train_df.select("device").distinct().toPandas()
 
       # Save
-      item_idx_df.shift(periods=1, fill_value=0).to_csv(self.output()[0].path, index_label="item_idx")
+      item_idx_df.to_csv(self.output()[0].path, index_label="item_idx")
       user_idx_df.to_csv(self.output()[1].path, index_label="user_idx")
       session_idx_df.to_csv(self.output()[2].path, index_label="session_idx")
       action_type_idx_df.to_csv(self.output()[3].path, index_label="action_type_idx")
@@ -288,7 +290,7 @@ class CreateIndexDataset(BasePySparkTask):
       meta_df = meta_df.join(item_idx_df, "item_id")
 
       # Save
-      df = train_df.select("timestamp","step", "user_idx", "session_idx", "action_type_idx", 
+      df = train_df.select("timestamp","step", "user_idx", "session_idx", "action_type", "action_type_idx", 
                           "reference_search_for_poi","reference_change_of_sort_order",
                           "reference_search_for_destination","reference_filter_selection",
                           "reference_interaction_item_image_idx","reference_interaction_item_rating_idx","reference_clickout_item_idx",
@@ -355,18 +357,19 @@ class CreateAggregateIndexDataset(BasePySparkTask):
                   withColumn("list_reference_interaction_item_info_idx",    to_array_udf(collect_list("reference_interaction_item_info_idx").over(win_over_session))).\
                   withColumn("list_action_type_idx",                  to_array_udf(collect_list("action_type_idx").over(win_over_session))).\
                   withColumn("list_current_filters",                  to_array_udf(collect_list("current_filters").over(win_over_session))).\
-                  withColumn("action_type_item_idx",  when(train_df.action_type_idx == 0, col("reference_interaction_item_image_idx")).\
-                                          when(train_df.action_type_idx == 2, col("reference_interaction_item_rating_idx")).\
-                                          when(train_df.action_type_idx == 3, col("reference_clickout_item_idx")).\
-                                          when(train_df.action_type_idx == 4, col("reference_interaction_item_deals_idx")).\
-                                          when(train_df.action_type_idx == 6, col("reference_search_for_item_idx")).\
-                                          when(train_df.action_type_idx == 9, col("reference_interaction_item_info_idx")).\
+                  withColumn("action_type_item_idx",  
+                                          when(train_df.action_type == "interaction item image", col("reference_interaction_item_image_idx")).\
+                                          when(train_df.action_type == "interaction item rating", col("reference_interaction_item_rating_idx")).\
+                                          when(train_df.action_type == "clickout item", col("reference_clickout_item_idx")).\
+                                          when(train_df.action_type == "interaction item deals", col("reference_interaction_item_deals_idx")).\
+                                          when(train_df.action_type == "search for item", col("reference_search_for_item_idx")).\
+                                          when(train_df.action_type == "interaction item info", col("reference_interaction_item_info_idx")).\
                                           otherwise(0)).\
-                  withColumn("clicked",   when(train_df.action_type_idx == 3, 1.0).otherwise(0.0)).\
+                  withColumn("clicked",   when(train_df.action_type == "clickout item", 1.0).otherwise(0.0)).\
                   orderBy("session_idx", "timestamp")
 
       # Filter only action type - clickout item
-      df_group = df_group.filter(df_group.action_type_idx == 3) # 3,clickout item
+      df_group = df_group.filter(df_group.action_type == "clickout item") # 3,clickout item
 
       df_group = df_group.select('timestamp', 'timestamp_diff', 'step', 'user_idx', 'session_idx', 'action_type_item_idx', 'action_type_idx',
                                 'list_action_type_idx', 'list_reference_search_for_poi', 'list_reference_change_of_sort_order',

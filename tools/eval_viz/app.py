@@ -59,7 +59,7 @@ def fetch_iteraction_results_path():
     paths  = []
     models = []
     for root, dirs, files in os.walk(PATH_EVAL_REINFORCEMENT):
-      if '/results' in root and 'InteractionTraining' in root:
+      if '/results' in root and 'Interaction' in root:
         for d in dirs:
           paths.append(os.path.join(root, d))
           models.append(d) #.replace("_"+d.split("_")[-1], "")
@@ -174,7 +174,7 @@ def display_compare_results():
 
 def display_one_result():
   st.sidebar.markdown("## Filter Options")  
-  input_model_eval  = st.sidebar.selectbox("Result", sorted(fetch_results_path().keys()), index=0)
+  input_model_eval  = st.sidebar.selectbox("Result", fetch_results_path().keys(), index=0)
   st.title("[Model Result]")
   st.write(input_model_eval)
 

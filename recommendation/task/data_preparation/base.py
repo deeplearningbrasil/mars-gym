@@ -130,10 +130,18 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         for field, value in self.isin_filters.items():
             df = df[df[field].isin(value)]
 
+        train_df, val_df, test_df = self.split_dataset(df)
+
+        self.transform_data_frame(train_df, data_key=self.TRAIN_DATA).to_csv(self.output()[0].path, index=False)
+        self.transform_data_frame(val_df, data_key=self.VALIDATION_DATA).to_csv(self.output()[1].path, index=False)
+        self.transform_data_frame(test_df, data_key=self.TEST_GENERATOR).to_csv(self.output()[2].path, index=False)
+
+    def split_dataset(self, df):
         if self.test_size:
             train_df, test_df = self.train_test_split(df, test_size=self.test_size)
         else:
             train_df, test_df = df, df[:0]
+
         if self.dataset_split_method == "holdout":
             train_df, val_df = self.train_test_split(train_df, test_size=self.val_size)
         elif self.dataset_split_method == "column":
@@ -147,10 +155,8 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
             train_df = self.balance_dataset(train_df)
             if self.use_sampling_in_validation:
                 val_df = self.balance_dataset(val_df)
-
-        self.transform_data_frame(train_df, data_key=self.TRAIN_DATA).to_csv(self.output()[0].path, index=False)
-        self.transform_data_frame(val_df, data_key=self.VALIDATION_DATA).to_csv(self.output()[1].path, index=False)
-        self.transform_data_frame(test_df, data_key=self.TEST_GENERATOR).to_csv(self.output()[2].path, index=False)
+        
+        return train_df, val_df, test_df
 
     def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
         return df
@@ -208,14 +214,13 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
 
         if random_sampler_cls is None:
             return df
-
         index_resampled = df.index
         for balance_field in self.balance_fields:
-            random_sampler = random_sampler_cls(sampling_strategy=self._create_sampling_strategy(df, balance_field),
+            random_sampler     = random_sampler_cls(sampling_strategy=self._create_sampling_strategy(df, balance_field),
                                                 random_state=self.seed)
             index_resampled, _ = random_sampler.fit_sample(np.array(index_resampled).reshape(-1, 1),
                                                            df.loc[index_resampled][balance_field])
-            index_resampled = index_resampled.flatten()
+            index_resampled    = index_resampled.flatten()
 
         return df.loc[index_resampled]
 

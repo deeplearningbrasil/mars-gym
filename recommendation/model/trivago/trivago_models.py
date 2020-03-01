@@ -23,7 +23,7 @@ class SimpleCNNModel(nn.Module):
         self.word_embeddings        = nn.Embedding(vocab_size, n_factors)
 
         context_embs       = 12 # Session Context
-        continuos_features = 1 + 1 + 150 # Price + Pos + Meta
+        continuos_features = 1 + 1 + 121 # Price + Pos + Meta
 
         # Conv
         self.convs1  = nn.ModuleList(
@@ -34,7 +34,7 @@ class SimpleCNNModel(nn.Module):
 
         # Dense
         #np.sum([K * num_filters for K in filter_sizes])
-        num_dense  = len(filter_sizes) * num_filters* 0  + n_factors * 2 + continuos_features
+        num_dense  = len(filter_sizes) * num_filters  + n_factors * 2 + continuos_features
         self.dense = nn.Sequential(
             nn.Linear(num_dense, int(num_dense/2)),
             nn.ReLU(),
@@ -111,11 +111,19 @@ class SimpleCNNModel(nn.Module):
         context_session_emb = self.conv_block(context_session_emb)
         #print(context_emb.shape, platform_idx.shape, platform_idx.float().unsqueeze(0).shape, platform_idx.float().unsqueeze(1).shape)
         
+        # raise(Exception(user_emb.shape,
+        #                          item_emb.shape,
+        #                          pos_item_idx.float().unsqueeze(1).shape,
+        #                          list_metadata.float().shape,
+        #                          price.float().unsqueeze(1).shape,
+        #                          context_session_emb.shape))
+
         context_emb = torch.cat((user_emb,
                                  item_emb,
                                  pos_item_idx.float().unsqueeze(1),
                                  list_metadata.float(),
-                                 price.float().unsqueeze(1)), dim=1)
+                                 price.float().unsqueeze(1),
+                                 context_session_emb), dim=1)
 
         x   = self.dropout(context_emb)
         x   = self.dense(x)

@@ -373,7 +373,9 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
             output_: Tuple[np.ndarray, ...] = dataset[indices][1]
 
             X, arms = self._flatten_input_and_extract_arms(input_)
-            for x, arm, y in zip(X, arms, output_[0]):
+            output  = output_[0] if isinstance(output_, tuple) else output_
+
+            for x, arm, y in zip(X, arms, output):
                 if arm not in self._Ainv_per_arm:
                     self._Ainv_per_arm[arm] = np.eye(x.shape[0])
                 if hasattr(self, "_b_per_arm"):

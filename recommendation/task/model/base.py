@@ -85,6 +85,10 @@ class BaseModelTraining(luigi.Task):
                 '_test_data_frame', '_val_data_frame', '_train_data_frame', '_metadata_data_frame']
 
     def requires(self):
+        return self.prepare_data_frames
+
+    @property
+    def prepare_data_frames(self):
         return self.project_config.prepare_data_frames_task(session_test_size=self.session_test_size,
                                                             sample_size=self.sample_size,
                                                             minimum_interactions=self.minimum_interactions,
