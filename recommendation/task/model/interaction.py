@@ -14,13 +14,14 @@ from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.task.model.base import BaseTorchModelTraining
+from recommendation.plot import plot_history
 
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir
-
+from recommendation.files import get_history_path
 
 class BanditAgent(object):
 
@@ -81,7 +82,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     def _get_batch_of_arm_scores(self, agent: BanditAgent, batch_dataset: Dataset,
                                  arm_indices: List[List[int]]) -> List[List[float]]:
         
-        batch_sampler = FasterBatchSampler(batch_dataset, self.batch_size, shuffle=True)
+        batch_sampler = FasterBatchSampler(batch_dataset, self.batch_size, shuffle=False)
         generator     = NoAutoCollationDataLoader(
                             batch_dataset,
                             batch_sampler=batch_sampler, num_workers=self.generator_workers,
@@ -189,6 +190,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         df[ps_column]           = df[hist_view_column] / user_views
 
+
+
     def _save_log(self) -> None:
         df = self.known_observations_data_frame.reset_index()
         df = df[[self.project_config.user_column.name, self.project_config.item_column.name,
@@ -196,6 +199,10 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         df.columns = ['context', 'arm', 'reward']
 
         df.reset_index().to_csv(self.output().path + '/data_log.csv', index=False)
+
+        # Train
+        #history_df = pd.read_csv(get_history_path(self.output().path))
+        #plot_history(history_df).savefig(os.path.join(self.output().path, "history.jpg"))
 
     def _save_metrics(self) -> None:
         df = self.known_observations_data_frame.reset_index()
@@ -282,9 +289,10 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 batch_of_arm_context    = self._create_arm_contexts(batch_dataset, batch_of_arm_indices)
                 batch_of_arm_scores     = self._get_batch_of_arm_scores(agent, batch_dataset, batch_of_arm_indices) \
                     if agent.bandit.reward_model else None
-
                 action = agent.act(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)
 
+                #print(batch_of_arm_indices, "\n===",  batch_of_arm_scores, "\n===", action)
+                #d
                 new_ob, reward, done, info = env.step(action)
                 rewards.extend(reward)
                 self._accumulate_known_observations(ob, action, reward)
@@ -302,7 +310,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                           self.get_train_generator(),
                           self.get_val_generator(),
                           self.epochs)
-                
                 
                 print("\n", k, ": Interaction Stats")
                 print(

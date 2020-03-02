@@ -498,7 +498,7 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
         df['vocab_size']       = self.vocab_size
         df['window_hist_size'] = self.window_hist
         
-        df['pos_item_idx']     = df['clicked']
+        #df['pos_item_idx']     = df['clicked']
 
         if not hasattr(self, "_scaler"):
             self._scaler = MinMaxScaler()
