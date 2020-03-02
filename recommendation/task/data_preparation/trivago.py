@@ -33,6 +33,12 @@ DATASET_DIR: str = os.path.join("output", "trivago", "dataset")
 FILES_DIR: str = os.path.join("files")
 
 
+def to_array(xs):
+    return [literal_eval_if_str(c) if isinstance(literal_eval_if_str(c), int) or isinstance(literal_eval_if_str(c), float) else literal_eval_if_str(c)[0] 
+                for c in literal_eval_if_str(xs)] if xs is not None else None
+to_array_int_udf   = udf(lambda x: to_array(x), ArrayType(IntegerType()))
+to_array_float_udf = udf(lambda x: to_array(x), ArrayType(FloatType()))
+
 class CheckDataset(luigi.Task):
     def output(self):
         return luigi.LocalTarget(os.path.join(BASE_DIR, "trivagoRecSysChallengeData2019_v2", "train.csv")), \
@@ -81,16 +87,25 @@ class FilterDataset(BasePySparkTask):
     def main(self, sc: SparkContext, *args):
       os.makedirs(os.path.join(DATASET_DIR, clean_filename(self.filter_city)), exist_ok=True)
 
-      spark = SparkSession(sc)
+      spark    = SparkSession(sc)
       train_df = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
+      train_df = train_df.withColumn("impressions_array", F.split(train_df.impressions, "\|"))
+
       meta_df  = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
 
       # Filter dataset
       if self.filter_city != 'all':
         train_df     = train_df.filter(train_df.city==self.filter_city)
+        
+        # Filter reference
         reference_df = train_df.select("reference").distinct()
-        meta_df      = meta_df.join(reference_df, meta_df.item_id == reference_df.reference).select("item_id","properties")
+        
+        # Filte item impressions
+        item_id_df   = train_df.select(posexplode("impressions_array").alias("pos_item_idx", "reference")).select("reference").distinct()
+        #raise(Exception(train_df.show()))
+        item_id_df   = item_id_df.union(reference_df).select("reference").distinct()
 
+        meta_df      = meta_df.join(item_id_df, meta_df.item_id == item_id_df.reference).select("item_id","properties")
       if self.sample_size > 0:
         train_df = train_df.sort("timestamp", ascending=False).limit(self.sample_size)
 
@@ -126,7 +141,7 @@ class TransformMetaDataset(luigi.Task):
       df_meta      = df_meta.astype(int)
       df_meta['list_metadata'] = df_meta.drop('item_id', 1).values.tolist()
 
-      df_meta.to_csv(self.output().path, index=False)
+      df_meta.sort_values('item_id').to_csv(self.output().path, index=False)
 
 class TransformSessionDataset(luigi.Task):
     sample_size: int = luigi.IntParameter(default=-1)
@@ -170,23 +185,23 @@ class TransformSessionDataset(luigi.Task):
         #   The reference value for this action is the name of the destination.
         # search for poi: user searches for a point of interest (POI).
         #   The reference value for this action is the name of the POI.     
-        df['reference_'+clean_filename(ref)] = df.apply(lambda row: row['reference'] if row['action_type'] == ref else np.nan, axis=1)
+        df['reference_'+clean_filename(ref)] = df.apply(lambda row: row['reference'] if row['action_type'] == ref else "<none>", axis=1)
 
 
       # Transform columns with text
       columns_with_string = ["reference_search_for_poi","reference_change_of_sort_order",
                             "reference_search_for_destination","reference_filter_selection","current_filters"]
       # vocabulario
-      vocab = []
+      vocab = ["<none>"]
       for c in columns_with_string:
-        vocab  += df[c].fillna("").tolist()
+        vocab  += df[c].fillna("<none>").tolist()
 
       # Tokenizer
-      tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda x: x.split("|"), min_occurrences=2, reserved_tokens=[])
+      tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda x: x.split("|"), min_occurrences=1, reserved_tokens=[])
 
       #Apply tokenizer
       for text_column in columns_with_string:
-        df[text_column] = tokenizer.batch_encode(df[text_column].fillna(""))[0].cpu().detach().numpy().tolist()
+        df[text_column] = tokenizer.batch_encode(df[text_column].fillna("<none>"))[0].cpu().detach().numpy().tolist()
         df[text_column + '_max_words'] = len(df[text_column][0])
 
       # Save
@@ -220,10 +235,11 @@ class GenerateIndicesDataset(BasePySparkTask):
       meta_df  = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
 
       # Extract
-      item_idx_df    = meta_df.select("item_id").distinct().toPandas()
+      item_idx_df    = meta_df.select("item_id").distinct().orderBy("item_id").toPandas()
       user_idx_df    = train_df.select("user_id").distinct().toPandas()
       session_idx_df = train_df.select("session_id").distinct().toPandas()
-      action_type_idx_df = train_df.select("action_type").distinct().toPandas()
+      action_type_idx_df = train_df.select("action_type").distinct().toPandas()\
+                            .append({'action_type': '<none>'}, ignore_index=True).sort_values("action_type").reset_index(drop=True)
       platform_idx_df = train_df.select("platform").distinct().toPandas()
       city_idx_df     = train_df.select("city").distinct().toPandas()
       device_idx_df   = train_df.select("device").distinct().toPandas()
@@ -366,7 +382,7 @@ class CreateAggregateIndexDataset(BasePySparkTask):
                                           when(train_df.action_type == "interaction item info", col("reference_interaction_item_info_idx")).\
                                           otherwise(0)).\
                   withColumn("clicked",   when(train_df.action_type == "clickout item", 1.0).otherwise(0.0)).\
-                  orderBy("session_idx", "timestamp")
+                  orderBy("timestamp")
 
       # Filter only action type - clickout item
       df_group = df_group.filter(df_group.action_type == "clickout item") # 3,clickout item
@@ -392,16 +408,9 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
     def output(self):
       return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__explode_indexed__size=%d_window=%d.csv" % (self.sample_size, self.window_hist)))
 
-    def to_array(self, xs):
-        return [literal_eval_if_str(c) if isinstance(literal_eval_if_str(c), int) or isinstance(literal_eval_if_str(c), float) else literal_eval_if_str(c)[0] 
-                    for c in literal_eval_if_str(xs)] if xs is not None else None
-
-
     def main(self, sc: SparkContext, *args):
       os.makedirs(DATASET_DIR, exist_ok=True)
       spark = SparkSession(sc)
-      to_array_int_udf   = udf(lambda x: self.to_array(x), ArrayType(IntegerType()))
-      to_array_float_udf = udf(lambda x: self.to_array(x), ArrayType(FloatType()))
 
       df          = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
       item_idx_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
@@ -491,10 +500,11 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
         if not hasattr(self, "_scaler"):
             self._scaler = MinMaxScaler()
 
-        if data_key == "TRAIN_DATA":
-          df['price'] = self._scaler.fit_transform(df[['price']]).reshape(-1)
+        if len(df) > 1:
+          if data_key == "TRAIN_DATA":
+            df['price'] = self._scaler.fit_transform(df[['price']]).reshape(-1)
 
-        elif data_key == "VALIDATION_DATA":
-          df['price'] = self._scaler.transform(df[['price']]).reshape(-1)
+          elif data_key == "VALIDATION_DATA":
+            df['price'] = self._scaler.transform(df[['price']]).reshape(-1)
         
         return df        
