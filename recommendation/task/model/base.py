@@ -142,6 +142,7 @@ class BaseModelTraining(luigi.Task):
         if not hasattr(self, "_metadata_data_frame"):
             self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path) \
                 if self.metadata_data_frame_path else None
+
         return self._metadata_data_frame
 
     @property

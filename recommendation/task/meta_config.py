@@ -36,6 +36,7 @@ class ProjectConfig(object):
                  dataset_extra_params: dict = {},
                  hist_view_column_name: str = 'hist_view',
                  hist_output_column_name: str = 'hist_output',                 
+                 timestamp_column_name: str = 'timestamp',                 
                  propensity_score_column_name: str = "ps",
                  n_users_column: str = "n_users",
                  n_items_column: str = "n_items",
@@ -54,6 +55,7 @@ class ProjectConfig(object):
         self.output_column = output_column
         self.hist_view_column_name = hist_view_column_name
         self.hist_output_column_name = hist_output_column_name
+        self.timestamp_column_name = timestamp_column_name
         self.auxiliar_output_columns = auxiliar_output_columns
         self.recommender_type = recommender_type
         self.propensity_score_column_name = propensity_score_column_name

@@ -10,7 +10,8 @@ from recommendation.model.transformer import *
 import copy
 
 class SimpleLinearModel(nn.Module):
-    def __init__(self, n_users: int, n_items: int, n_factors: int, vocab_size: int = 88,
+    def __init__(self, n_users: int, n_items: int, n_factors: int, vocab_size: int,
+                window_hist_size: int, metadata_size: int,
                 num_filters: int = 32, filter_sizes: List[int] = [1, 3, 5], 
                 dropout_prob: int = 0.0, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout,                 
                 weight_init: Callable = lecun_normal_init):
@@ -22,21 +23,18 @@ class SimpleLinearModel(nn.Module):
         self.pe                     = PositionalEncoder(n_factors)
         self.user_embeddings        = nn.Embedding(n_users, n_factors)
         self.item_embeddings        = nn.Embedding(n_items + 1, n_factors)
-        self.action_type_embeddings = nn.Embedding(11, n_factors)
+        self.action_type_embeddings = nn.Embedding(10 + 1 , n_factors)
         self.word_embeddings        = nn.Embedding(vocab_size, n_factors)
         
         # TODO
-        hist = 5
-        meta = 103
         context_embs = 12
- #[1 x 6205], m2: [6231 x 3115] 
- #[1 x 6205], m2: [6257 x 3128]
 
         # Dropout
         self.dropout: nn.Module = dropout_module(dropout_prob)
 
         # output
-        num_dense         = 2 * n_factors + context_embs * n_factors * hist + 2 + meta
+        #raise(Exception(2 * n_factors, context_embs * n_factors * window_hist_size, 2,  metadata_size))
+        num_dense         = 2 * n_factors + context_embs * n_factors * window_hist_size + 2 + metadata_size
 
         self.dense = nn.Sequential(
             nn.Linear(num_dense, int(num_dense/2)),
@@ -110,7 +108,7 @@ class SimpleLinearModel(nn.Module):
                                             search_for_destination_emb,
                                             filter_selection_emb, current_filters_emb), dim=2)
         #print(context_emb.shape, platform_idx.shape, platform_idx.float().unsqueeze(0).shape, platform_idx.float().unsqueeze(1).shape)
-        
+
         # raise(Exception(user_emb.shape,
         #                 item_emb.shape,
         #                 pos_item_idx.float().unsqueeze(1).shape,
@@ -121,9 +119,9 @@ class SimpleLinearModel(nn.Module):
         x   = torch.cat((user_emb,
                         item_emb,
                         pos_item_idx.float().unsqueeze(1),
+                        price.float().unsqueeze(1),
                         list_metadata.float(),
-                        self.flatten(context_session_emb),
-                        price.float().unsqueeze(1)), dim=1)
+                        self.flatten(context_session_emb)), dim=1)
         
         # self.flatten(context_session_emb)
         x   = self.dense(x)

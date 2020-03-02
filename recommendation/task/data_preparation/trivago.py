@@ -492,10 +492,13 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
 
     def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
         # TODO
-        df['n_users'] = self.num_users
-        df['n_items'] = self.num_businesses
-        df['clicked'] = df['clicked'].astype(float)
-        df['vocab_size'] = self.vocab_size
+        df['n_users']          = self.num_users
+        df['n_items']          = self.num_businesses
+        df['clicked']          = df['clicked'].astype(float)
+        df['vocab_size']       = self.vocab_size
+        df['window_hist_size'] = self.window_hist
+        
+        df['pos_item_idx']     = df['clicked']
 
         if not hasattr(self, "_scaler"):
             self._scaler = MinMaxScaler()
