@@ -25,7 +25,7 @@ class RecSysEnv(gym.Env, utils.EzPickle):
         if self.end_batch + self.obs_batch_size < len(self.dataset):
             self.end_batch += self.obs_batch_size
         else:
-            self.end_batch = len(self.dataset) - 1
+            self.end_batch = len(self.dataset)
 
     def _compute_stats(self, action: np.ndarray) -> dict:
         # TODO: Choose which batch metrics to return
@@ -44,7 +44,7 @@ class RecSysEnv(gym.Env, utils.EzPickle):
         info = self._compute_stats(action)
         done = False
 
-        if self.end_batch == (len(self.dataset) - 1):
+        if self.end_batch == (len(self.dataset)):
             done = True
             next_obs = np.array([])
         else:

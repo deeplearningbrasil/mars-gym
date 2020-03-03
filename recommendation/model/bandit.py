@@ -146,31 +146,37 @@ class ExploreThenExploit(BanditPolicy):
     #TODO: Tune breakpoint parameter
     def __init__(self, reward_model: nn.Module, 
                  explore_rounds: int = 500, 
-                 decay_rate: float = 0.997, 
+                 decay_rate: float = 0.0026456, 
                  seed: int = 42) -> None:
         super().__init__(reward_model)
+        self._init_explore_rounds = explore_rounds
         self._explore_rounds = explore_rounds
         self._exploit_rounds = explore_rounds
         self._decay_rate     = decay_rate
         
         self._rng = RandomState(seed)
-        self._t = 0
+        self._t   = 0
+        self._te  = 0        
         self.exploring = True
 
     def _update_state(self):
+        self._t  += 1
+        self._te += 1
 
         if self._explore_rounds > 1:
-            if self.exploring and self._t > self._explore_rounds:
-                    self._t = 0
+            if self.exploring and self._te > self._explore_rounds:
+                    self._te = 0
+                    self._explore_rounds = self.decay(self._init_explore_rounds, self._decay_rate, self._t)
                     self.exploring = False
-                    self._explore_rounds *= self._decay_rate
-            elif not self.exploring and self._t > self._exploit_rounds:
-                    self._t = 0
+            elif not self.exploring and self._te > self._exploit_rounds:
+                    self._te = 0
+                    #self._exploit_rounds += (self._init_explore_rounds-self._explore_rounds)
                     self.exploring = True
-                    self._exploit_rounds /= self._decay_rate
         else: 
             self.exploring = False
 
+    def decay(self, init, decay_rate, t):
+        return init*(1-decay_rate)**t
 
     def _compute_prob(self, arm_scores):
         n_arms = len(arm_scores)
@@ -193,7 +199,6 @@ class ExploreThenExploit(BanditPolicy):
         max_score = max(arm_scores)
 
         if pos == 0:
-            self._t += 1
             self._update_state()
 
         if self.exploring:
@@ -240,12 +245,14 @@ class EpsilonGreedy(BanditPolicy):
 
 class AdaptiveGreedy(BanditPolicy):
     #TODO: Tune these parameters: exploration_threshold, decay_rate
-    def __init__(self, reward_model: nn.Module, exploration_threshold: float = 0.7, decay_rate: float = 0.999997,
+    def __init__(self, reward_model: nn.Module, exploration_threshold: float = 0.8, decay_rate: float = 0.0010391,
          seed: int = 42) -> None:
         super().__init__(reward_model)
+        self._init_exploration_threshold = exploration_threshold
         self._exploration_threshold = exploration_threshold
         self._decay_rate = decay_rate
         self._rng = RandomState(seed)
+        self._t = 0
 
     def _compute_prob(self, arm_scores):
         n_arms = len(arm_scores)
@@ -263,9 +270,9 @@ class AdaptiveGreedy(BanditPolicy):
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
 
-        n_arms = len(arm_indices)
+        n_arms     = len(arm_indices)
         arm_probas = np.ones(n_arms) / n_arms
-        max_score = max(arm_scores)
+        max_score  = max(arm_scores)
 
         if max_score > self._exploration_threshold:
             action = int(np.argmax(arm_scores))
@@ -273,10 +280,13 @@ class AdaptiveGreedy(BanditPolicy):
             action = self._rng.choice(len(arm_indices), p=arm_probas)
 
         if pos == 0:
-            self._exploration_threshold *= self._decay_rate
+            self._t += 1
+            self._exploration_threshold = self.decay(self._init_exploration_threshold, self._decay_rate, self._t)
 
         return action
-
+    
+    def decay(self, init, decay_rate, t):
+        return init*(1-decay_rate)**t
 
 class PercentileAdaptiveGreedy(BanditPolicy):
     #TODO: Tune these parameters: window_size, exploration_threshold, percentile, percentile_decay
@@ -437,7 +447,6 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
         else:
             return ranked_arms
 
-
 class CustomRewardModelLinUCB(_LinBanditPolicy):
     def __init__(self, reward_model: nn.Module, alpha: float = 1e-5, arm_index: int = 1, seed: int = 42) -> None:
         super().__init__(reward_model, arm_index)
@@ -450,7 +459,6 @@ class CustomRewardModelLinUCB(_LinBanditPolicy):
         confidence_bound = self._alpha * np.sqrt(np.linalg.multi_dot([x.T, Ainv, x]))
         
         return original_score + confidence_bound
-
 
 class LinUCB(CustomRewardModelLinUCB):
     def __init__(self, reward_model: nn.Module, alpha: float = 1e-5, arm_index: int = 1, seed: int = 42) -> None:
@@ -471,7 +479,6 @@ class LinUCB(CustomRewardModelLinUCB):
             scores.append(Ainv.dot(b).T.dot(x)[0])
 
         return scores
-
 
 class LinThompsonSampling(_LinBanditPolicy):
     def __init__(self, reward_model: nn.Module, v_sq: float = 1.0, arm_index: int = 1) -> None:
@@ -495,7 +502,6 @@ class LinThompsonSampling(_LinBanditPolicy):
         mu = (Ainv.dot(b)).reshape(-1)
         mu = np.random.multivariate_normal(mu, self._v_sq * Ainv)
         return x.dot(mu)
-
 
 class SoftmaxExplorer(BanditPolicy):
     def __init__(self, reward_model: nn.Module, logit_multiplier: float = 1.0, reverse_sigmoid: bool = True, seed: int = 42) -> None:

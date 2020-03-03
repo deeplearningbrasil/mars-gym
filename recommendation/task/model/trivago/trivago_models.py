@@ -43,7 +43,7 @@ class TrivagoModelTrainingMixin(object):
 
   def create_module(self) -> nn.Module:
 
-      return SimpleLinearModel(
+      return SimpleCNNModel(
           window_hist_size=self.window_hist_size,
           vocab_size=self.vocab_size,
           metadata_size=self.metadata_size,

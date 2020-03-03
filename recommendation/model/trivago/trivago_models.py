@@ -128,9 +128,10 @@ class SimpleLinearModel(nn.Module):
         out = torch.sigmoid(self.output(x))
         return out
 
-
 class SimpleCNNModel(nn.Module):
-    def __init__(self, n_users: int, n_items: int, n_factors: int, vocab_size: int = 88,
+    def __init__(self, n_users: int, n_items: int, n_factors: int, 
+                window_hist_size: int, metadata_size: int,
+                vocab_size: int = 88,
                 num_filters: int = 32, filter_sizes: List[int] = [1, 3, 5], 
                 dropout_prob: int = 0.0, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout,                 
                 weight_init: Callable = lecun_normal_init):
@@ -146,10 +147,7 @@ class SimpleCNNModel(nn.Module):
         self.pe                     = PositionalEncoder(n_factors)
 
         # TODO
-        hist = 5
-        meta = 129
         context_embs       = 12 # Session Context
-        continuos_features = 2 + meta # Price + Pos + Meta
 
         # Conv
         self.convs1  = nn.ModuleList(
@@ -160,7 +158,7 @@ class SimpleCNNModel(nn.Module):
 
         # Dense
         #np.sum([K * num_filters for K in filter_sizes])
-        num_dense  = len(filter_sizes) * num_filters  + n_factors * 2 + 2 + meta
+        num_dense  = len(filter_sizes) * num_filters  + n_factors * 2 + 2 + metadata_size
         self.dense = nn.Sequential(
             nn.Linear(num_dense, int(num_dense/2)),
             nn.ReLU(),

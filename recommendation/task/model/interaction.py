@@ -171,6 +171,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                     data=data).astype(self.known_observations_data_frame[columns].dtypes)
 
         df = pd.concat([self.known_observations_data_frame, df_append], ignore_index=True)
+        print("==================================")
+        print(len(ob), len(data))
+        print(self.known_observations_data_frame.shape, df_append.shape, df.shape)
 
         self._create_hist_columns(df)
         self._known_observations_data_frame = df
