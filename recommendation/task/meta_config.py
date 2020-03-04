@@ -40,6 +40,7 @@ class ProjectConfig(object):
                  propensity_score_column_name: str = "ps",
                  n_users_column: str = "n_users",
                  n_items_column: str = "n_items",
+                 available_space_column: Column = Column("", IOType.INT_ARRAY),
                  default_balance_fields: List[str] = [],
                  metadata_columns: List[Column] = [],
                  auxiliar_output_columns: List[Column] = [],
@@ -53,6 +54,7 @@ class ProjectConfig(object):
         self.item_column = item_column
         self.other_input_columns = other_input_columns
         self.output_column = output_column
+        self.available_space_column = available_space_column
         self.hist_view_column_name = hist_view_column_name
         self.hist_output_column_name = hist_output_column_name
         self.timestamp_column_name = timestamp_column_name

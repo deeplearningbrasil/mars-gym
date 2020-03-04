@@ -22,6 +22,7 @@ from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir
 from recommendation.files import get_history_path
+from recommendation.data import literal_eval_array_columns
 
 class BanditAgent(object):
 
@@ -71,12 +72,19 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     @property
     def obs_columns(self) -> List[str]:
         return [self.project_config.user_column.name] + [
-            column.name for column in self.project_config.other_input_columns]
+            column.name for column in self.project_config.other_input_columns] + [self.project_config.available_space_column.name]
 
+    # def _get_batch_of_arm_indices(self, ob: np.ndarray) -> List[List[int]]:
+    #     return [
+    #         self.unique_items
+    #         for _ in range(len(ob))
+    #     ]
     def _get_batch_of_arm_indices(self, ob: np.ndarray) -> List[List[int]]:
         return [
             self.unique_items
-            for _ in range(len(ob))
+                if len(self.env_data_frame.iloc[i][self.project_config.available_space_column.name]) == 0
+                    else self.env_data_frame.iloc[i][self.project_config.available_space_column.name] 
+            for i in range(len(ob))
         ]
 
     def _get_batch_of_arm_scores(self, agent: BanditAgent, batch_dataset: Dataset,
@@ -108,7 +116,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _create_batch_dataset(self, ob: np.ndarray,
                               batch_of_arm_indices: List[List[int]]) -> Dataset:
-        
         ob_df                  = pd.DataFrame(columns=self.obs_columns, data=ob)
         indexed_arm_indices    = np.array([[index, arm_index]
                                         for index, arm_indices in zip(ob_df.index, batch_of_arm_indices)
@@ -118,6 +125,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                                               data=indexed_arm_indices[:, 1],
                                               index=indexed_arm_indices[:, 0])
         ob_df = ob_df.join(indexed_arm_indices_df)
+
         # if len(self.known_observations_data_frame) > 0:
         #     ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
         #                                 self.project_config.hist_output_column_name])
@@ -171,9 +179,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                     data=data).astype(self.known_observations_data_frame[columns].dtypes)
 
         df = pd.concat([self.known_observations_data_frame, df_append], ignore_index=True)
-        print("==================================")
-        print(len(ob), len(data))
-        print(self.known_observations_data_frame.shape, df_append.shape, df.shape)
 
         self._create_hist_columns(df)
         self._known_observations_data_frame = df
@@ -264,14 +269,25 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             self._n_items = self.interactions_data_frame[self.project_config.item_column.name].max() + 1
         return self._n_items
 
+    @property
+    def env_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_env_data_frame"):
+            env_dataset = self.interactions_data_frame.loc[
+                            self.interactions_data_frame[self.project_config.output_column.name] == 1, 
+                            self.obs_columns + [self.project_config.item_column.name]]
+
+            literal_eval_array_columns(env_dataset, [self.project_config.available_space_column])
+            self._env_data_frame = env_dataset
+
+        return self._env_data_frame
+
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
         self._save_params()
 
-        env_dataset = self.interactions_data_frame.loc[
-                        self.interactions_data_frame[self.project_config.output_column.name] == 1, self.obs_columns + [
-                        self.project_config.item_column.name]]
-        env: RecSysEnv = gym.make('recsys-v0', dataset=env_dataset, item_column=self.project_config.item_column.name,
+
+
+        env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame, item_column=self.project_config.item_column.name,
                                   obs_batch_size=self.obs_batch_size)
         env.seed(42)
 

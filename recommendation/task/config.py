@@ -28,6 +28,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         dataset_class=InteractionsDataset,
         user_column=Column("user_idx", IOType.INDEX),
         item_column=Column("item_idx", IOType.INDEX),
+        available_space_column=Column("impressions", IOType.INT_ARRAY),
         other_input_columns=[
             Column("price", IOType.NUMBER),
             Column("platform_idx", IOType.NUMBER),
