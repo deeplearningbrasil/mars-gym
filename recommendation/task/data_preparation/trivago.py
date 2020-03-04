@@ -59,30 +59,30 @@ class FilterDataset(BasePySparkTask):
       return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__size=%d.csv" % (self.sample_size))),\
               luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata__size=%d.csv" % (self.sample_size)))
 
-    # https://github.com/carlosvar9103/RecSys2019S/blob/master/src/RecSys2019_Carlos.ipynb
-    def clean_data(self, df):
-      # Remove sessions where reference=NA or the impressions list is empty for the clickout item:
+    # # https://github.com/carlosvar9103/RecSys2019S/blob/master/src/RecSys2019_Carlos.ipynb
+    # def clean_data(self, df):
+    #   # Remove sessions where reference=NA or the impressions list is empty for the clickout item:
 
-      #first: contruct dataframe with session_id and the reference at the last corresponding step (=LAST clickout)
-      last_ref = pd.DataFrame(df.groupby(['session_id']).reference.last(),columns=['reference'])
-      last_ref.reset_index(level=0, inplace=True) #convert index session_id to an actual column
+    #   #first: contruct dataframe with session_id and the reference at the last corresponding step (=LAST clickout)
+    #   last_ref = pd.DataFrame(df.groupby(['session_id']).reference.last(),columns=['reference'])
+    #   last_ref.reset_index(level=0, inplace=True) #convert index session_id to an actual column
       
-      #second: same for impressions list: 
-      last_imp = pd.DataFrame(df.groupby(['session_id']).impressions.last(),columns=['impressions'])
-      last_imp.reset_index(level=0, inplace=True)
+    #   #second: same for impressions list: 
+    #   last_imp = pd.DataFrame(df.groupby(['session_id']).impressions.last(),columns=['impressions'])
+    #   last_imp.reset_index(level=0, inplace=True)
       
-      #third: merge together => columns: sessions_id, reference, impressions
-      temp = pd.merge(last_ref, last_imp, left_on=["session_id"], right_on=["session_id"])
+    #   #third: merge together => columns: sessions_id, reference, impressions
+    #   temp = pd.merge(last_ref, last_imp, left_on=["session_id"], right_on=["session_id"])
       
       
-      #fourth step: remove irrelevant sessions: 
-      temp2=temp[temp.reference.apply(lambda x: x.isnumeric())] #drop session if reference value is not a number
-      temp3= temp2.dropna(axis=0,subset=['impressions']) #drop session if impressions list is NaN
+    #   #fourth step: remove irrelevant sessions: 
+    #   temp2=temp[temp.reference.apply(lambda x: x.isnumeric())] #drop session if reference value is not a number
+    #   temp3= temp2.dropna(axis=0,subset=['impressions']) #drop session if impressions list is NaN
 
-      #fifth step: get back the original full dataset (=all columns)
-      out = pd.merge(df,pd.DataFrame(temp3["session_id"]),on=["session_id"])
+    #   #fifth step: get back the original full dataset (=all columns)
+    #   out = pd.merge(df,pd.DataFrame(temp3["session_id"]),on=["session_id"])
       
-      return out
+    #   return out
 
     def main(self, sc: SparkContext, *args):
       os.makedirs(os.path.join(DATASET_DIR, clean_filename(self.filter_city)), exist_ok=True)
@@ -412,15 +412,23 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       os.makedirs(DATASET_DIR, exist_ok=True)
       spark = SparkSession(sc)
 
-      df          = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
-      item_idx_df = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+      df            = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
+      item_idx_df   = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
+      item_idx_dict = item_idx_df.toPandas().set_index('item_id')['item_idx'].to_dict()
+
+
 
       # Expand impressions interactions
       df = df.withColumn("impressions", to_array_int_udf(df.impressions)).\
               withColumn("prices", to_array_float_udf(df.prices))
 
-      df = df.select("*", posexplode("impressions").alias("pos_item_idx", "item_id")).\
-            join(item_idx_df, "item_id")
+
+      # Convert item_id to item_idx in impressions
+      to_item_idx_from_dict_udf  = udf(lambda x: [item_idx_dict[i] for i in x], ArrayType(IntegerType()))
+      df = df.withColumn("impressions", to_item_idx_from_dict_udf(df.impressions))
+      
+      # Explode
+      df = df.select("*", posexplode("impressions").alias("pos_item_idx", "item_idx"))
 
       df = df.withColumn("price", df["prices"].getItem(df.pos_item_idx)).\
               withColumn("clicked", when(df.action_type_item_idx == df.item_idx, 1.0).otherwise(0.0)).\

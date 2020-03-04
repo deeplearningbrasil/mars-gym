@@ -54,6 +54,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         output_column=Column("clicked", IOType.NUMBER),
         hist_view_column_name="hist_views",
         hist_output_column_name="hist_clicked",
+        auxiliar_output_columns=[Column("ps", IOType.NUMBER)],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),    
 }

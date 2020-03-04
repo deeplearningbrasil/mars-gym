@@ -19,7 +19,7 @@ from recommendation.rank_metrics import *
 
 
 class TrivagoModelTrainingMixin(object):
-  loss_function: str = luigi.ChoiceParameter(choices=["crm", "bce"], default="bce")
+  loss_function: str = luigi.ChoiceParameter(choices=["crm", "bce"], default="crm")
   n_factors: int = luigi.IntParameter(default=128)
   weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
   dropout_prob: float = luigi.FloatParameter(default=0.1)
