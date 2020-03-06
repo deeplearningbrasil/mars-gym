@@ -1,0 +1,22 @@
+/home/marlesson/anaconda3/envs/recommendation-system/lib/python3.6/site-packages/sklearn/externals/six.py:31: DeprecationWarning: The module is deprecated in version 0.21 and will be removed in version 0.23 since we've dropped support for Python 2.7. Please rely on the official version of six (https://pypi.org/project/six/).
+  "(https://pypi.org/project/six/).", DeprecationWarning)
+Traceback (most recent call last):
+  File "/home/marlesson/anaconda3/envs/recommendation-system/bin/luigi", line 11, in <module>
+    sys.exit(luigi_run())
+  File "/home/marlesson/anaconda3/envs/recommendation-system/lib/python3.6/site-packages/luigi/cmdline.py", line 11, in luigi_run
+    run_with_retcodes(argv)
+  File "/home/marlesson/anaconda3/envs/recommendation-system/lib/python3.6/site-packages/luigi/retcodes.py", line 69, in run_with_retcodes
+    with luigi.cmdline_parser.CmdlineParser.global_instance(argv):
+  File "/home/marlesson/anaconda3/envs/recommendation-system/lib/python3.6/contextlib.py", line 81, in __enter__
+    return next(self.gen)
+  File "/home/marlesson/anaconda3/envs/recommendation-system/lib/python3.6/site-packages/luigi/cmdline_parser.py", line 52, in global_instance
+    new_value = CmdlineParser(cmdline_args)
+  File "/home/marlesson/anaconda3/envs/recommendation-system/lib/python3.6/site-packages/luigi/cmdline_parser.py", line 64, in __init__
+    self._attempt_load_module(known_args)
+  File "/home/marlesson/anaconda3/envs/recommendation-system/lib/python3.6/site-packages/luigi/cmdline_parser.py", line 144, in _attempt_load_module
+    __import__(module)
+  File "/media/marlesson/Backup/workspace/DeepFood/deep-reco-gym/recommendation/task/model/trivago/trivago_models.py", line 16, in <module>
+    from recommendation.task.model.interaction import InteractionTraining
+  File "/media/marlesson/Backup/workspace/DeepFood/deep-reco-gym/recommendation/task/model/interaction.py", line 5, in <module>
+    import gym
+ModuleNotFoundError: No module named 'gym'
