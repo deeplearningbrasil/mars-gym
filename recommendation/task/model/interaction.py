@@ -199,14 +199,19 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         df[ps_column]           = df[hist_view_column] / user_views
 
 
-
     def _save_log(self) -> None:
-        df = self.known_observations_data_frame.reset_index()
-        df = df[[self.project_config.user_column.name, self.project_config.item_column.name,
-                 self.project_config.output_column.name]]
-        df.columns = ['context', 'arm', 'reward']
+        columns = [self.project_config.user_column.name, self.project_config.item_column.name,
+                  self.project_config.output_column.name, self.project_config.propensity_score_column_name]
 
-        df.reset_index().to_csv(self.output().path + '/data_log.csv', index=False)
+        # Save DataLog
+        df = self.known_observations_data_frame.reset_index()
+        df = df[columns]
+        df.columns = ['user', 'item', 'reward', 'ps']
+
+        df.reset_index().to_csv(self.output().path + '/sim-datalog.csv', index=False)
+
+        gt_df = self.interactions_data_frame[columns]
+        gt_df.reset_index().to_csv(self.output().path + '/gt-datalog.csv', index=False)
 
         # Train
         #history_df = pd.read_csv(get_history_path(self.output().path))

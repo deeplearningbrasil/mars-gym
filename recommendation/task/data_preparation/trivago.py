@@ -432,21 +432,19 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
 
       df = df.withColumn("price", df["prices"].getItem(df.pos_item_idx)).\
               withColumn("clicked", when(df.action_type_item_idx == df.item_idx, 1.0).otherwise(0.0)).\
-              withColumn("view", lit(1.0))#.\  
+              withColumn("view", lit(1.0)).orderBy('timestamp')  
 
       
-      # win_over_session = Window.partitionBy('user_idx', 'item_idx').orderBy('timestamp')\
-      #                     .rangeBetween(Window.unboundedPreceding, -1)
-      # win_over_session = Window.partitionBy('user_idx', 'item_idx').orderBy('timestamp')\
-      #                     .rangeBetween(Window.unboundedPreceding, -1)
+      win_user_item    = Window.partitionBy('user_idx', 'item_idx').orderBy('timestamp')\
+                          .rangeBetween(Window.unboundedPreceding, -1)
+      win_user         = Window.partitionBy('user_idx').orderBy('timestamp')\
+                          .rangeBetween(Window.unboundedPreceding, -1)
             
-      # df = df.withColumn("hist_views", F.sum(col("view")).over(win_over_session)).\
-      #         withColumn("hist_views", F.sum(col("view")).over(win_over_session)).\
-      #         withColumn("hist_clicked", F.sum(col("clicked")).over(win_over_session)).\
+      df = df.withColumn("user_view", F.sum(col("view")).over(win_user) + lit(1)).\
+              withColumn("hist_views", F.sum(col("view")).over(win_user_item) + lit(1))
 
-      
-      #print(df.select('user_idx', "action_type_item_idx", "pos_item_idx", "item_idx", "item_id", "impressions", "prices", "clicked").show(50))
-      #print("df.count()", count1, count2)
+      df = df.withColumn("ps", df.hist_views/df.user_view)
+                           
       df.toPandas().to_csv(self.output().path, index=False)
 
 class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
