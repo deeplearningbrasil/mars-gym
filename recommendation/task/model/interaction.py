@@ -14,7 +14,7 @@ from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.task.model.base import BaseTorchModelTraining
-from recommendation.plot import plot_history
+from recommendation.utils import parallel_literal_eval
 
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
@@ -37,18 +37,10 @@ class BanditAgent(object):
         if trial:
             trial.with_generators(train_generator=train_loader, val_generator=val_loader).run(epochs=epochs)
 
-    def act(self, batch_of_arm_indices: List[List[int]],
-            batch_of_arm_context: List[Tuple[np.ndarray, ...]],
-            batch_of_arm_scores: Optional[List[List[float]]]) -> np.ndarray:
-
-        if batch_of_arm_scores:
-            return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
-                             for arm_indices, arm_contexts, arm_scores in
-                             zip(batch_of_arm_indices, batch_of_arm_context,
-                                 batch_of_arm_scores)])
-        else:
-            return np.array([self.bandit.select(arm_indices, arm_contexts=arm_contexts)
-                             for arm_indices, arm_contexts in zip(batch_of_arm_indices, batch_of_arm_context)])
+    def act(self, arm_indices: List[int],
+            arm_contexts: Tuple[np.ndarray, ...],
+            arm_scores: Optional[List[float]]) -> int:
+        return self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
 
 
 class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
@@ -71,28 +63,20 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     @property
     def obs_columns(self) -> List[str]:
-        return [self.project_config.user_column.name] + [
-            column.name for column in self.project_config.other_input_columns] + [self.project_config.available_space_column.name]
+        if not hasattr(self, "_obs_columns"):
+            self._obs_columns = [self.project_config.user_column.name] + [
+                column.name for column in self.project_config.other_input_columns]
+        return self._obs_columns
 
-    # def _get_batch_of_arm_indices(self, ob: np.ndarray) -> List[List[int]]:
-    #     return [
-    #         self.unique_items
-    #         for _ in range(len(ob))
-    #     ]
-    def _get_batch_of_arm_indices(self, ob: np.ndarray) -> List[List[int]]:
-        return [
-            self.unique_items
-                if len(self.env_data_frame.iloc[i][self.project_config.available_space_column.name]) == 0
-                    else self.env_data_frame.iloc[i][self.project_config.available_space_column.name] 
-            for i in range(len(ob))
-        ]
+    def _get_arm_indices(self, ob: dict) -> List[int]:
+        if self.project_config.available_arms_column_name:
+            return ob[self.project_config.available_arms_column_name]
+        return self.unique_items
 
-    def _get_batch_of_arm_scores(self, agent: BanditAgent, batch_dataset: Dataset,
-                                 arm_indices: List[List[int]]) -> List[List[float]]:
-        
-        batch_sampler = FasterBatchSampler(batch_dataset, self.batch_size, shuffle=False)
+    def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
+        batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
         generator     = NoAutoCollationDataLoader(
-                            batch_dataset,
+                            ob_dataset,
                             batch_sampler=batch_sampler, num_workers=self.generator_workers,
                             pin_memory=self.pin_memory if self.device == "cuda" else False)
 
@@ -106,38 +90,26 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
         scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
 
-        scores_per_ob: List[List[float]] = []
-        
-        for arms in arm_indices:
-            scores_per_ob.append(scores[:len(arms)])
-            scores = scores[len(arms):]
+        return scores
 
-        return scores_per_ob
+    def _create_ob_dataset(self, ob: dict, arm_indices: List[int]) -> Dataset:
+        data = [{**ob, self.project_config.item_column.name: arm_index} for arm_index in arm_indices]
+        ob_df = pd.DataFrame(
+            columns=self.obs_columns + [self.project_config.item_column.name],
+            data=data)
 
-    def _create_batch_dataset(self, ob: np.ndarray,
-                              batch_of_arm_indices: List[List[int]]) -> Dataset:
-        ob_df                  = pd.DataFrame(columns=self.obs_columns, data=ob)
-        indexed_arm_indices    = np.array([[index, arm_index]
-                                        for index, arm_indices in zip(ob_df.index, batch_of_arm_indices)
-                                        for arm_index in arm_indices])
-        
-        indexed_arm_indices_df = pd.DataFrame(columns=[self.project_config.item_column.name],
-                                              data=indexed_arm_indices[:, 1],
-                                              index=indexed_arm_indices[:, 0])
-        ob_df = ob_df.join(indexed_arm_indices_df)
-
-        # if len(self.known_observations_data_frame) > 0:
-        #     ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
-        #                                 self.project_config.hist_output_column_name])
-        #     hist_count_df = self.known_observations_data_frame.groupby(
-        #         [self.project_config.user_column.name, self.project_config.item_column.name]) \
-        #         .agg({self.project_config.hist_view_column_name: 'max',
-        #               self.project_config.hist_output_column_name: 'max'}).reset_index()
-        #     ob_df = ob_df.merge(hist_count_df, how='left', on=[self.project_config.user_column.name,
-        #                                                        self.project_config.item_column.name]).fillna(0)
-        # else:
-        #     ob_df[self.project_config.hist_view_column_name] = 0
-        #     ob_df[self.project_config.hist_output_column_name] = 0
+        if len(self.known_observations_data_frame) > 0:
+            ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
+                                        self.project_config.hist_output_column_name], errors= 'ignore')
+            hist_count_df = self.known_observations_data_frame.groupby(
+                [self.project_config.user_column.name, self.project_config.item_column.name]) \
+                .agg({self.project_config.hist_view_column_name: 'max',
+                      self.project_config.hist_output_column_name: 'max'}).reset_index()
+            ob_df = ob_df.merge(hist_count_df, how='left', on=[self.project_config.user_column.name,
+                                                               self.project_config.item_column.name]).fillna(0)
+        else:
+            ob_df[self.project_config.hist_view_column_name] = 0
+            ob_df[self.project_config.hist_output_column_name] = 0
 
         if self.project_config.output_column.name not in ob_df.columns:
             ob_df[self.project_config.output_column.name] = 1
@@ -148,15 +120,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         dataset = self.project_config.dataset_class(ob_df, self.metadata_data_frame, self.project_config)
 
         return dataset
-
-    def _create_arm_contexts(self, batch_dataset: Dataset,
-                             batch_of_arm_indices: List[List[int]]) -> List[Tuple[np.ndarray, ...]]:
-        i = 0
-        batch_contexts = []
-        for arm_indices in batch_of_arm_indices:
-            batch_contexts.append(batch_dataset[i:i + len(arm_indices)][0])
-            i += len(arm_indices)
-        return batch_contexts
 
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
@@ -170,18 +133,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             
         return self._known_observations_data_frame
 
-    def _accumulate_known_observations(self, ob: np.ndarray, action: np.ndarray, reward: np.ndarray):
-        data      = np.concatenate((ob, action.reshape(-1, 1), reward.reshape(-1, 1)), axis=1)
+    def _accumulate_known_observations(self, ob: dict, action: int, reward: float):
+        new_row = {**ob, self.project_config.item_column.name: action, self.project_config.output_column.name: reward}
+        self._known_observations_data_frame = self.known_observations_data_frame.append(new_row, ignore_index=True)
 
-        columns   = self.obs_columns + [self.project_config.item_column.name, self.project_config.output_column.name]
-        df_append = pd.DataFrame(
-                    columns=columns,
-                    data=data).astype(self.known_observations_data_frame[columns].dtypes)
-
-        df = pd.concat([self.known_observations_data_frame, df_append], ignore_index=True)
-
-        self._create_hist_columns(df)
-        self._known_observations_data_frame = df
+        self._create_hist_columns(self.known_observations_data_frame)
 
     def _create_hist_columns(self, df: pd.DataFrame):
         user_column             = self.project_config.user_column.name
@@ -274,7 +230,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     @property
     def unique_items(self) -> List[int]:
         if not hasattr(self, "_unique_items"):
-            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique()
+            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique().tolist()
         return self._unique_items
 
     @property
@@ -286,12 +242,13 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     @property
     def env_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_env_data_frame"):
-            env_dataset = self.interactions_data_frame.loc[
-                            self.interactions_data_frame[self.project_config.output_column.name] == 1, 
-                            self.obs_columns + [self.project_config.item_column.name]]
+            env_columns = self.obs_columns + [self.project_config.item_column.name]
+            if self.project_config.available_arms_column_name:
+                env_columns += [self.project_config.available_arms_column_name]
+                self.interactions_data_frame[self.project_config.available_arms_column_name] = parallel_literal_eval(
+                    self.interactions_data_frame[self.project_config.available_arms_column_name])
+            self._env_data_frame = self.interactions_data_frame.loc[self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
 
-            literal_eval_array_columns(env_dataset, [self.project_config.available_space_column])
-            self._env_data_frame = env_dataset
 
         return self._env_data_frame
 
@@ -299,67 +256,64 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         os.makedirs(self.output().path, exist_ok=True)
         self._save_params()
 
-
-
-        env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame, item_column=self.project_config.item_column.name,
-                                  obs_batch_size=self.obs_batch_size)
+        env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame, item_column=self.project_config.item_column.name)
         env.seed(42)
 
         agent: BanditAgent = self.create_agent()
 
-        rewards      = []
+        rewards = []
         interactions = 0
-        done         = False
-        k            = 0
+        k = 0
         for i in range(self.num_episodes):
             ob = env.reset()
 
             while True:
-                interactions += len(ob)
+                interactions += 1
 
-                batch_of_arm_indices    = self._get_batch_of_arm_indices(ob)
-                batch_dataset           = self._create_batch_dataset(ob, batch_of_arm_indices)
-                batch_of_arm_context    = self._create_arm_contexts(batch_dataset, batch_of_arm_indices)
-                batch_of_arm_scores     = self._get_batch_of_arm_scores(agent, batch_dataset, batch_of_arm_indices) \
-                    if agent.bandit.reward_model else None
-                action = agent.act(batch_of_arm_indices, batch_of_arm_context, batch_of_arm_scores)
+                arm_indices  = self._get_arm_indices(ob)
 
-                #print(batch_of_arm_indices, "\n===",  batch_of_arm_scores, "\n===", action)
-                #d
+                ob_dataset   = self._create_ob_dataset(ob, arm_indices)
+                arm_contexts = ob_dataset[:len(ob_dataset)][0]
+                arm_scores   = self._get_arm_scores(agent, ob_dataset) if agent.bandit.reward_model else None
+                action       = agent.act(arm_indices, arm_contexts, arm_scores)
+
                 new_ob, reward, done, info = env.step(action)
-                rewards.extend(reward)
+                rewards.append(reward)
                 self._accumulate_known_observations(ob, action, reward)
 
                 if done:
                     break
 
                 ob = new_ob
-                self._reset_dataset()
 
-                if agent.bandit.reward_model and self.full_refit:
-                    agent.bandit.reward_model = self.create_module()
+                if interactions % self.obs_batch_size == 0:
+                    self._reset_dataset()
 
-                agent.fit(self.create_trial(agent.bandit.reward_model) if agent.bandit.reward_model else None,
-                          self.get_train_generator(),
-                          self.get_val_generator(),
-                          self.epochs)
-                
-                print("\n", k, ": Interaction Stats")
-                print(
-                    self.known_observations_data_frame[[self.project_config.output_column.name]].describe().transpose(),
-                    "\n")
-                if hasattr(self, "train_data_frame"):
+                    if agent.bandit.reward_model and self.full_refit:
+                        agent.bandit.reward_model = self.create_module()
+
+                    agent.fit(self.create_trial(agent.bandit.reward_model) if agent.bandit.reward_model else None,
+                              self.get_train_generator(),
+                              self.get_val_generator(),
+                              self.epochs)
+
+                    print("\n", k, ": Interaction Stats")
                     print(
-                        self._train_data_frame[[self.project_config.output_column.name]].describe().transpose(),
+                        self.known_observations_data_frame[
+                            [self.project_config.output_column.name]].describe().transpose(),
                         "\n")
-                if hasattr(self, "val_data_frame"):
-                    print(
-                        self._val_data_frame[[self.project_config.output_column.name]].describe().transpose(),
-                        "\n")                                    
-                
-                # print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
-                k += 1
-                self._save_log()
+                    if hasattr(self, "train_data_frame"):
+                        print(
+                            self._train_data_frame[[self.project_config.output_column.name]].describe().transpose(),
+                            "\n")
+                    if hasattr(self, "val_data_frame"):
+                        print(
+                            self._val_data_frame[[self.project_config.output_column.name]].describe().transpose(),
+                            "\n")
+
+                    # print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
+                    k += 1
+                    self._save_log()
 
         env.close()
 

@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import Tuple
 
 import gym
@@ -9,55 +10,40 @@ from gym import utils
 class RecSysEnv(gym.Env, utils.EzPickle):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, dataset: pd.DataFrame, item_column: str, obs_batch_size: int = 2000):
-        self.init_batch = 0
-        self.end_batch = 0
-        self.obs_batch_size = obs_batch_size
+    def __init__(self, dataset: pd.DataFrame, item_column: str):
+        self._dataset = dataset
+        self._item_column = item_column
+        self._obs_dataset = dataset.drop(columns=[item_column])
+
+        self._current_index = 0
         self.reward_range = [0.0, 1.0]
         # TODO
         # self.observation_space
         # self.action_space
-        self.dataset = dataset
-        self.item_column = item_column
-        self.obs_dataset = dataset.drop(columns=[item_column])
 
-    def _compute_end_batch(self):
-        if self.end_batch + self.obs_batch_size < len(self.dataset):
-            self.end_batch += self.obs_batch_size
-        else:
-            self.end_batch = len(self.dataset)
-
-    def _compute_stats(self, action: np.ndarray) -> dict:
+    def _compute_stats(self, action: float) -> dict:
         # TODO: Choose which batch metrics to return
         return {}
 
-    def _compute_rewards(self, action: np.ndarray) -> np.ndarray:
-        expected_items = self.dataset[self.init_batch: self.end_batch][[self.item_column]].values.flatten()
+    def _compute_reward(self, action: int) -> float:
+        return float(self._dataset.iloc[self._current_index][self._item_column] == action)
 
-        return (action == expected_items) * 1.0
+    def _next_obs(self) -> dict:
+        return self._obs_dataset.iloc[self._current_index].to_dict(OrderedDict)
 
-    def _next_obs(self) -> np.ndarray:
-        return self.obs_dataset[self.init_batch: self.end_batch].values
-
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, bool, dict]:
-        rewards = self._compute_rewards(action)
+    def step(self, action: int) -> Tuple[dict, float, bool, dict]:
+        reward = self._compute_reward(action)
         info = self._compute_stats(action)
-        done = False
 
-        if self.end_batch == (len(self.dataset)):
-            done = True
-            next_obs = np.array([])
-        else:
-            self.init_batch = self.end_batch
-            self._compute_end_batch()
+        self._current_index += 1
 
-            next_obs = self._next_obs()
-        return next_obs, rewards, done, info
+        done = (self._current_index + 1) == len(self._dataset)
+        next_obs = self._next_obs() if not done else None
 
-    def reset(self) -> np.ndarray:
-        self.init_batch = 0
-        self.end_batch = 0
-        self._compute_end_batch()
+        return next_obs, reward, done, info
+
+    def reset(self) -> dict:
+        self._current_index = 0
         return self._next_obs()
 
     def render(self, mode='human'):

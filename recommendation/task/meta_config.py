@@ -1,15 +1,16 @@
 from enum import Enum, auto
-from typing import List, Type, Dict, Any
+from typing import List, Type, Dict
 
 from torch.utils.data import Dataset
 
 from recommendation.task.data_preparation.base import BasePrepareDataFrames
 
+
 class IOType(Enum):
-    INDEX  = auto()
+    INDEX = auto()
     NUMBER = auto()
-    FLOAT_ARRAY  = auto()
-    INT_ARRAY  = auto()
+    FLOAT_ARRAY = auto()
+    INT_ARRAY = auto()
 
 
 class RecommenderType(Enum):
@@ -34,13 +35,13 @@ class ProjectConfig(object):
                  output_column: Column,
                  recommender_type: RecommenderType,
                  dataset_extra_params: dict = {},
-                 hist_view_column_name: str = 'hist_view',
-                 hist_output_column_name: str = 'hist_output',                 
-                 timestamp_column_name: str = 'timestamp',                 
+                 hist_view_column_name: str = "hist_view",
+                 hist_output_column_name: str = "hist_output",
+                 timestamp_column_name: str = "timestamp",
+                 available_arms_column_name: str = None,
                  propensity_score_column_name: str = "ps",
                  n_users_column: str = "n_users",
                  n_items_column: str = "n_items",
-                 available_space_column: Column = Column("", IOType.INT_ARRAY),
                  default_balance_fields: List[str] = [],
                  metadata_columns: List[Column] = [],
                  auxiliar_output_columns: List[Column] = [],
@@ -54,10 +55,10 @@ class ProjectConfig(object):
         self.item_column = item_column
         self.other_input_columns = other_input_columns
         self.output_column = output_column
-        self.available_space_column = available_space_column
         self.hist_view_column_name = hist_view_column_name
         self.hist_output_column_name = hist_output_column_name
         self.timestamp_column_name = timestamp_column_name
+        self.available_arms_column_name = available_arms_column_name
         self.auxiliar_output_columns = auxiliar_output_columns
         self.recommender_type = recommender_type
         self.propensity_score_column_name = propensity_score_column_name

@@ -17,6 +17,8 @@ PROJECTS: Dict[str, ProjectConfig] = {
             Column("category_names", IOType.INT_ARRAY), Column("restaurant_complete_info", IOType.FLOAT_ARRAY),
         ],
         output_column=Column("buy", IOType.NUMBER),
+        timestamp_column_name="click_timestamp",
+        available_arms_column_name="available_merchant_idx_list",
         hist_view_column_name="hist_visits",
         hist_output_column_name="hist_buys",
         auxiliar_output_columns=[Column("ps", IOType.NUMBER)],
@@ -28,7 +30,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         dataset_class=InteractionsDataset,
         user_column=Column("user_idx", IOType.INDEX),
         item_column=Column("item_idx", IOType.INDEX),
-        available_space_column=Column("impressions", IOType.INT_ARRAY),
+        available_arms_column_name="impressions",
         other_input_columns=[
             Column("price", IOType.NUMBER),
             Column("platform_idx", IOType.NUMBER),
