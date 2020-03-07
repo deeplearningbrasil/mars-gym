@@ -64,7 +64,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return [self.project_config.user_column.name] + [
             column.name for column in self.project_config.other_input_columns]
 
-    def _get_arm_indices(self, ob: np.ndarray) -> List[int]:
+    def _get_arm_indices(self, ob: dict) -> List[int]:
         return self.unique_items
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
@@ -86,10 +86,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         return scores
 
-    def _create_ob_dataset(self, ob: np.ndarray, arm_indices: List[int]) -> Dataset:
+    def _create_ob_dataset(self, ob: dict, arm_indices: List[int]) -> Dataset:
+        data = [{**ob, self.project_config.item_column.name: arm_index} for arm_index in arm_indices]
         ob_df = pd.DataFrame(
             columns=self.obs_columns + [self.project_config.item_column.name],
-            data=np.array([np.append(ob, arm_index) for arm_index in arm_indices]))
+            data=data)
 
         if len(self.known_observations_data_frame) > 0:
             ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
@@ -126,18 +127,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             
         return self._known_observations_data_frame
 
-    def _accumulate_known_observations(self, ob: np.ndarray, action: int, reward: float):
-        data      = np.expand_dims(np.append(ob, np.array([action, reward])), axis=0)
+    def _accumulate_known_observations(self, ob: dict, action: int, reward: float):
+        new_row = {**ob, self.project_config.item_column.name: action, self.project_config.output_column.name: reward}
+        self._known_observations_data_frame = self.known_observations_data_frame.append(new_row, ignore_index=True)
 
-        columns   = self.obs_columns + [self.project_config.item_column.name, self.project_config.output_column.name]
-        df_append = pd.DataFrame(
-                    columns=columns,
-                    data=data).astype(self.known_observations_data_frame[columns].dtypes)
-
-        df = pd.concat([self.known_observations_data_frame, df_append], ignore_index=True)
-
-        self._create_hist_columns(df)
-        self._known_observations_data_frame = df
+        self._create_hist_columns(self.known_observations_data_frame)
 
     def _create_hist_columns(self, df: pd.DataFrame):
         user_column             = self.project_config.user_column.name

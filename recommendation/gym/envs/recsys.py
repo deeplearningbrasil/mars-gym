@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import Tuple
 
 import gym
@@ -27,21 +28,21 @@ class RecSysEnv(gym.Env, utils.EzPickle):
     def _compute_reward(self, action: int) -> float:
         return float(self._dataset.iloc[self._current_index][self._item_column] == action)
 
-    def _next_obs(self) -> np.ndarray:
-        return self._obs_dataset.iloc[self._current_index].values
+    def _next_obs(self) -> dict:
+        return self._obs_dataset.iloc[self._current_index].to_dict(OrderedDict)
 
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: int) -> Tuple[dict, float, bool, dict]:
         reward = self._compute_reward(action)
         info = self._compute_stats(action)
 
         self._current_index += 1
 
         done = (self._current_index + 1) == len(self._dataset)
-        next_obs = self._next_obs() if not done else np.array([])
+        next_obs = self._next_obs() if not done else None
 
         return next_obs, reward, done, info
 
-    def reset(self) -> np.ndarray:
+    def reset(self) -> dict:
         self._current_index = 0
         return self._next_obs()
 
