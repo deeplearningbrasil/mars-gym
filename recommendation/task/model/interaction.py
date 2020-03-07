@@ -14,6 +14,7 @@ from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.task.model.base import BaseTorchModelTraining
+from recommendation.utils import parallel_literal_eval
 
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
@@ -61,10 +62,14 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     @property
     def obs_columns(self) -> List[str]:
-        return [self.project_config.user_column.name] + [
-            column.name for column in self.project_config.other_input_columns]
+        if not hasattr(self, "_obs_columns"):
+            self._obs_columns = [self.project_config.user_column.name] + [
+                column.name for column in self.project_config.other_input_columns]
+        return self._obs_columns
 
     def _get_arm_indices(self, ob: dict) -> List[int]:
+        if self.project_config.available_arms_column_name:
+            return ob[self.project_config.available_arms_column_name]
         return self.unique_items
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
@@ -215,7 +220,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     @property
     def unique_items(self) -> List[int]:
         if not hasattr(self, "_unique_items"):
-            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique()
+            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique().tolist()
         return self._unique_items
 
     @property
@@ -228,9 +233,13 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         os.makedirs(self.output().path, exist_ok=True)
         self._save_params()
 
+        env_columns = self.obs_columns + [self.project_config.item_column.name]
+        if self.project_config.available_arms_column_name:
+            env_columns += [self.project_config.available_arms_column_name]
+            self.interactions_data_frame[self.project_config.available_arms_column_name] = parallel_literal_eval(
+                self.interactions_data_frame[self.project_config.available_arms_column_name])
         env_dataset = self.interactions_data_frame.loc[
-                        self.interactions_data_frame[self.project_config.output_column.name] == 1, self.obs_columns + [
-                        self.project_config.item_column.name]]
+                        self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
         env: RecSysEnv = gym.make('recsys-v0', dataset=env_dataset, item_column=self.project_config.item_column.name)
         env.seed(42)
 

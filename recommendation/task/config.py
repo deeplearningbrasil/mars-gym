@@ -18,6 +18,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         ],
         output_column=Column("buy", IOType.NUMBER),
         timestamp_column_name="click_timestamp",
+        available_arms_column_name="available_merchant_idx_list",
         hist_view_column_name="hist_visits",
         hist_output_column_name="hist_buys",
         auxiliar_output_columns=[Column("ps", IOType.NUMBER)],
