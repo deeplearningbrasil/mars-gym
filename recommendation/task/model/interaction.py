@@ -21,7 +21,7 @@ from recommendation.gym.envs import RecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir
-from recommendation.files import get_history_path
+from recommendation.files import get_history_path, get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
 from recommendation.data import literal_eval_array_columns
 
 class BanditAgent(object):
@@ -203,15 +203,22 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         columns = [self.project_config.user_column.name, self.project_config.item_column.name,
                   self.project_config.output_column.name, self.project_config.propensity_score_column_name]
 
-        # Save DataLog
-        df = self.known_observations_data_frame.reset_index()
-        df = df[columns]
-        df.columns = ['user', 'item', 'reward', 'ps']
+        # Env Dataset
+        env_data_df = self.env_data_frame.reset_index()
+        env_data_duplicate_df = pd.concat([env_data_df] * self.num_episodes, ignore_index=True)
 
-        df.reset_index().to_csv(self.output().path + '/sim-datalog.csv', index=False)
+        # Simulator Dataset
+        sim_df = self.known_observations_data_frame.reset_index(drop=True)
+        sim_df = sim_df[columns]
+        sim_df.columns  = ['user', 'item', 'reward', 'ps']
+        sim_df['index'] = env_data_duplicate_df['index']
 
-        gt_df = self.interactions_data_frame[columns]
-        gt_df.reset_index().to_csv(self.output().path + '/gt-datalog.csv', index=False)
+        # All Dataset
+        gt_df  = self.interactions_data_frame[columns].reset_index()
+
+        sim_df.to_csv(get_simulator_datalog_path(self.output().path), index=False)
+        gt_df.to_csv(get_interator_datalog_path(self.output().path), index=False)
+        env_data_df.to_csv(get_ground_truth_datalog_path(self.output().path), index=False)
 
         # Train
         #history_df = pd.read_csv(get_history_path(self.output().path))
@@ -225,8 +232,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     def interactions_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_interactions_data_frame"):
             self._interactions_data_frame = pd.concat([pd.read_csv(self.train_data_frame_path),
-                                                       pd.read_csv(self.val_data_frame_path)])
-            self._interactions_data_frame.sort_values(self.project_config.timestamp_column_name)
+                                                       pd.read_csv(self.val_data_frame_path)], ignore_index=True)
+            self._interactions_data_frame.sort_values(self.project_config.timestamp_column_name).reset_index(drop=True)
 
         return self._interactions_data_frame
 
@@ -245,6 +252,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return pd.DataFrame()
 
     def _reset_dataset(self):
+        #self._train_data_frame, self._val_data_frame, _ = self.prepare_data_frames.split_dataset(self.known_observations_data_frame)
+
         self._train_data_frame, self._val_data_frame = train_test_split(
                 self.known_observations_data_frame, test_size=self.val_size, 
                 random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name] 

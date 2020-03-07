@@ -24,3 +24,12 @@ def get_task_dir(model_cls: Type, task_id: str):
 
 def get_interaction_dir(model_cls: Type, task_id: str):
     return os.path.join("output", "interaction", model_cls.__name__, "results", task_id)
+
+def get_simulator_datalog_path(task_dir: str) -> str:
+    return os.path.join(task_dir, "sim-datalog.csv")
+
+def get_interator_datalog_path(task_dir: str) -> str:
+    return os.path.join(task_dir, "all-datalog.csv")
+
+def get_ground_truth_datalog_path(task_dir: str) -> str:
+    return os.path.join(task_dir, "gt-datalog.csv")        

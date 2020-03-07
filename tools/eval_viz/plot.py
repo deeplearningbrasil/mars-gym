@@ -69,8 +69,8 @@ def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0,
 
 def plot_exploration_arm(df, title=""):
     rounds = len(df)
-    arms   = np.unique(df['arm'].values)
-    arms_rewards = df['arm'].values
+    arms   = np.unique(df['item'].values)
+    arms_rewards = df['item'].values
 
     count_per_arms = {}
     

@@ -31,7 +31,7 @@ from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 
-from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
+from recommendation.files import get_params_path, get_weights_path, get_interaction_dir, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
 from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization
 from recommendation.plot import plot_history
@@ -40,6 +40,7 @@ from recommendation.task.config import PROJECTS, IOType
 from recommendation.task.cuda import CudaRepository
 from recommendation.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from recommendation.utils import lecun_normal_init, he_init
+import importlib
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -389,6 +390,48 @@ class BaseTorchModelTraining(BaseModelTraining):
                                          pin_memory=True if self.device == "cuda" else False)
 
 
+class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
+    model_module: str = luigi.Parameter(default="recommendation.task.model.interaction")
+    model_cls: str = luigi.Parameter(default="InteractionTraining")
+    model_task_id: str = luigi.Parameter()
+    no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
+    task_hash: str = luigi.Parameter(default='none')
+
+    @property
+    def cache_attr(self):
+        return ['']
+
+    @property
+    def task_name(self):
+        return self.model_task_id + "_" + self.task_id.split("_")[-1]
+
+    @property
+    def model_training(self) -> BaseTorchModelTraining:
+        if not hasattr(self, "_model_training"):
+            module = importlib.import_module(self.model_module)
+            class_ = getattr(module, self.model_cls)
+
+            self._model_training = load_torch_model_training_from_task_id(class_, self.model_task_id)
+
+        return self._model_training
+
+    @property
+    def n_items(self):
+        return self.model_training.n_items
+
+    @property
+    def output_path(self):
+        return os.path.join("output", "evaluation", self.__class__.__name__, "results", self.task_name)
+
+    def cache_cleanup(self):
+        for a in self.cache_attrs:
+            if hasattr(self, a):
+                delattr(self, a)
+
+    def _save_params(self):
+        with open(get_params_path(self.output_path), "w") as params_file:
+            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
+
 def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraining],
                                             task_dir: str) -> BaseTorchModelTraining:
     return model_cls(**get_params(task_dir))
@@ -396,6 +439,6 @@ def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraini
 
 def load_torch_model_training_from_task_id(model_cls: Type[BaseTorchModelTraining],
                                            task_id: str) -> BaseTorchModelTraining:
-    task_dir = get_task_dir(model_cls, task_id)
+    task_dir = get_interaction_dir(model_cls, task_id)
 
     return load_torch_model_training_from_task_dir(model_cls, task_dir)
