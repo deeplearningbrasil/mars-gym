@@ -55,7 +55,7 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
       values = np.cumsum(values)/_x
 
     if roll:
-      values = rows[metric].rolling(window = window).mean()
+      values = rows[metric].rolling(window = window, min_periods=1).mean()
 
     ymax   = np.max([np.max(values), ymax])
 

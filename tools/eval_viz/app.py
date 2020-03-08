@@ -115,12 +115,14 @@ def load_data_iteractions_metrics(model):
   num_lines = sum(1 for l in open(file)) - 1
 
   # Sample size - in this case ~10%
-  size = 5000#int(num_lines / 10)
+  size = np.min([5000, num_lines])#int(num_lines / 10)
 
   # The row indices to skip - make sure 0 is not included to keep the header!
   skip_idx  = sorted(random.sample(range(1, num_lines), num_lines - size))
   idx       = list(set(list(range(num_lines))) - set(skip_idx))
   df        = pd.read_csv(file, skiprows=skip_idx)
+  #df        = pd.read_csv(file)
+  #idx       = df.index
 
   df['idx'] = idx
   df        = df.sort_values("idx")
@@ -255,7 +257,7 @@ def display_iteraction_result():
 
   if len(input_iteraction) > 0 and input_metrics:
     # Add a slider to the sidebar:
-    add_slider = st.sidebar.slider('Window', min_value=0, max_value=200, value=50, step=1)
+    add_slider = st.sidebar.slider('Window', min_value=1, max_value=1000, value=50, step=1)
 
     df         = metrics.merge(params, on=['iteraction'], how='left')\
                 .merge(metrics.groupby("iteraction").agg({'reward': 'mean'}).rename(columns={'reward': 'sum_reward'}).reset_index(), 
