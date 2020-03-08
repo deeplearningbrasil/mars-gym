@@ -35,20 +35,27 @@ def plot_line(df, title="", yrange=[0, 1], cum=False):
 
   st.plotly_chart(fig)
 
-def plot_line_iteraction(df, metric, legend=['iteraction'], title="", yrange=[0, 1], 
-                        cum=False, mean=False):
-  data = []
-  ymax = yrange[1] if yrange else 1
-  
+def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
+                        title="", yrange=[0, 1], 
+                        cum=False, mean=False, roll=False):
+  data  = []
+  ymax  = yrange[1] if yrange else 1
+
   for group, rows in df.groupby("iteraction", sort=False):
-    x    = [i+1 for i in range(len(rows))]
+    _x   = [i+1 for i in range(len(rows))]
+
+    x    = sorted(rows['idx'].values)
+    #print(rows['idx'].values)
 
     values = rows[metric].values
     if cum:
       values = np.cumsum(values)
 
     if mean:
-      values = np.cumsum(values)/x
+      values = np.cumsum(values)/_x
+
+    if roll:
+      values = rows[metric].rolling(window = window).mean()
 
     ymax   = np.max([np.max(values), ymax])
 

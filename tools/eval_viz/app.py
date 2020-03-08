@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import os
 from plot import *
 from util import *
+import random
 pd.set_option('display.max_colwidth', -1)
 
 PATH_EVALUATION = 'output/evaluation/'
@@ -107,7 +108,23 @@ def load_iteractions_params(iteractions):
 
 @st.cache(allow_output_mutation=True)
 def load_data_iteractions_metrics(model):
-  return pd.read_csv(os.path.join(fetch_iteraction_results_path()[model],'sim-datalog.csv'))#.sample(10000)
+
+  file      = os.path.join(fetch_iteraction_results_path()[model],'sim-datalog.csv')
+
+  # Count the lines
+  num_lines = sum(1 for l in open(file)) - 1
+
+  # Sample size - in this case ~10%
+  size = 5000#int(num_lines / 10)
+
+  # The row indices to skip - make sure 0 is not included to keep the header!
+  skip_idx  = sorted(random.sample(range(1, num_lines), num_lines - size))
+  idx       = list(set(list(range(num_lines))) - set(skip_idx))
+  df        = pd.read_csv(file, skiprows=skip_idx)
+
+  df['idx'] = idx
+  df        = df.sort_values("idx")
+  return df
 
 @st.cache(allow_output_mutation=True)
 def load_data_orders_metrics(model):
@@ -125,10 +142,10 @@ def load_all_iteraction_metrics(iteractions):
   metrics = []
 
   for iteraction in iteractions:
-    try:
-      metric = load_data_iteractions_metrics(iteraction)
-    except:
-      continue
+    #try:
+    metric = load_data_iteractions_metrics(iteraction)
+    #except:
+    #  continue
 
     metric['iteraction'] = iteraction
     metrics.append(metric)
@@ -232,12 +249,15 @@ def display_iteraction_result():
   input_iteraction  = st.sidebar.multiselect("Results", sorted(fetch_iteraction_results_path().keys()))
   metrics           = load_all_iteraction_metrics(input_iteraction)
   params            = load_iteractions_params(input_iteraction)
-  input_metrics     = st.sidebar.selectbox("Metrics", ['Cumulative Reward', 'Cumulative Mean Reward'], index=0)
+  input_metrics     = st.sidebar.selectbox("Metrics", ['Cumulative Reward', 'Cumulative Mean Reward', 'Cumulative Window Mean Reward'], index=0)
   
   st.sidebar.markdown("## Graph Options")
 
   if len(input_iteraction) > 0 and input_metrics:
-    df = metrics.merge(params, on=['iteraction'], how='left')\
+    # Add a slider to the sidebar:
+    add_slider = st.sidebar.slider('Window', min_value=0, max_value=200, value=50, step=1)
+
+    df         = metrics.merge(params, on=['iteraction'], how='left')\
                 .merge(metrics.groupby("iteraction").agg({'reward': 'mean'}).rename(columns={'reward': 'sum_reward'}).reset_index(), 
                         on=['iteraction'], how='left')\
                 .reset_index().sort_values(['sum_reward', 'index'], ascending=[False, True])
@@ -249,8 +269,10 @@ def display_iteraction_result():
                           title=input_metrics, 
                           legend=input_legend,
                           yrange=None, 
+                          window=add_slider,
                           cum=(input_metrics == 'Cumulative Reward'), 
-                          mean=(input_metrics == 'Cumulative Mean Reward'))
+                          mean=(input_metrics == 'Cumulative Mean Reward'),
+                          roll=(input_metrics == 'Cumulative Window Mean Reward'))
 
     st.dataframe(df.head())
 
