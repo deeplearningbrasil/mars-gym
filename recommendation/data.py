@@ -7,7 +7,6 @@ import torch
 from recommendation.task.meta_config import ProjectConfig, IOType, Column
 from recommendation.utils import parallel_literal_eval, literal_eval_if_str
 
-
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
         if (column.type == IOType.FLOAT_ARRAY or column.type == IOType.INT_ARRAY) and column.name in data_frame:
@@ -15,14 +14,17 @@ def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
 
 
 class InteractionsDataset(Dataset):
-    def __init__(self, data_frame: pd.DataFrame, metadata_data_frame: Optional[pd.DataFrame],
-                 project_config: ProjectConfig) -> None:
+    def __init__(self,  data_frame: pd.DataFrame, 
+                        metadata_data_frame: Optional[pd.DataFrame],
+                        project_config: ProjectConfig, 
+                        eval_array_columns: bool = True) -> None:
         self._project_config = project_config
         self._input_columns = [project_config.user_column, project_config.item_column] + [
             input_column for input_column in project_config.other_input_columns]
 
-        literal_eval_array_columns(data_frame, self._input_columns + [project_config.output_column])
-        literal_eval_array_columns(metadata_data_frame, project_config.metadata_columns)
+        if eval_array_columns:
+            literal_eval_array_columns(data_frame, self._input_columns + [project_config.output_column])
+            literal_eval_array_columns(metadata_data_frame, project_config.metadata_columns)
 
         input_column_names = [input_column.name for input_column in self._input_columns]
         metadata_column_names = [metadata_column.name for metadata_column in project_config.metadata_columns]

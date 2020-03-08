@@ -117,7 +117,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             if auxiliar_output_column.name not in ob_df.columns:
                 ob_df[auxiliar_output_column.name] = 0
 
-        dataset = self.project_config.dataset_class(ob_df, self.metadata_data_frame, self.project_config)
+        dataset = self.project_config.dataset_class(ob_df, self.metadata_data_frame, self.project_config, eval_array_columns=False)
 
         return dataset
 
@@ -247,10 +247,21 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 env_columns += [self.project_config.available_arms_column_name]
                 self.interactions_data_frame[self.project_config.available_arms_column_name] = parallel_literal_eval(
                     self.interactions_data_frame[self.project_config.available_arms_column_name])
+
             self._env_data_frame = self.interactions_data_frame.loc[self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
 
+            columns = [self.project_config.user_column, self.project_config.item_column, self.project_config.output_column] + \
+                        [input_column for input_column in self.project_config.other_input_columns]
 
+            literal_eval_array_columns(self._env_data_frame, columns)
         return self._env_data_frame
+
+    @property
+    def metadata_data_frame(self) -> Optional[pd.DataFrame]:
+        if not hasattr(self, "_metadata_data_frame"):
+            self._metadata_data_frame = super().metadata_data_frame
+            literal_eval_array_columns(self._metadata_data_frame,  self.project_config.metadata_columns)
+        return self._metadata_data_frame
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
