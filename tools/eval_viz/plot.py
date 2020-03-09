@@ -43,9 +43,7 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
 
   for group, rows in df.groupby("iteraction", sort=False):
     _x   = [i+1 for i in range(len(rows))]
-
     x    = sorted(rows['idx'].values)
-    #print(rows['idx'].values)
 
     values = rows[metric].values
     if cum:
@@ -88,7 +86,7 @@ def plot_exploration_arm(df, title=""):
         count_per_arms[arms_rewards[r]][r] = 1
     
     fig = go.Figure()
-    x   = (np.array(range(rounds)) + 1)
+    x    = sorted(df['idx'].values)
 
     for arm, values in count_per_arms.items():    
         fig.add_trace(go.Scatter(
