@@ -1,19 +1,21 @@
 import abc
 import gc
+import importlib
+import json
 import logging
-import multiprocessing
 import os
 import random
 import shutil
 from contextlib import redirect_stdout
-from typing import Type, Dict, List, Optional
-import json
+from typing import Type, Dict, List, Optional, Tuple
+
 import luigi
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchbearer
 from torch.nn.init import xavier_normal
 from torch.optim import Adam, RMSprop, SGD
 from torch.optim.adadelta import Adadelta
@@ -23,7 +25,6 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
-import torchbearer
 from torchbearer import Trial
 from torchbearer.callbacks import GradientNormClipping
 from torchbearer.callbacks.checkpointers import ModelCheckpoint
@@ -31,16 +32,16 @@ from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 
+from recommendation.data import preprocess_interactions_data_frame, preprocess_metadata_data_frame
 from recommendation.files import get_params_path, get_weights_path, get_interaction_dir, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
 from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization
 from recommendation.plot import plot_history
 from recommendation.summary import summary
-from recommendation.task.config import PROJECTS, IOType
+from recommendation.task.config import PROJECTS
 from recommendation.task.cuda import CudaRepository
 from recommendation.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from recommendation.utils import lecun_normal_init, he_init
-import importlib
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -139,50 +140,65 @@ class BaseModelTraining(luigi.Task):
             return None
 
     @property
-    def metadata_data_frame(self) -> Optional[pd.DataFrame]:
-        if not hasattr(self, "_metadata_data_frame"):
-            self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path) \
-                if self.metadata_data_frame_path else None
+    def metadata_data_frame_and_embeddings(self) -> Tuple[Optional[pd.DataFrame], Optional[Dict[str, np.ndarray]]]:
+        if not hasattr(self, "_metadata_data_frame_and_embeddings"):
+            self._metadata_data_frame_and_embeddings = preprocess_metadata_data_frame(
+                pd.read_csv(self.metadata_data_frame_path), self.project_config) if self.metadata_data_frame_path \
+                else (None, None)
 
-        return self._metadata_data_frame
+        return self._metadata_data_frame_and_embeddings
+
+    @property
+    def metadata_data_frame(self) -> Optional[pd.DataFrame]:
+        return self.metadata_data_frame_and_embeddings[0]
+
+    @property
+    def embeddings_for_metadata_columns(self) -> Optional[Dict[str, np.ndarray]]:
+        return self.metadata_data_frame_and_embeddings[1]
 
     @property
     def train_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_train_data_frame"):
-            self._train_data_frame = pd.read_csv(self.train_data_frame_path)
+            self._train_data_frame = preprocess_interactions_data_frame(pd.read_csv(self.train_data_frame_path),
+                                                                        self.project_config)
         return self._train_data_frame
 
     @property
     def val_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_val_data_frame"):
-            self._val_data_frame = pd.read_csv(self.val_data_frame_path)
+            self._val_data_frame = preprocess_interactions_data_frame(pd.read_csv(self.val_data_frame_path),
+                                                                      self.project_config)
         return self._val_data_frame
 
     @property
     def test_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_test_data_frame"):
-            self._test_data_frame = pd.read_csv(self.test_data_frame_path)
+            self._test_data_frame = preprocess_interactions_data_frame(pd.read_csv(self.test_data_frame_path),
+                                                                       self.project_config)
         return self._test_data_frame
 
     @property
     def train_dataset(self) -> Dataset:
         if not hasattr(self, "_train_dataset"):
             self._train_dataset = self.project_config.dataset_class(
-                self.train_data_frame, self.metadata_data_frame, self.project_config)
+                self.train_data_frame, self.metadata_data_frame, self.embeddings_for_metadata_columns,
+                self.project_config)
         return self._train_dataset
 
     @property
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
+            metadata_data_frame, embeddings_for_metadata_columns = self.metadata_data_frame_and_embeddings
             self._val_dataset = self.project_config.dataset_class(
-                self.val_data_frame, self.metadata_data_frame, self.project_config)
+                self.val_data_frame, self.metadata_data_frame, self.embeddings_for_metadata_columns,
+                self.project_config)
         return self._val_dataset
 
     @property
     def test_dataset(self) -> Dataset:
         if not hasattr(self, "_test_dataset"):
             self._test_dataset = self.project_config.dataset_class(
-                self.test_data_frame, self.metadata_data_frame, self.project_config)
+                self.test_data_frame, self.metadata_data_frame, self.embeddings_for_metadata_columns, self.project_config)
         return self._test_dataset
 
     @property

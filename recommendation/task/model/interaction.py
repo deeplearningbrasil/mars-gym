@@ -14,15 +14,13 @@ from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.task.model.base import BaseTorchModelTraining
-from recommendation.utils import parallel_literal_eval
 
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir
-from recommendation.files import get_history_path, get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
-from recommendation.data import literal_eval_array_columns
+from recommendation.files import get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
 
 class BanditAgent(object):
 
@@ -117,7 +115,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             if auxiliar_output_column.name not in ob_df.columns:
                 ob_df[auxiliar_output_column.name] = 0
 
-        dataset = self.project_config.dataset_class(ob_df, self.metadata_data_frame, self.project_config, eval_array_columns=False)
+        dataset = self.project_config.dataset_class(ob_df, self.metadata_data_frame,
+                                                    self.embeddings_for_metadata_columns, self.project_config)
 
         return dataset
 
@@ -137,9 +136,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         new_row = {**ob, self.project_config.item_column.name: action, self.project_config.output_column.name: reward}
         self._known_observations_data_frame = self.known_observations_data_frame.append(new_row, ignore_index=True)
 
-        self._create_hist_columns(self.known_observations_data_frame)
+    def _create_hist_columns(self):
+        df = self.known_observations_data_frame
 
-    def _create_hist_columns(self, df: pd.DataFrame):
         user_column             = self.project_config.user_column.name
         item_column             = self.project_config.item_column.name
         output_column           = self.project_config.output_column.name
@@ -208,8 +207,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return pd.DataFrame()
 
     def _reset_dataset(self):
-        #self._train_data_frame, self._val_data_frame, _ = self.prepare_data_frames.split_dataset(self.known_observations_data_frame)
-
         self._train_data_frame, self._val_data_frame = train_test_split(
                 self.known_observations_data_frame, test_size=self.val_size, 
                 random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name] 
@@ -245,23 +242,10 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             env_columns = self.obs_columns + [self.project_config.item_column.name]
             if self.project_config.available_arms_column_name:
                 env_columns += [self.project_config.available_arms_column_name]
-                self.interactions_data_frame[self.project_config.available_arms_column_name] = parallel_literal_eval(
-                    self.interactions_data_frame[self.project_config.available_arms_column_name])
 
-            self._env_data_frame = self.interactions_data_frame.loc[self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
-
-            columns = [self.project_config.user_column, self.project_config.item_column, self.project_config.output_column] + \
-                        [input_column for input_column in self.project_config.other_input_columns]
-
-            literal_eval_array_columns(self._env_data_frame, columns)
+            self._env_data_frame = self.interactions_data_frame.loc[
+                self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
         return self._env_data_frame
-
-    @property
-    def metadata_data_frame(self) -> Optional[pd.DataFrame]:
-        if not hasattr(self, "_metadata_data_frame"):
-            self._metadata_data_frame = super().metadata_data_frame
-            literal_eval_array_columns(self._metadata_data_frame,  self.project_config.metadata_columns)
-        return self._metadata_data_frame
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
@@ -298,6 +282,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 ob = new_ob
 
                 if interactions % self.obs_batch_size == 0:
+                    self._create_hist_columns()
                     self._reset_dataset()
 
                     if agent.bandit.reward_model and self.full_refit:
