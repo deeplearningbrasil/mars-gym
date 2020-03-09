@@ -37,7 +37,7 @@ class TrivagoModelTrainingMixin(object):
   @property
   def metadata_size(self):
       if not hasattr(self, "_meta_data_size"):
-          self._meta_data_size = int(self.metadata_data_frame.shape[1] - 3)
+          self._meta_data_size = int(self.metadata_data_frame.shape[1] - 2)
       return self._meta_data_size     
 
 

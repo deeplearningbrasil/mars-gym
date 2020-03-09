@@ -13,7 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 from tqdm import tqdm
 
-from recommendation.data import preprocess_interactions_data_frame
+from recommendation.data import preprocess_interactions_data_frame, literal_eval_array_columns
 from recommendation.task.model.base import BaseTorchModelTraining
 
 tqdm.pandas()
