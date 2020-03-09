@@ -15,6 +15,8 @@ def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
 
 
 def preprocess_interactions_data_frame(data_frame: pd.DataFrame, project_config: ProjectConfig):
+    data_frame[project_config.user_column.name] = data_frame[project_config.user_column.name].astype(int)
+    data_frame[project_config.item_column.name] = data_frame[project_config.item_column.name].astype(int)
     literal_eval_array_columns(
         data_frame, [project_config.user_column, project_config.item_column, project_config.output_column]
                     + [input_column for input_column in project_config.other_input_columns])

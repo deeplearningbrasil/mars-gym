@@ -13,6 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 from tqdm import tqdm
 
+from recommendation.data import preprocess_interactions_data_frame
 from recommendation.task.model.base import BaseTorchModelTraining
 
 tqdm.pandas()
@@ -99,12 +100,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         if len(self.known_observations_data_frame) > 0:
             ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
                                         self.project_config.hist_output_column_name], errors= 'ignore')
-            hist_count_df = self.known_observations_data_frame.groupby(
-                [self.project_config.user_column.name, self.project_config.item_column.name]) \
-                .agg({self.project_config.hist_view_column_name: 'max',
-                      self.project_config.hist_output_column_name: 'max'}).reset_index()
-            ob_df = ob_df.merge(hist_count_df, how='left', on=[self.project_config.user_column.name,
-                                                               self.project_config.item_column.name]).fillna(0)
+            ob_df = ob_df.merge(self.hist_data_frame, how='left',
+                                left_on=[self.project_config.user_column.name, self.project_config.item_column.name],
+                                right_index=True).fillna(0)
         else:
             ob_df[self.project_config.hist_view_column_name] = 0
             ob_df[self.project_config.hist_output_column_name] = 0
@@ -132,9 +130,32 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             
         return self._known_observations_data_frame
 
+    @property
+    def hist_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_hist_data_frame"):
+            self._hist_data_frame = pd.DataFrame(columns=[
+                self.project_config.user_column.name, self.project_config.item_column.name,
+                self.project_config.hist_view_column_name, self.project_config.hist_output_column_name], dtype=np.int) \
+                .set_index([self.project_config.user_column.name, self.project_config.item_column.name])
+        return self._hist_data_frame
+
     def _accumulate_known_observations(self, ob: dict, action: int, reward: float):
-        new_row = {**ob, self.project_config.item_column.name: action, self.project_config.output_column.name: reward}
+        user_column = self.project_config.user_column.name
+        item_column = self.project_config.item_column.name
+        output_column = self.project_config.output_column.name
+        hist_view_column = self.project_config.hist_view_column_name
+        hist_output_column = self.project_config.hist_output_column_name
+
+        new_row = {**ob, item_column: action, output_column: reward}
         self._known_observations_data_frame = self.known_observations_data_frame.append(new_row, ignore_index=True)
+
+        user_index = ob[user_column]
+        if (user_index, action) not in self.hist_data_frame.index:
+            self.hist_data_frame.loc[(user_index, action), hist_view_column] = 1
+            self.hist_data_frame.loc[(user_index, action), hist_output_column] = int(reward)
+        else:
+            self.hist_data_frame.loc[(user_index, action), hist_view_column] += 1
+            self.hist_data_frame.loc[(user_index, action), hist_output_column] += int(reward)
 
     def _create_hist_columns(self):
         df = self.known_observations_data_frame
@@ -186,8 +207,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     @property
     def interactions_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_interactions_data_frame"):
-            self._interactions_data_frame = pd.concat([pd.read_csv(self.train_data_frame_path),
-                                                       pd.read_csv(self.val_data_frame_path)], ignore_index=True)
+            self._interactions_data_frame = preprocess_interactions_data_frame(
+                pd.concat([pd.read_csv(self.train_data_frame_path), pd.read_csv(self.val_data_frame_path)],
+                          ignore_index=True), self.project_config)
             self._interactions_data_frame.sort_values(self.project_config.timestamp_column_name).reset_index(drop=True)
 
         return self._interactions_data_frame

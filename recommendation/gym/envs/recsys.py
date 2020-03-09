@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Tuple
+from typing import Tuple, List
 
 import gym
 import numpy as np
@@ -13,7 +13,7 @@ class RecSysEnv(gym.Env, utils.EzPickle):
     def __init__(self, dataset: pd.DataFrame, item_column: str):
         self._dataset = dataset
         self._item_column = item_column
-        self._obs_dataset = dataset.drop(columns=[item_column])
+        self._obs_dataset: List[dict] = dataset.drop(columns=[item_column]).to_dict('records')
 
         self._current_index = 0
         self.reward_range = [0.0, 1.0]
@@ -29,7 +29,7 @@ class RecSysEnv(gym.Env, utils.EzPickle):
         return float(self._dataset.iloc[self._current_index][self._item_column] == action)
 
     def _next_obs(self) -> dict:
-        return self._obs_dataset.iloc[self._current_index].to_dict(OrderedDict)
+        return self._obs_dataset[self._current_index]
 
     def step(self, action: int) -> Tuple[dict, float, bool, dict]:
         reward = self._compute_reward(action)
