@@ -7,7 +7,6 @@ from torch.utils.data import Dataset
 from recommendation.task.meta_config import ProjectConfig, IOType, Column
 from recommendation.utils import parallel_literal_eval
 
-
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
         if (column.type == IOType.FLOAT_ARRAY or column.type == IOType.INT_ARRAY) and column.name in data_frame:

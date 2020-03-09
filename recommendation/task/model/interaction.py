@@ -187,7 +187,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         sim_df = self.known_observations_data_frame.reset_index(drop=True)
         sim_df = sim_df[columns]
         sim_df.columns  = ['user', 'item', 'reward', 'ps']
-        sim_df['index'] = env_data_duplicate_df['index']
+        sim_df['index_env'] = env_data_duplicate_df['index']
 
         # All Dataset
         gt_df  = self.interactions_data_frame[columns].reset_index()
@@ -268,6 +268,13 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             self._env_data_frame = self.interactions_data_frame.loc[
                 self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
         return self._env_data_frame
+
+    @property
+    def metadata_data_frame(self) -> Optional[pd.DataFrame]:
+        if not hasattr(self, "_metadata_data_frame"):
+            self._metadata_data_frame = super().metadata_data_frame
+            literal_eval_array_columns(self._metadata_data_frame,  self.project_config.metadata_columns)
+        return self._metadata_data_frame
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
