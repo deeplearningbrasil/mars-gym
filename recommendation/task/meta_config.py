@@ -2,6 +2,7 @@ from enum import Enum, auto
 from typing import List, Type, Dict
 
 from torch.utils.data import Dataset
+import numpy as np
 
 from recommendation.task.data_preparation.base import BasePrepareDataFrames
 
@@ -11,6 +12,15 @@ class IOType(Enum):
     NUMBER = auto()
     FLOAT_ARRAY = auto()
     INT_ARRAY = auto()
+
+    @property
+    def dtype(self):
+        return {
+            self.INDEX.name: np.int64,
+            self.NUMBER.name: np.float32,
+            self.FLOAT_ARRAY.name: np.float32,
+            self.INT_ARRAY.name: np.int64,
+        }[self.name]
 
 
 class RecommenderType(Enum):

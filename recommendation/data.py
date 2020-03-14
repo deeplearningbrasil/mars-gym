@@ -28,26 +28,25 @@ def preprocess_interactions_data_frame(data_frame: pd.DataFrame, project_config:
 
 
 def preprocess_metadata_data_frame(metadata_data_frame: pd.DataFrame,
-                                   project_config: ProjectConfig) -> Tuple[pd.DataFrame, Dict[str, np.ndarray]]:
+                                   project_config: ProjectConfig) -> Dict[str, np.ndarray]:
     literal_eval_array_columns(metadata_data_frame, project_config.metadata_columns)
     metadata_data_frame = metadata_data_frame.set_index(project_config.item_column.name, drop=False).sort_index()
 
-    embeddings_for_metadata_columns: Dict[str, np.ndarray] = {}
-    for metadata_column in project_config.metadata_columns:
-        if metadata_column.type in (IOType.FLOAT_ARRAY, IOType.INT_ARRAY):
-            emb = metadata_data_frame[metadata_column.name].values.tolist()
-            dtype = np.float32 if metadata_column.type == IOType.FLOAT_ARRAY else np.int64
-            embeddings_for_metadata_columns[metadata_column.name] = np.array(emb, dtype=dtype)
-            metadata_data_frame.drop(columns=[metadata_column.name], inplace=True)
+    if not (np.arange(0, len(metadata_data_frame.index)) == metadata_data_frame.index).all():
+        raise ValueError("The item index is not contiguous")
 
-    return metadata_data_frame, embeddings_for_metadata_columns
+    embeddings_for_metadata: Dict[str, np.ndarray] = {}
+    for metadata_column in project_config.metadata_columns:
+        emb = metadata_data_frame[metadata_column.name].values.tolist()
+        embeddings_for_metadata[metadata_column.name] = np.array(emb, dtype=metadata_column.type.dtype)
+
+    return embeddings_for_metadata
 
 
 class InteractionsDataset(Dataset):
-    def __init__(self,  data_frame: pd.DataFrame, 
-                        metadata_data_frame: Optional[pd.DataFrame],
-                        embeddings_for_metadata_columns: Optional[Dict[str, np.ndarray]],
-                        project_config: ProjectConfig) -> None:
+    def __init__(self, data_frame: pd.DataFrame,
+                 embeddings_for_metadata: Optional[Dict[str, np.ndarray]],
+                 project_config: ProjectConfig) -> None:
         self._project_config = project_config
         self._input_columns = [project_config.user_column, project_config.item_column] + [
             input_column for input_column in project_config.other_input_columns]
@@ -59,8 +58,7 @@ class InteractionsDataset(Dataset):
         self._data_frame = data_frame[
             set(input_column_names + [project_config.output_column.name] + auxiliar_output_column_names)
                 .intersection(data_frame.columns)]
-        self._metadata_data_frame = metadata_data_frame
-        self._embeddings_for_metadata_columns = embeddings_for_metadata_columns
+        self._embeddings_for_metadata = embeddings_for_metadata
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]
@@ -76,12 +74,6 @@ class InteractionsDataset(Dataset):
             return np.array([np.array(v, dtype=np.float64) for v in value])
         return value
 
-    def _get_metadata(self, item_indices: np.ndarray, column: Column) -> np.ndarray:
-        if column.type in (IOType.FLOAT_ARRAY, IOType.INT_ARRAY):
-            return self._embeddings_for_metadata_columns[column.name][item_indices]
-        else:
-            return self._convert_dtype(self._metadata_data_frame[column.name].values, column.type)
-
     def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...],
                                                                    Union[np.ndarray, Tuple[np.ndarray, ...]]]:
         if isinstance(indices, int):
@@ -89,10 +81,10 @@ class InteractionsDataset(Dataset):
         rows: pd.Series = self._data_frame.iloc[indices]
 
         inputs = tuple(self._convert_dtype(rows[column.name].values, column.type) for column in self._input_columns)
-        if self._metadata_data_frame is not None:
+        if self._embeddings_for_metadata is not None:
             item_indices = inputs[1]
-            inputs += tuple(
-                self._get_metadata(item_indices, column) for column in self._project_config.metadata_columns)
+            inputs += tuple(self._embeddings_for_metadata[column.name][item_indices]
+                            for column in self._project_config.metadata_columns)
 
         output = self._convert_dtype(rows[self._project_config.output_column.name].values,
                                       self._project_config.output_column.type)

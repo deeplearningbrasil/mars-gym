@@ -14,6 +14,7 @@ from torchbearer import Trial
 from tqdm import tqdm
 
 from recommendation.data import preprocess_interactions_data_frame
+from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
 from recommendation.task.model.base import BaseTorchModelTraining
 
 tqdm.pandas()
@@ -67,9 +68,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 column.name for column in self.project_config.other_input_columns]
         return self._obs_columns
 
-    def _get_arm_indices(self, ob: dict) -> List[int]:
+    def _get_arm_indices(self, ob: dict) -> Union[List[int], np.ndarray]:
         if self.project_config.available_arms_column_name:
-            return ob[self.project_config.available_arms_column_name]
+            return np.flatnonzero(ob[self.project_config.available_arms_column_name])
         return self.unique_items
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
@@ -113,8 +114,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             if auxiliar_output_column.name not in ob_df.columns:
                 ob_df[auxiliar_output_column.name] = 0
 
-        dataset = self.project_config.dataset_class(ob_df, self.metadata_data_frame,
-                                                    self.embeddings_for_metadata_columns, self.project_config)
+        dataset = self.project_config.dataset_class(ob_df, ob[ITEM_METADATA_KEY], self.project_config)
 
         return dataset
 
@@ -249,7 +249,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     @property
     def unique_items(self) -> List[int]:
         if not hasattr(self, "_unique_items"):
-            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique().tolist()
+            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique()
         return self._unique_items
 
     @property
@@ -273,7 +273,10 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         os.makedirs(self.output().path, exist_ok=True)
         self._save_params()
 
-        env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame, item_column=self.project_config.item_column.name)
+        env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame,
+                                  available_items_column=self.project_config.available_arms_column_name,
+                                  item_column=self.project_config.item_column.name,
+                                  item_metadata=self.embeddings_for_metadata)
         env.seed(42)
 
         agent: BanditAgent = self.create_agent()

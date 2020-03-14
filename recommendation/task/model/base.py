@@ -140,21 +140,18 @@ class BaseModelTraining(luigi.Task):
             return None
 
     @property
-    def metadata_data_frame_and_embeddings(self) -> Tuple[Optional[pd.DataFrame], Optional[Dict[str, np.ndarray]]]:
-        if not hasattr(self, "_metadata_data_frame_and_embeddings"):
-            self._metadata_data_frame_and_embeddings = preprocess_metadata_data_frame(
-                pd.read_csv(self.metadata_data_frame_path), self.project_config) if self.metadata_data_frame_path \
-                else (None, None)
-
-        return self._metadata_data_frame_and_embeddings
-
-    @property
     def metadata_data_frame(self) -> Optional[pd.DataFrame]:
-        return self.metadata_data_frame_and_embeddings[0]
+        if not hasattr(self, "_metadata_data_frame"):
+            self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path)\
+                if self.metadata_data_frame_path else None
+        return self._metadata_data_frame
 
     @property
-    def embeddings_for_metadata_columns(self) -> Optional[Dict[str, np.ndarray]]:
-        return self.metadata_data_frame_and_embeddings[1]
+    def embeddings_for_metadata(self) -> Optional[Dict[str, np.ndarray]]:
+        if not hasattr(self, "_embeddings_for_metadata"):
+            self._embeddings_for_metadata = preprocess_metadata_data_frame(
+                self.metadata_data_frame, self.project_config) if self.metadata_data_frame is not None else None
+        return self._embeddings_for_metadata
 
     @property
     def train_data_frame(self) -> pd.DataFrame:
@@ -181,16 +178,15 @@ class BaseModelTraining(luigi.Task):
     def train_dataset(self) -> Dataset:
         if not hasattr(self, "_train_dataset"):
             self._train_dataset = self.project_config.dataset_class(
-                self.train_data_frame, self.metadata_data_frame, self.embeddings_for_metadata_columns,
+                self.train_data_frame, self.embeddings_for_metadata,
                 self.project_config)
         return self._train_dataset
 
     @property
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
-            metadata_data_frame, embeddings_for_metadata_columns = self.metadata_data_frame_and_embeddings
             self._val_dataset = self.project_config.dataset_class(
-                self.val_data_frame, self.metadata_data_frame, self.embeddings_for_metadata_columns,
+                self.val_data_frame, self.embeddings_for_metadata,
                 self.project_config)
         return self._val_dataset
 
@@ -198,7 +194,7 @@ class BaseModelTraining(luigi.Task):
     def test_dataset(self) -> Dataset:
         if not hasattr(self, "_test_dataset"):
             self._test_dataset = self.project_config.dataset_class(
-                self.test_data_frame, self.metadata_data_frame, self.embeddings_for_metadata_columns, self.project_config)
+                self.test_data_frame, self.embeddings_for_metadata, self.project_config)
         return self._test_dataset
 
     @property
