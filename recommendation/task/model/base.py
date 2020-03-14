@@ -32,7 +32,8 @@ from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 
-from recommendation.data import preprocess_interactions_data_frame, preprocess_metadata_data_frame
+from recommendation.data import preprocess_interactions_data_frame, preprocess_metadata_data_frame, \
+    literal_eval_array_columns
 from recommendation.files import get_params_path, get_weights_path, get_interaction_dir, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
 from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization
@@ -144,6 +145,7 @@ class BaseModelTraining(luigi.Task):
         if not hasattr(self, "_metadata_data_frame"):
             self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path)\
                 if self.metadata_data_frame_path else None
+            literal_eval_array_columns(self._metadata_data_frame, self.project_config.metadata_columns)
         return self._metadata_data_frame
 
     @property

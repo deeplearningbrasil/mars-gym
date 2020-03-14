@@ -28,7 +28,6 @@ def preprocess_interactions_data_frame(data_frame: pd.DataFrame, project_config:
 
 def preprocess_metadata_data_frame(metadata_data_frame: pd.DataFrame,
                                    project_config: ProjectConfig) -> Dict[str, np.ndarray]:
-    literal_eval_array_columns(metadata_data_frame, project_config.metadata_columns)
     metadata_data_frame = metadata_data_frame.set_index(project_config.item_column.name, drop=False).sort_index()
 
     if not (np.arange(0, len(metadata_data_frame.index)) == metadata_data_frame.index).all():
