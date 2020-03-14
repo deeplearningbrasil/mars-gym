@@ -13,7 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 from tqdm import tqdm
 
-from recommendation.data import preprocess_interactions_data_frame
+from recommendation.data import preprocess_interactions_data_frame, literal_eval_array_columns
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
 from recommendation.task.model.base import BaseTorchModelTraining
 
@@ -187,7 +187,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         sim_df = self.known_observations_data_frame.reset_index(drop=True)
         sim_df = sim_df[columns]
         sim_df.columns  = ['user', 'item', 'reward', 'ps']
-        sim_df['index'] = env_data_duplicate_df['index']
+        sim_df['index_env'] = env_data_duplicate_df['index']
 
         # All Dataset
         gt_df  = self.interactions_data_frame[columns].reset_index()

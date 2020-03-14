@@ -107,22 +107,25 @@ def load_iteractions_params(iteractions):
   return pd.concat(dfs)
 
 @st.cache(allow_output_mutation=True)
-def load_data_iteractions_metrics(model):
-
+def load_data_iteractions_metrics(model, sample_size = 10000):
+  random.seed(42)
   file      = os.path.join(fetch_iteraction_results_path()[model],'sim-datalog.csv')
 
   # Count the lines
   num_lines = sum(1 for l in open(file)) - 1
 
   # Sample size - in this case ~10%
-  size = 5000#int(num_lines / 10)
+  size = np.min([sample_size, num_lines])#int(num_lines / 10)
 
   # The row indices to skip - make sure 0 is not included to keep the header!
   skip_idx  = sorted(random.sample(range(1, num_lines), num_lines - size))
   idx       = list(set(list(range(num_lines))) - set(skip_idx))
+  
   df        = pd.read_csv(file, skiprows=skip_idx)
+  #df        = pd.read_csv(file)#.reset_index()
+  #idx       = list(range(len(df)))
 
-  df['idx'] = idx
+  df['idx'] = sorted(idx)
   df        = df.sort_values("idx")
   return df
 
@@ -135,7 +138,7 @@ def load_history_train(model):
   return pd.read_csv(os.path.join(fetch_training_path()[model],'history.csv')).set_index('epoch')
 
 @st.cache(allow_output_mutation=True)
-def load_all_iteraction_metrics(iteractions):
+def load_all_iteraction_metrics(iteractions, sample_size):
   if len(iteractions) == 0:
     return pd.DataFrame()
 
@@ -143,7 +146,7 @@ def load_all_iteraction_metrics(iteractions):
 
   for iteraction in iteractions:
     #try:
-    metric = load_data_iteractions_metrics(iteraction)
+    metric = load_data_iteractions_metrics(iteraction, sample_size)
     #except:
     #  continue
 
@@ -246,8 +249,10 @@ def display_iteraction_result():
   #st.write(input_iteraction)
 
   #df_metrics       = filter_df(load_data_metrics(), input_models_eval, input_metrics, input_sorted)
+  sample_size       = st.sidebar.slider('Sample', min_value=1000, max_value=10000, value=5000, step=1000)
+
   input_iteraction  = st.sidebar.multiselect("Results", sorted(fetch_iteraction_results_path().keys()))
-  metrics           = load_all_iteraction_metrics(input_iteraction)
+  metrics           = load_all_iteraction_metrics(input_iteraction, sample_size)
   params            = load_iteractions_params(input_iteraction)
   input_metrics     = st.sidebar.selectbox("Metrics", ['Cumulative Reward', 'Cumulative Mean Reward', 'Cumulative Window Mean Reward'], index=0)
   
@@ -255,12 +260,12 @@ def display_iteraction_result():
 
   if len(input_iteraction) > 0 and input_metrics:
     # Add a slider to the sidebar:
-    add_slider = st.sidebar.slider('Window', min_value=0, max_value=200, value=50, step=1)
+    add_slider = st.sidebar.slider('Window', min_value=1, max_value=1000, value=50, step=1)
 
     df         = metrics.merge(params, on=['iteraction'], how='left')\
                 .merge(metrics.groupby("iteraction").agg({'reward': 'mean'}).rename(columns={'reward': 'sum_reward'}).reset_index(), 
                         on=['iteraction'], how='left')\
-                .reset_index().sort_values(['sum_reward', 'index'], ascending=[False, True])
+                .reset_index().sort_values(['sum_reward', 'idx'], ascending=[False, True])
         
 
     input_legend       = st.sidebar.multiselect("Legend", list(params.columns), default=['iteraction'])
