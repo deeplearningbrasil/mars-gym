@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import dask.dataframe as dd
 import numpy as np
 import plotly.figure_factory as ff
 import plotly.express as px
@@ -260,7 +261,9 @@ def display_iteraction_result():
 
   if len(input_iteraction) > 0 and input_metrics:
     # Add a slider to the sidebar:
-    add_slider = st.sidebar.slider('Window', min_value=1, max_value=1000, value=50, step=1)
+    add_slider = None
+    if input_metrics == 'Cumulative Window Mean Reward':
+      add_slider = st.sidebar.slider('Window', min_value=1, max_value=1000, value=500, step=1)
 
     df         = metrics.merge(params, on=['iteraction'], how='left')\
                 .merge(metrics.groupby("iteraction").agg({'reward': 'mean'}).rename(columns={'reward': 'sum_reward'}).reset_index(), 

@@ -1,4 +1,4 @@
-name: recommendation-system
+name: deep-reco-gym
 channels:
 - anaconda
 - conda-forge
@@ -33,3 +33,4 @@ dependencies:
   - unidecode==1.1.1
   - streamlit==0.52.2
   - gym==0.15.4
+  - dask==2.12.0

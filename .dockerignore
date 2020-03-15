@@ -1,0 +1,7 @@
+.git
+.ipynb_checkpoints/*
+.cache
+experiments
+notebooks
+output
+spark-warehouse
