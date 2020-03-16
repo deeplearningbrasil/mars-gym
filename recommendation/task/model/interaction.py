@@ -276,6 +276,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame,
                                   available_items_column=self.project_config.available_arms_column_name,
                                   item_column=self.project_config.item_column.name,
+                                  number_of_items=self.interactions_data_frame[self.project_config.item_column.name].max() + 1,
                                   item_metadata=self.embeddings_for_metadata)
         env.seed(42)
 

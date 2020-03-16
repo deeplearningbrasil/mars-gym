@@ -14,14 +14,15 @@ class RecSysEnv(gym.Env, utils.EzPickle):
     metadata = {'render.modes': []}
     reward_range = [0.0, 1.0]
 
-    def __init__(self, dataset: pd.DataFrame, item_column: str, available_items_column: Optional[str] = None,
-                 item_metadata: Optional[Dict[str, np.ndarray]] = None):
+    def __init__(self, dataset: pd.DataFrame, item_column: str, number_of_items: int, 
+                available_items_column: Optional[str] = None, item_metadata: Optional[Dict[str, np.ndarray]] = None):
         super().__init__()
         self._dataset = dataset.copy()
         self._item_metadata = item_metadata
         self._item_column = item_column
         self._available_items_column = available_items_column
-        self._number_of_items = dataset[item_column].max() + 1
+
+        self._number_of_items = number_of_items# number_of_itemsdataset[item_column].max() + 1 
 
         if available_items_column:
             assert isinstance(self._dataset[available_items_column].values[0], collections.Sequence)
@@ -36,6 +37,7 @@ class RecSysEnv(gym.Env, utils.EzPickle):
         self._obs_dataset: List[dict] = self._dataset.drop(columns=[item_column]).to_dict('records')
 
         self.action_space = spaces.Discrete(self._number_of_items)
+        
         observation_space = {key: self._convert_value_to_space(key, value) for key, value in
                              self._obs_dataset[0].items()}
         if item_metadata is not None:
@@ -46,6 +48,9 @@ class RecSysEnv(gym.Env, utils.EzPickle):
         self._current_index = 0
 
     def _convert_value_to_space(self, key: str, value: Any) -> spaces.Space:
+        if isinstance(value, list):
+            value = np.array(value)
+
         if key == self._available_items_column:
             return spaces.MultiBinary(self._number_of_items)
         if isinstance(value, int):
@@ -53,9 +58,9 @@ class RecSysEnv(gym.Env, utils.EzPickle):
         elif isinstance(value, float):
             return spaces.Box(self._dataset[key].min(), self._dataset[key].max(), shape=(1,))
         elif isinstance(value, np.ndarray):
-            if issubclass(value.dtype, np.integer):
-                return spaces.MultiDiscrete([self._dataset[key].max() + 1] * len(value))
-            elif issubclass(value.dtype, np.floating):
+            if issubclass(value.dtype.type, np.integer):
+                return spaces.MultiDiscrete([np.max(self._dataset[key].max()) + 1] * len(value))
+            elif issubclass(value.dtype.type, np.floating):
                 return spaces.Box(self._dataset[key].min(), self._dataset[key].max(), shape=value.shape)
         raise ValueError("Unkown type in the observation space for {}:{}".format(key, value))
 

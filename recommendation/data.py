@@ -52,7 +52,6 @@ class InteractionsDataset(Dataset):
         input_column_names = [input_column.name for input_column in self._input_columns]
         auxiliar_output_column_names = [auxiliar_output_column.name
                                         for auxiliar_output_column in project_config.auxiliar_output_columns]
-
         self._data_frame = data_frame[
             set(input_column_names + [project_config.output_column.name] + auxiliar_output_column_names)
                 .intersection(data_frame.columns)]
