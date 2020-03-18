@@ -216,3 +216,48 @@ PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits Conte
 ```
 PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContentModel --local-scheduler  --model-module=recommendation.task.model.contextual_bandits --model-cls=ContextualBanditsTraining --model-task-id=ContextualBanditsTraining_selu____512_1741ef11c6
 ```
+
+## Docker
+
+docker build . --tag gcr.io/deepfood/deep-reco-gym
+
+
+docker run -v ~/workspace/DeepFood/deep-reco-gym/output:/app/output -it gcr.io/deepfood/deep-reco-gym --module recommendation.task.model.trivago.trivago_models TrivagoModelInteraction --project trivago_contextual_bandit --bandit-policy random
+
+
+gcloud docker -- push gcr.io/deepfood/deep-reco-gym
+
+gcloud compute disks create deep-reco-gym-output-3 \
+    --zone=us-central1-a \
+    --source-snapshot deep-reco-gym-snap-1
+
+# f1-micro g1-small
+
+gcloud compute instances create-with-container deep-reco-gym-2 \
+    --machine-type n1-standard-2 \
+    --zone us-central1-a \
+    --container-image gcr.io/deepfood/deep-reco-gym \
+    --boot-disk-device-name deep-reco-gym-2 \
+    --boot-disk-size 50 \
+    --disk name="deep-reco-gym-output-5",boot=no,auto-delete=no \
+    --container-mount-disk mount-path="/mnt/disks/output",name=deep-reco-gym-output-5,mode=rw \
+    --container-restart-policy=never \
+    --container-arg="--module" \
+    --container-arg="recommendation.task.model.trivago.trivago_models" \
+    --container-arg="TrivagoModelInteraction" \
+    --container-arg="--project" \
+    --container-arg="trivago_contextual_bandit" \
+    --container-arg="--bandit-policy" \
+    --container-arg="random"
+
+gcloud compute instances update-container deep-reco-gym-1 \
+    --zone us-central1-a \
+    --container-image gcr.io/deepfood/deep-reco-gym \
+    --container-restart-policy=never \
+    --container-arg="--module" \
+    --container-arg="recommendation.task.model.trivago.trivago_models" \
+    --container-arg="TrivagoModelInteraction" \
+    --container-arg="--project" \
+    --container-arg="trivago_contextual_bandit" \
+    --container-arg="--bandit-policy" \
+    --container-arg="random"

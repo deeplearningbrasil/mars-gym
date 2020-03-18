@@ -8,7 +8,43 @@ RUN apt-get update && apt-get install -y \
   git \
   bzip2 \
   libx11-6 \
-  && rm -rf /var/lib/apt/lists/*
+  &&  rm -rf /var/lib/apt/lists/*
+
+# JAVA
+#ENV JAVA_VER 8
+#ENV JAVA_HOME /usr/lib/jvm/java-8-oracle
+
+# Install "software-properties-common" (for the "add-apt-repository")
+RUN apt-get update && apt-get install -y \
+  software-properties-common
+
+# Add the "JAVA" ppa
+RUN add-apt-repository -y \
+  ppa:webupd8team/java
+
+# Install OpenJDK-8
+RUN apt-get update && \
+  apt-get install -y openjdk-8-jdk && \
+  apt-get install -y ant && \
+  apt-get clean;
+
+# Fix certificate issues
+RUN apt-get update && \
+  apt-get install ca-certificates-java && \
+  apt-get clean && \
+  update-ca-certificates -f;
+
+# Setup JAVA_HOME -- useful for docker commandline
+ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64/
+RUN export JAVA_HOME
+# RUN echo 'deb http://ppa.launchpad.net/webupd8team/java/ubuntu trusty main' >> /etc/apt/sources.list && \
+#   echo 'deb-src http://ppa.launchpad.net/webupd8team/java/ubuntu trusty main' >> /etc/apt/sources.list && \
+#   apt-key adv --keyserver keyserver.ubuntu.com --recv-keys C2518248EEA14886 && \
+#   apt-get update && \
+#   echo oracle-java${JAVA_VER}-installer shared/accepted-oracle-license-v1-1 select true | sudo /usr/bin/debconf-set-selections && \
+#   apt-get install -y --force-yes --no-install-recommends oracle-java${JAVA_VER}-installer oracle-java${JAVA_VER}-set-default && \
+#   apt-get clean && \
+#   rm -rf /var/cache/oracle-jdk${JAVA_VER}-installer
 
 # Create a working directory
 RUN mkdir /app
@@ -54,32 +90,17 @@ RUN conda env create -f /tmp/environment.yml
 RUN echo "source activate $(head -1 /tmp/environment.yml | cut -d' ' -f2)" > ~/.bashrc
 ENV PATH /opt/conda/envs/$(head -1 /tmp/environment.yml | cut -d' ' -f2)/bin:$PATH
 
+
+
+
 # Add Project
-COPY . /app
+COPY recommendation /app/recommendation
+COPY output/trivago /app/output/trivago
+COPY environment.yml /app
+COPY luigi.cfg /app
+COPY taskrunner.sh /app
 
-# Install HDF5 Python bindings
-# RUN conda install -y h5py=2.8.0 \
-#   && conda clean -ya
-# RUN pip install h5py-cache==1.0
-
-# # Install Torchnet, a high-level framework for PyTorch
-# RUN pip install torchnet==0.0.4
-
-# # Install Requests, a Python library for making HTTP requests
-# RUN conda install -y requests=2.19.1 \
-#   && conda clean -ya
-
-# # Install Graphviz
-# RUN conda install -y graphviz=2.40.1 python-graphviz=0.8.4 \
-#   && conda clean -ya
-
-# Install OpenCV3 Python bindings
-# RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
-#   libgtk2.0-0 \
-#   libcanberra-gtk-module \
-#   && sudo rm -rf /var/lib/apt/lists/*
-# RUN conda install -y -c menpo opencv3=3.1.0 \
-#   && conda clean -ya
+RUN sudo chown -R user:user /app
 
 # Set the default command to python3
 EXPOSE 8501
@@ -87,6 +108,7 @@ EXPOSE 8501
 #ADD ./luigi/taskrunner.sh /luigi/
 #ENTRYPOINT ["bash", "/luigi/taskrunner.sh"]
 ENV CONDA_DEFAULT_ENV=deep-reco-gym
+ENV OUTPUT_PATH=/app/output
 
 #CMD ["/bin/bash"]
 ENTRYPOINT ["bash", "/app/taskrunner.sh"]
