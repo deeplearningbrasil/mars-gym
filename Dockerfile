@@ -1,5 +1,5 @@
-#FROM nvidia/cuda:10.0-base-ubuntu16.04 AS deep-reco-gym
-FROM ubuntu:18.04 AS deep-reco-gym
+FROM nvidia/cuda:10.0-base-ubuntu16.04 AS deep-reco-gym
+#FROM ubuntu:18.04 AS deep-reco-gym
 
 # Install some basic utilities
 RUN apt-get update && apt-get install -y \
@@ -95,6 +95,7 @@ ENV PATH /opt/conda/envs/$(head -1 /tmp/environment.yml | cut -d' ' -f2)/bin:$PA
 
 # Add Project
 COPY recommendation /app/recommendation
+COPY tools /app/tools
 COPY output/trivago /app/output/trivago
 COPY environment.yml /app
 COPY luigi.cfg /app
