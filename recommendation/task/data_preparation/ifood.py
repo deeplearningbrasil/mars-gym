@@ -746,6 +746,10 @@ class PrepareIfoodSessionsDataFrames(BasePrepareDataFrames):
         return "buy"
 
     @property
+    def timestamp_property(self) -> str:
+        return "click_timestamp"
+
+    @property
     def num_users(self):
         if not hasattr(self, "_num_users"):
             accounts_df = pd.read_csv(self.input()[0][0].path)
