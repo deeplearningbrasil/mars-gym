@@ -20,7 +20,6 @@ dependencies:
 - jupyterlab=1.0.2
 - ipywidgets=7.5.1
 - diskcache=3.0.6
-- pillow=6.0.0
 - pyspark=2.4.3
 - psutil=5.2.2
 - pip
@@ -32,5 +31,5 @@ dependencies:
   - pytorch-nlp==0.4.1
   - unidecode==1.1.1
   - streamlit==0.52.2
+  - dask[dataframe]==2.12.0
   - gym==0.15.4
-  - dask==2.12.0

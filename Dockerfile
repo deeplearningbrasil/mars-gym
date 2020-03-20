@@ -1,4 +1,5 @@
-FROM nvidia/cuda:10.0-base-ubuntu16.04 AS deep-reco-gym
+#FROM nvidia/cuda:10.0-base-ubuntu16.04 AS deep-reco-gym
+FROM ubuntu:18.04 AS deep-reco-gym
 
 # Install some basic utilities
 RUN apt-get update && apt-get install -y \
@@ -11,9 +12,6 @@ RUN apt-get update && apt-get install -y \
   &&  rm -rf /var/lib/apt/lists/*
 
 # JAVA
-#ENV JAVA_VER 8
-#ENV JAVA_HOME /usr/lib/jvm/java-8-oracle
-
 # Install "software-properties-common" (for the "add-apt-repository")
 RUN apt-get update && apt-get install -y \
   software-properties-common
@@ -37,14 +35,6 @@ RUN apt-get update && \
 # Setup JAVA_HOME -- useful for docker commandline
 ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64/
 RUN export JAVA_HOME
-# RUN echo 'deb http://ppa.launchpad.net/webupd8team/java/ubuntu trusty main' >> /etc/apt/sources.list && \
-#   echo 'deb-src http://ppa.launchpad.net/webupd8team/java/ubuntu trusty main' >> /etc/apt/sources.list && \
-#   apt-key adv --keyserver keyserver.ubuntu.com --recv-keys C2518248EEA14886 && \
-#   apt-get update && \
-#   echo oracle-java${JAVA_VER}-installer shared/accepted-oracle-license-v1-1 select true | sudo /usr/bin/debconf-set-selections && \
-#   apt-get install -y --force-yes --no-install-recommends oracle-java${JAVA_VER}-installer oracle-java${JAVA_VER}-set-default && \
-#   apt-get clean && \
-#   rm -rf /var/cache/oracle-jdk${JAVA_VER}-installer
 
 # Create a working directory
 RUN mkdir /app
@@ -83,14 +73,24 @@ RUN /home/user/miniconda/bin/conda install conda-build=3.18.9=py36_3 \
 #   "pytorch=1.2.0=py3.6_cuda10.0.130_cudnn7.6.2_0" \
 #   "torchvision=0.4.0=py36_cu100" \
 #   && conda clean -ya
+#RUN python -m pip install --trusted-host pypi.python.org --trusted-host files.pythonhosted.org --trusted-host pypi.org --upgrade pip
+#COPY pip.conf /etc/pip.conf
+#echo ‘nameserver 8.8.8.8’ >> /etc/resolve.conf && echo ‘nameserver 8.8.4.4’ >> /etc/resolve.conf’ &&
+#RUN --mount=type=cache,target=~/.cache/pip pip install pyyaml
 
+RUN pip install imbalanced-learn==0.4.3
+RUN pip install torchbearer==0.5.1
+RUN pip install pytorch-nlp==0.4.1
+RUN pip install unidecode==1.1.1
+RUN pip install streamlit==0.52.2
+RUN pip install dask[dataframe]==2.12.0
+RUN pip install gym==0.15.4
 ADD environment.yml /tmp/environment.yml
-RUN conda env create -f /tmp/environment.yml
+RUN CONDA_SSL_VERIFY=false conda env create -f /tmp/environment.yml
+
 # Pull the environment name out of the environment.yml
 RUN echo "source activate $(head -1 /tmp/environment.yml | cut -d' ' -f2)" > ~/.bashrc
 ENV PATH /opt/conda/envs/$(head -1 /tmp/environment.yml | cut -d' ' -f2)/bin:$PATH
-
-
 
 
 # Add Project
@@ -104,11 +104,9 @@ RUN sudo chown -R user:user /app
 
 # Set the default command to python3
 EXPOSE 8501
+EXPOSE 8502
 
-#ADD ./luigi/taskrunner.sh /luigi/
-#ENTRYPOINT ["bash", "/luigi/taskrunner.sh"]
 ENV CONDA_DEFAULT_ENV=deep-reco-gym
 ENV OUTPUT_PATH=/app/output
 
-#CMD ["/bin/bash"]
 ENTRYPOINT ["bash", "/app/taskrunner.sh"]

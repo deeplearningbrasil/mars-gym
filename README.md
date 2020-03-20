@@ -239,14 +239,30 @@ gcloud compute instances create-with-container deep-reco-gym-2 \
     --container-image gcr.io/deepfood/deep-reco-gym \
     --boot-disk-device-name deep-reco-gym-2 \
     --boot-disk-size 50 \
-    --disk name="deep-reco-gym-output-5",boot=no,auto-delete=no \
-    --container-mount-disk mount-path="/mnt/disks/output",name=deep-reco-gym-output-5,mode=rw \
+    --disk name="deep-reco-gym-output-2",boot=no,auto-delete=no \
+    --container-mount-disk mount-path="/mnt/disks/output",name=deep-reco-gym-output-2,mode=rw \
     --container-restart-policy=never \
     --container-arg="--module" \
     --container-arg="recommendation.task.model.trivago.trivago_models" \
     --container-arg="TrivagoModelInteraction" \
     --container-arg="--project" \
     --container-arg="trivago_contextual_bandit" \
+    --container-arg="--bandit-policy" \
+    --container-arg="random"
+
+gcloud compute instances create-with-container deep-reco-gym-3 \
+    --machine-type n1-standard-2 \
+    --zone us-central1-a \
+    --container-image gcr.io/deepfood/deep-reco-gym \
+    --boot-disk-size 50 \
+    --container-restart-policy=never \
+    --container-arg="--module" \
+    --container-arg="recommendation.task.model.trivago.trivago_models" \
+    --container-arg="TrivagoModelInteraction" \
+    --container-arg="--project" \
+    --container-arg="trivago_contextual_bandit" \
+    --container-arg="--data-frames-preparation-extra-params" \
+    --container-arg="{\"filter_city\": \"Lins, Brazil\"}" \
     --container-arg="--bandit-policy" \
     --container-arg="random"
 
