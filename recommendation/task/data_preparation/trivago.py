@@ -467,6 +467,10 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
         return "user_idx"
 
     @property
+    def timestamp_property(self) -> str:
+        return "timestamp"
+
+    @property
     def dataset_dir(self) -> str:
         return os.path.join(DATASET_DIR, clean_filename(self.filter_city))
 

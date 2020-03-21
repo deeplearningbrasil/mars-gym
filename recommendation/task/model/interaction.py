@@ -13,7 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 from tqdm import tqdm
 
-from recommendation.data import preprocess_interactions_data_frame, literal_eval_array_columns
+from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
 from recommendation.task.model.base import BaseTorchModelTraining
 
@@ -23,6 +23,7 @@ from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir
 from recommendation.files import get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
+
 
 class BanditAgent(object):
 
@@ -44,7 +45,8 @@ class BanditAgent(object):
 
 
 class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
-    test_size = 0.0
+    test_size: float = luigi.FloatParameter(default=0.1)
+    test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
 
     obs_batch_size: int = luigi.IntParameter(default=10000)
 
@@ -75,10 +77,10 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
         batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
-        generator     = NoAutoCollationDataLoader(
-                            ob_dataset,
-                            batch_sampler=batch_sampler, num_workers=self.generator_workers,
-                            pin_memory=self.pin_memory if self.device == "cuda" else False)
+        generator = NoAutoCollationDataLoader(
+            ob_dataset,
+            batch_sampler=batch_sampler, num_workers=self.generator_workers,
+            pin_memory=self.pin_memory if self.device == "cuda" else False)
 
         trial = Trial(agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device,
                                                                                      requires_grad=True)) \
@@ -100,7 +102,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         if len(self.known_observations_data_frame) > 0:
             ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
-                                        self.project_config.hist_output_column_name], errors= 'ignore')
+                                        self.project_config.hist_output_column_name], errors='ignore')
             ob_df = ob_df.merge(self.hist_data_frame, how='left',
                                 left_on=[self.project_config.user_column.name, self.project_config.item_column.name],
                                 right_index=True).fillna(0)
@@ -122,12 +124,12 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     def known_observations_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_known_observations_data_frame"):
             columns = self.obs_columns + [self.project_config.item_column.name,
-                                            self.project_config.output_column.name]
+                                          self.project_config.output_column.name]
 
             self._known_observations_data_frame = pd.DataFrame(
-                columns=columns)\
-                        .astype(self.interactions_data_frame[columns].dtypes)
-            
+                columns=columns) \
+                .astype(self.interactions_data_frame[columns].dtypes)
+
         return self._known_observations_data_frame
 
     @property
@@ -160,24 +162,23 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     def _create_hist_columns(self):
         df = self.known_observations_data_frame
 
-        user_column             = self.project_config.user_column.name
-        item_column             = self.project_config.item_column.name
-        output_column           = self.project_config.output_column.name
-        hist_view_column        = self.project_config.hist_view_column_name
-        hist_output_column      = self.project_config.hist_output_column_name
-        ps_column               = self.project_config.propensity_score_column_name
+        user_column = self.project_config.user_column.name
+        item_column = self.project_config.item_column.name
+        output_column = self.project_config.output_column.name
+        hist_view_column = self.project_config.hist_view_column_name
+        hist_output_column = self.project_config.hist_output_column_name
+        ps_column = self.project_config.propensity_score_column_name
 
-        df[hist_view_column]    = 1
-        user_views              = df.groupby([user_column])[hist_view_column].transform("cumsum")
-        df[hist_view_column]    = df.groupby([user_column, item_column])[hist_view_column].transform("cumsum")
-        df[hist_output_column]  = df.groupby([user_column, item_column])[output_column].transform("cumsum")
+        df[hist_view_column] = 1
+        user_views = df.groupby([user_column])[hist_view_column].transform("cumsum")
+        df[hist_view_column] = df.groupby([user_column, item_column])[hist_view_column].transform("cumsum")
+        df[hist_output_column] = df.groupby([user_column, item_column])[output_column].transform("cumsum")
 
-        df[ps_column]           = df[hist_view_column] / user_views
-
+        df[ps_column] = df[hist_view_column] / user_views
 
     def _save_log(self) -> None:
         columns = [self.project_config.user_column.name, self.project_config.item_column.name,
-                  self.project_config.output_column.name]
+                   self.project_config.output_column.name]
 
         # Env Dataset
         env_data_df = self.env_data_frame.reset_index()
@@ -186,23 +187,35 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         # Simulator Dataset
         sim_df = self.known_observations_data_frame.reset_index(drop=True)
         sim_df = sim_df[columns]
-        sim_df.columns  = ['user', 'item', 'reward']
+        sim_df.columns = ['user', 'item', 'reward']
         sim_df['index_env'] = env_data_duplicate_df['index']
 
         # All Dataset
-        gt_df  = self.interactions_data_frame[columns].reset_index()
+        gt_df = self.interactions_data_frame[columns].reset_index()
 
         sim_df.to_csv(get_simulator_datalog_path(self.output().path), index=False)
         gt_df.to_csv(get_interator_datalog_path(self.output().path), index=False)
         env_data_df.to_csv(get_ground_truth_datalog_path(self.output().path), index=False)
 
         # Train
-        #history_df = pd.read_csv(get_history_path(self.output().path))
-        #plot_history(history_df).savefig(os.path.join(self.output().path, "history.jpg"))
+        # history_df = pd.read_csv(get_history_path(self.output().path))
+        # plot_history(history_df).savefig(os.path.join(self.output().path, "history.jpg"))
 
     def _save_metrics(self) -> None:
         df = self.known_observations_data_frame.reset_index()
         df[[self.project_config.output_column.name]].describe().to_csv(self.output().path + '/stats.csv', index=False)
+
+    def _save_test_set_predictions(self):
+        print("Saving test set predictions...")
+        actions = []
+        obs = self.test_data_frame.to_dict('records')
+        for ob in tqdm(obs, total=len(obs)):
+            if self._embeddings_for_metadata is not None:
+                ob[ITEM_METADATA_KEY] = self._embeddings_for_metadata
+            actions.append(self._act(ob))
+
+        self.test_data_frame["action"] = actions
+        self.test_data_frame.to_csv("test_set_predictions.csv", index=False)
 
     @property
     def interactions_data_frame(self) -> pd.DataFrame:
@@ -224,19 +237,15 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     def val_data_frame(self) -> pd.DataFrame:
         return self._val_data_frame
 
-    @property
-    def test_data_frame(self) -> pd.DataFrame:
-        return pd.DataFrame()
-
     def _reset_dataset(self):
         self._train_data_frame, self._val_data_frame = train_test_split(
-                self.known_observations_data_frame, test_size=self.val_size, 
-                random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name] 
-                    if np.sum(self.known_observations_data_frame[self.project_config.output_column.name]) > 1 else None)
+            self.known_observations_data_frame, test_size=self.val_size,
+            random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name]
+            if np.sum(self.known_observations_data_frame[self.project_config.output_column.name]) > 1 else None)
 
         if hasattr(self, "_train_dataset"):
             del self._train_dataset
-        
+
         if hasattr(self, "_val_dataset"):
             del self._val_dataset
 
@@ -269,6 +278,13 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
         return self._env_data_frame
 
+    def _act(self, ob: dict) -> int:
+        arm_indices = self._get_arm_indices(ob)
+        ob_dataset = self._create_ob_dataset(ob, arm_indices)
+        arm_contexts = ob_dataset[:len(ob_dataset)][0]
+        arm_scores = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else None
+        return self.agent.act(arm_indices, arm_contexts, arm_scores)
+
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
         self._save_params()
@@ -276,11 +292,12 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame,
                                   available_items_column=self.project_config.available_arms_column_name,
                                   item_column=self.project_config.item_column.name,
-                                  number_of_items=self.interactions_data_frame[self.project_config.item_column.name].max() + 1,
+                                  number_of_items=self.interactions_data_frame[
+                                                      self.project_config.item_column.name].max() + 1,
                                   item_metadata=self.embeddings_for_metadata)
         env.seed(42)
 
-        agent: BanditAgent = self.create_agent()
+        self.agent: BanditAgent = self.create_agent()
 
         rewards = []
         interactions = 0
@@ -291,12 +308,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             while True:
                 interactions += 1
 
-                arm_indices  = self._get_arm_indices(ob)
-
-                ob_dataset   = self._create_ob_dataset(ob, arm_indices)
-                arm_contexts = ob_dataset[:len(ob_dataset)][0]
-                arm_scores   = self._get_arm_scores(agent, ob_dataset) if agent.bandit.reward_model else None
-                action       = agent.act(arm_indices, arm_contexts, arm_scores)
+                action = self._act(ob)
 
                 new_ob, reward, done, info = env.step(action)
                 rewards.append(reward)
@@ -311,13 +323,14 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                     self._create_hist_columns()
                     self._reset_dataset()
 
-                    if agent.bandit.reward_model and self.full_refit:
-                        agent.bandit.reward_model = self.create_module()
+                    if self.agent.bandit.reward_model and self.full_refit:
+                        self.agent.bandit.reward_model = self.create_module()
 
-                    agent.fit(self.create_trial(agent.bandit.reward_model) if agent.bandit.reward_model else None,
-                              self.get_train_generator(),
-                              self.get_val_generator(),
-                              self.epochs)
+                    self.agent.fit(
+                        self.create_trial(self.agent.bandit.reward_model) if self.agent.bandit.reward_model else None,
+                        self.get_train_generator(),
+                        self.get_val_generator(),
+                        self.epochs)
 
                     print("\n", k, ": Interaction Stats")
                     print(
@@ -343,3 +356,5 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         self._save_log()
         self._save_metrics()
+        if self.test_size:
+            self._save_test_set_predictions()

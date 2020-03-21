@@ -69,6 +69,7 @@ class BaseModelTraining(luigi.Task):
     session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
     dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "column", "time", "k_fold"], default="holdout")
+    test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="random")
     val_size: float = luigi.FloatParameter(default=0.2)
     n_splits: int = luigi.IntParameter(default=5)
     split_index: int = luigi.IntParameter(default=0)
@@ -97,6 +98,7 @@ class BaseModelTraining(luigi.Task):
                                                             minimum_interactions=self.minimum_interactions,
                                                             test_size=self.test_size,
                                                             dataset_split_method=self.dataset_split_method,
+                                                            test_split_type=self.test_split_type,
                                                             val_size=self.val_size,
                                                             n_splits=self.n_splits,
                                                             split_index=self.split_index,
