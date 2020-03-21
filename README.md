@@ -222,7 +222,7 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContent
 docker build . --tag gcr.io/deepfood/deep-reco-gym
 
 
-docker run -v ~/workspace/DeepFood/deep-reco-gym/output:/app/output -it gcr.io/deepfood/deep-reco-gym --module recommendation.task.model.trivago.trivago_models TrivagoModelInteraction --project trivago_contextual_bandit --bandit-policy random
+docker run -v ~/workspace/DeepFood/deep-reco-gym/output:/app/output -it gcr.io/deepfood/deep-reco-gym TrivagoModelInteraction --module recommendation.task.model.trivago.trivago_models --project trivago_contextual_bandit --bandit-policy random
 
 
 gcloud docker -- push gcr.io/deepfood/deep-reco-gym
@@ -233,38 +233,26 @@ gcloud compute disks create deep-reco-gym-output-3 \
 
 # f1-micro g1-small
 
-gcloud compute instances create-with-container deep-reco-gym-2 \
-    --machine-type n1-standard-2 \
-    --zone us-central1-a \
-    --container-image gcr.io/deepfood/deep-reco-gym \
-    --boot-disk-device-name deep-reco-gym-2 \
-    --boot-disk-size 50 \
-    --disk name="deep-reco-gym-output-2",boot=no,auto-delete=no \
-    --container-mount-disk mount-path="/mnt/disks/output",name=deep-reco-gym-output-2,mode=rw \
-    --container-restart-policy=never \
-    --container-arg="--module" \
-    --container-arg="recommendation.task.model.trivago.trivago_models" \
-    --container-arg="TrivagoModelInteraction" \
-    --container-arg="--project" \
-    --container-arg="trivago_contextual_bandit" \
-    --container-arg="--bandit-policy" \
-    --container-arg="random"
-
 gcloud compute instances create-with-container deep-reco-gym-3 \
     --machine-type n1-standard-2 \
-    --zone us-central1-a \
+    --zone us-west1-b \
     --container-image gcr.io/deepfood/deep-reco-gym \
     --boot-disk-size 50 \
     --container-restart-policy=never \
+    --maintenance-policy TERMINATE \
+    --tags=allow-8501 \
+    --accelerator="type=nvidia-tesla-k80,count=1" \
+    --scopes=https://www.googleapis.com/auth/cloud-platform \
+    --metadata='install-nvidia-driver=True,proxy-mode=project_editors' \
     --container-arg="--module" \
     --container-arg="recommendation.task.model.trivago.trivago_models" \
     --container-arg="TrivagoModelInteraction" \
     --container-arg="--project" \
     --container-arg="trivago_contextual_bandit" \
     --container-arg="--data-frames-preparation-extra-params" \
-    --container-arg="{\"filter_city\": \"Lins, Brazil\"}" \
+    --container-arg="{\"filter_city\": \"Lausanne, Switzerland\"}" \
     --container-arg="--bandit-policy" \
-    --container-arg="random"
+    --container-arg="model"
 
 gcloud compute instances update-container deep-reco-gym-1 \
     --zone us-central1-a \
@@ -277,3 +265,20 @@ gcloud compute instances update-container deep-reco-gym-1 \
     --container-arg="trivago_contextual_bandit" \
     --container-arg="--bandit-policy" \
     --container-arg="random"
+
+# https://cloud.google.com/ai-platform/training/docs/using-gpus
+# https://cloud.google.com/sdk/gcloud/reference/ai-platform/jobs/submit/training
+# https://cloud.google.com/compute/docs/machine-types?hl=pt-br
+export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
+gcloud ai-platform jobs submit training $MODEL_DIR \
+  --region us-west2 \
+  --master-image-uri gcr.io/deepfood/deep-reco-gym  \
+  --scale-tier custom \
+  --master-machine-type n1-standard-4	 \
+  --master-accelerator count=1,type=nvidia-tesla-k80 \
+  -- \
+  TrivagoModelInteraction \
+  --module=recommendation.task.model.trivago.trivago_models \
+  --project=trivago_contextual_bandit \
+  --data-frames-preparation-extra-params '{"filter_city": "Lausanne, Switzerland"}' \
+  --bandit-policy=model

@@ -1,4 +1,7 @@
-FROM nvidia/cuda:10.0-base-ubuntu16.04 AS deep-reco-gym
+FROM pytorch/pytorch:1.2-cuda10.0-cudnn7-runtime 
+#FROM nvcr.io/nvidia/pytorch:19.04-py3 AS deep-reco-gym
+#FROM gcr.io/deeplearning-platform-release/pytorch-gpu.1-2 AS deep-reco-gym
+#FROM nvidia/cuda:10.0-base-ubuntu16.04 AS deep-reco-gym
 #FROM ubuntu:18.04 AS deep-reco-gym
 
 # Install some basic utilities
@@ -59,12 +62,12 @@ ENV PATH=/home/user/miniconda/bin:$PATH
 ENV CONDA_AUTO_UPDATE_CONDA=false
 
 # Create a Python 3.6 environment
-RUN /home/user/miniconda/bin/conda create -y --name py36 python=3.6.9 \
+RUN /home/user/miniconda/bin/conda create -y --name py36 python=3.6.7 \
   && /home/user/miniconda/bin/conda clean -ya
 ENV CONDA_DEFAULT_ENV=py36
 ENV CONDA_PREFIX=/home/user/miniconda/envs/$CONDA_DEFAULT_ENV
 ENV PATH=$CONDA_PREFIX/bin:$PATH
-RUN /home/user/miniconda/bin/conda install conda-build=3.18.9=py36_3 \
+RUN /home/user/miniconda/bin/conda install conda-build=3.18.9=py36 \
   && /home/user/miniconda/bin/conda clean -ya
 
 # CUDA 10.0-specific steps
