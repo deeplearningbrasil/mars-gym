@@ -23,7 +23,7 @@ from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir
 from recommendation.files import get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
-
+from recommendation.utils import save_trained_data 
 
 class BanditAgent(object):
 
@@ -45,16 +45,14 @@ class BanditAgent(object):
 
 
 class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
-    test_size: float = luigi.FloatParameter(default=0.1)
+    test_size:     float = luigi.FloatParameter(default=0.0)
     test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
-
-    obs_batch_size: int = luigi.IntParameter(default=10000)
-
-    num_episodes: int = luigi.IntParameter(default=1)
-    full_refit: bool = luigi.BoolParameter(default=False)
-
-    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="model")
+    obs_batch_size:  int = luigi.IntParameter(default=10000)
+    num_episodes:    int = luigi.IntParameter(default=1)
+    full_refit:     bool = luigi.BoolParameter(default=False)
+    bandit_policy:   str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="model")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
+    output_model_dir: str = luigi.Parameter(default='')
 
     def output(self):
         return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
@@ -176,6 +174,20 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         df[ps_column] = df[hist_view_column] / user_views
 
+    def _save_result(self) -> None:
+        print("Saving logs...")
+
+        self._save_params()
+        self._save_log()
+        self._save_metrics()
+
+        if self.test_size > 0:
+            self._save_test_set_predictions()
+
+        if self.output_model_dir:
+            save_trained_data(self.output().path, self.output_model_dir)
+
+        
     def _save_log(self) -> None:
         columns = [self.project_config.user_column.name, self.project_config.item_column.name,
                    self.project_config.output_column.name]
@@ -205,7 +217,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         df = self.known_observations_data_frame.reset_index()
         df[[self.project_config.output_column.name]].describe().to_csv(self.output().path + '/stats.csv', index=False)
 
-    def _save_test_set_predictions(self):
+    def _save_test_set_predictions(self) -> None:
         print("Saving test set predictions...")
         actions = []
         obs = self.test_data_frame.to_dict('records')
@@ -215,7 +227,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             actions.append(self._act(ob))
 
         self.test_data_frame["action"] = actions
-        self.test_data_frame.to_csv("test_set_predictions.csv", index=False)
+        self.test_data_frame.to_csv(self.output().path + "/test_set_predictions.csv", index=False)
 
     @property
     def interactions_data_frame(self) -> pd.DataFrame:
@@ -353,8 +365,4 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         env.close()
 
         # Save logs
-
-        self._save_log()
-        self._save_metrics()
-        if self.test_size:
-            self._save_test_set_predictions()
+        self._save_result()

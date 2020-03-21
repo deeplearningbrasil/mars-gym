@@ -273,6 +273,7 @@ export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
 gcloud ai-platform jobs submit training $MODEL_DIR \
   --region us-west2 \
   --master-image-uri gcr.io/deepfood/deep-reco-gym  \
+  --job-dir gs://deepfood-results \
   --scale-tier custom \
   --master-machine-type n1-standard-4	 \
   --master-accelerator count=1,type=nvidia-tesla-k80 \

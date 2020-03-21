@@ -3,6 +3,8 @@ import ast
 from datetime import datetime
 from multiprocessing.pool import Pool
 from typing import List, Union, Dict, Tuple
+from zipfile import ZipFile 
+from google.cloud import storage
 
 import numpy as np
 import pandas as pd
@@ -11,6 +13,7 @@ import torch.nn as nn
 from math import sqrt
 from torch.nn.init import _calculate_fan_in_and_fan_out
 from tqdm import tqdm
+import shutil
 
 from recommendation.files import get_params, get_task_dir
 
@@ -155,3 +158,42 @@ def get_scores_per_tuples_with_click_timestamp(account_idx: int, merchant_idx_li
                                                scores_per_tuple: Dict[Tuple[int, int, datetime], float]) -> List[float]:
     return list(map(lambda merchant_idx: scores_per_tuple.get((account_idx, merchant_idx, click_timestamp), -1.0),
                     merchant_idx_list))
+
+def get_all_file_paths(directory): 
+    # initializing empty file paths list 
+    file_paths = [] 
+  
+    # crawling through directory and subdirectories 
+    for root, directories, files in os.walk(directory): 
+        for filename in files: 
+            # join the two strings in order to form the full filepath. 
+            filepath = os.path.join(root, filename) 
+            file_paths.append(filepath) 
+  
+    # returning all file paths 
+    return file_paths 
+
+def save_trained_data(source_dir: str, target_dir: str):
+    print("save_trained_data from '{}' to '{}'".format(source_dir, target_dir))
+
+    file_paths = get_all_file_paths(source_dir) 
+    
+    # printing the list of all files to be zipped 
+    print('Following files will be zipped:') 
+    for file_name in file_paths: 
+        print(file_name) 
+
+    # writing files to a zipfile 
+    zip_filename = source_dir.split("/")[-1]+'.zip'
+    with ZipFile(source_dir+'/'+zip_filename,'w') as zip: 
+        # writing each file one by one 
+        for file in file_paths: 
+            zip.write(file)         
+
+    if "gs://" in target_dir:
+        bucket = storage.Client().bucket(target_dir.split("//")[-1])
+        #blob   = bucket.blob('{}/{}'.format(datetime.now().strftime('%Y%m%d_%H%M%S'), zip_filename))
+        blob   = bucket.blob(zip_filename)
+        blob.upload_from_filename(source_dir+'/'+zip_filename)
+    else:
+        shutil.copy(source_dir+'/'+zip_filename, target_dir+'/'+zip_filename)
