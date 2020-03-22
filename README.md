@@ -221,9 +221,7 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContent
 
 docker build . --tag gcr.io/deepfood/deep-reco-gym
 
-
-docker run -v ~/workspace/DeepFood/deep-reco-gym/output:/app/output -it gcr.io/deepfood/deep-reco-gym TrivagoModelInteraction --module recommendation.task.model.trivago.trivago_models --project trivago_contextual_bandit --bandit-policy random
-
+docker run -it gcr.io/deepfood/deep-reco-gym:trivago TrivagoModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' --n-factors 50 --learning-rate=0.0001 --optimizer radam --metrics '["loss"]' --epochs 250 --full-refit --obs-batch-size 100 --early-stopping-patience 10 --batch-size 20 --num-episodes 100 --bandit-policy epsilon_greedy
 
 gcloud docker -- push gcr.io/deepfood/deep-reco-gym
 
@@ -272,14 +270,50 @@ gcloud compute instances update-container deep-reco-gym-1 \
 export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
 gcloud ai-platform jobs submit training $MODEL_DIR \
   --region us-west2 \
-  --master-image-uri gcr.io/deepfood/deep-reco-gym  \
-  --job-dir gs://deepfood-results \
+  --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago  \
   --scale-tier custom \
-  --master-machine-type n1-standard-4	 \
-  --master-accelerator count=1,type=nvidia-tesla-k80 \
+  --master-machine-type n1-standard-1	 \
+  --master-accelerator count=1,type=nvidia-tesla-p4 \
   -- \
   TrivagoModelInteraction \
   --module=recommendation.task.model.trivago.trivago_models \
   --project=trivago_contextual_bandit \
-  --data-frames-preparation-extra-params '{"filter_city": "Lausanne, Switzerland"}' \
-  --bandit-policy=model
+  --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' \
+  --n-factors 50 \
+  --learning-rate 0.0001 \
+  --optimizer radam \
+  --epochs 250 \
+  --full-refit \
+  --obs-batch-size 100 \
+  --early-stopping-patience 10 \
+  --batch-size 20 \
+  --num-episodes 100 \
+  --bandit-policy epsilon_greedy \
+  --output-model-dir "gs://deepfood-results"
+
+
+export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
+gcloud ai-platform jobs submit training $MODEL_DIR \
+  --region us-west2 \
+  --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago  \
+  --scale-tier BASIC \
+  -- \
+  TrivagoModelInteraction \
+  --module=recommendation.task.model.trivago.trivago_models \
+  --project=trivago_contextual_bandit \
+  --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' \
+  --n-factors 50 \
+  --learning-rate 0.0001 \
+  --optimizer radam \
+  --epochs 250 \
+  --full-refit \
+  --obs-batch-size 100 \
+  --early-stopping-patience 10 \
+  --batch-size 20 \
+  --num-episodes 200 \
+  --bandit-policy lin_ts \
+  --bandit-policy-params '{"v_sq": 1}' \
+  --output-model-dir "gs://deepfood-results"
+
+
+docker run --gpus '"device=0"' -it gcr.io/deepfood/deep-reco-gym:trivago --module recommendation.task.model.trivago.trivago_models TrivagoModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' --n-factors 50 --learning-rate=0.0001 --optimizer radam --metrics '["loss"]' --epochs 250 --full-refit --obs-batch-size 100 --early-stopping-patience 10 --batch-size 20 --num-episodes 200 --bandit-policy lin_ucb --bandit-policy-params '{"alpha": 1e-5}'  --output-model-dir "gs://deepfood-results" > nohup4.1 &

@@ -66,11 +66,14 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
     
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout(template=TEMPLATE, legend_orientation="v", title=title)
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", title="Comparison of Online Contextual Bandit Policies",
+                    xaxis_title="Iteractions", yaxis_title=title, showlegend=True)
   if yrange is not None:
     fig.update_yaxes(range=[yrange[0], ymax+(ymax*0.1)])
 
   st.plotly_chart(fig)
+  
+  return fig
 
 def plot_exploration_arm(df, title=""):
     rounds = len(df)
@@ -100,10 +103,11 @@ def plot_exploration_arm(df, title=""):
         ))
 
     fig.update_layout(template=TEMPLATE, 
-                  xaxis_title_text='Time Step', 
+                  xaxis_title_text='Iteractions', 
                   yaxis_title_text="Cummulative Exploration Arm",
-                  title="Cumulative Exploration Arms over time - "+title,
-                  yaxis_range=(0, 100))
+                  title="Cumulative Exploration Arms over time", #+title
+                  yaxis_range=(0, 100),
+                  showlegend=True)
 
     st.plotly_chart(fig)
 
