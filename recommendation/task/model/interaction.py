@@ -12,6 +12,7 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 from tqdm import tqdm
+import time
 
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
@@ -180,6 +181,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         self._save_params()
         self._save_log()
         self._save_metrics()
+        #df_metrics_reward = metrics.groupby("iteraction").agg({'reward': ['mean', 'sum']}).reset_index().sort_values([('reward', 'sum')], ascending=False)
 
         if self.test_size > 0:
             self._save_test_set_predictions()
@@ -215,7 +217,10 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _save_metrics(self) -> None:
         df = self.known_observations_data_frame.reset_index()
-        df[[self.project_config.output_column.name]].describe().to_csv(self.output().path + '/stats.csv', index=False)
+        df_metric = df[[self.project_config.output_column.name]].describe().transpose()
+        df_metric['time'] = self.end_time - self.start_time 
+        
+        df_metric.transpose().reset_index().to_csv(self.output().path + '/stats.csv', index=False)
 
     def _save_test_set_predictions(self) -> None:
         print("Saving test set predictions...")
@@ -299,6 +304,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
+        self.start_time = time.time()
+        
+
         self._save_params()
 
         env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame,
@@ -363,6 +371,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                     self._save_log()
 
         env.close()
-
+        self.end_time = time.time()
         # Save logs
         self._save_result()

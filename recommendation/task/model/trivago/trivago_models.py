@@ -104,3 +104,19 @@ class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
           'MRR':                mean_reciprocal_rank(list(df_eval['sorted_list']))
       }, indent = 4))
 
+class TrivagoLogisticModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
+
+  def create_module(self) -> nn.Module:
+
+      return SimpleLinearModel(
+          window_hist_size=self.window_hist_size,
+          vocab_size=self.vocab_size,
+          metadata_size=self.metadata_size,
+          n_users=self.n_users,
+          n_items=self.n_items,
+          n_factors=self.n_factors,
+          filter_sizes=self.filter_sizes,
+          num_filters=self.num_filters,
+          dropout_prob=self.dropout_prob,
+          dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
+      )

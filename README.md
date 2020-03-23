@@ -296,23 +296,24 @@ export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
 gcloud ai-platform jobs submit training $MODEL_DIR \
   --region us-west2 \
   --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago  \
-  --scale-tier BASIC \
+  --scale-tier custom \
+  --master-machine-type n1-highmem-2	 \
+  --master-accelerator count=1,type=nvidia-tesla-p4 \
   -- \
   TrivagoModelInteraction \
   --module=recommendation.task.model.trivago.trivago_models \
   --project=trivago_contextual_bandit \
   --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' \
   --n-factors 50 \
-  --learning-rate 0.0001 \
-  --optimizer radam \
+  --learning-rate 0.001 \
+  --optimizer adam \
   --epochs 250 \
-  --full-refit \
-  --obs-batch-size 100 \
+  --obs-batch-size 200 \
   --early-stopping-patience 10 \
-  --batch-size 20 \
+  --batch-size 200 \
   --num-episodes 200 \
-  --bandit-policy lin_ts \
-  --bandit-policy-params '{"v_sq": 1}' \
+  --bandit-policy softmax_explorer \
+  --bandit-policy-params '{"logit_multiplier": 5.0}' \
   --output-model-dir "gs://deepfood-results"
 
 

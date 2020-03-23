@@ -5,6 +5,7 @@ import plotly.figure_factory as ff
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import colorlover as cl
 
 TEMPLATE = 'plotly_white' #simple_white
 
@@ -58,15 +59,19 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
     ymax   = np.max([np.max(values), ymax])
 
     try:
-      name   = " - ".join(list(rows.iloc[0][legend].astype(str)))
+      first_len = rows.iloc[0][legend[0]]#.astype(str)
+      v      = list(rows.iloc[0][legend[1:]].astype(str))
+      name   = "<b>"+first_len+"</b> ("+", ".join(["{}=<b>{}</b>".format(k,v) for k, v in zip(legend[1:], v)])+")"
     except:
       name   = group
 
     data.append(go.Scatter(name=name, x=x, y=values))
-    
+    #,
+    #              line=dict(color=cl.scales['11']['div']['BrBG'][1])
+    #
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout(template=TEMPLATE, legend_orientation="h", title="Comparison of Online Contextual Bandit Policies",
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(y=-0.2), title="Comparison of Online Contextual Bandit Policies",
                     xaxis_title="Iteractions", yaxis_title=title, showlegend=True)
   if yrange is not None:
     fig.update_yaxes(range=[yrange[0], ymax+(ymax*0.1)])
