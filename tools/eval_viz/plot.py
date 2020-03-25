@@ -6,8 +6,19 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import colorlover as cl
+import seaborn as sns
+import plotly.express as px
 
 TEMPLATE = 'plotly_white' #simple_white
+#https://seaborn.pydata.org/generated/seaborn.color_palette.html#seaborn.color_palette
+#https://plot.ly/python/v3/ipython-notebooks/color-scales/#diverging
+#sns.color_palette("colorblind", n_colors=15).as_hex()
+def get_colors(models, color=px.colors.qualitative.Plotly):
+  line_dict = {}
+  for i, model in enumerate(models):
+    line_dict[model] = dict(color=color[int(i%10)])
+  return line_dict
+
 
 def plot_bar(df, title=""):
   data = []
@@ -38,9 +49,11 @@ def plot_line(df, title="", yrange=[0, 1], cum=False):
 
 def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
                         title="", yrange=[0, 1], 
-                        cum=False, mean=False, roll=False):
+                        cum=False, mean=False, roll=False, line_dict = {}):
   data  = []
   ymax  = yrange[1] if yrange else 1
+  
+
 
   for group, rows in df.groupby("iteraction", sort=False):
     _x   = [i+1 for i in range(len(rows))]
@@ -61,14 +74,12 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
     try:
       first_len = rows.iloc[0][legend[0]]#.astype(str)
       v      = list(rows.iloc[0][legend[1:]].astype(str))
-      name   = "<b>"+first_len+"</b> ("+", ".join(["{}=<b>{}</b>".format(k,v) for k, v in zip(legend[1:], v)])+")"
+      name   = "<b>"+first_len+"</b> ("+", ".join(["{}".format(v) for k, v in zip(legend[1:], v)])+")"
     except:
       name   = group
+    
+    data.append(go.Scatter(name=name, x=x, y=values, line=(line_dict[group] if group in line_dict else {})))
 
-    data.append(go.Scatter(name=name, x=x, y=values))
-    #,
-    #              line=dict(color=cl.scales['11']['div']['BrBG'][1])
-    #
   fig = go.Figure(data=data)
   # Change the bar mode
   fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(y=-0.2), title="Comparison of Online Contextual Bandit Policies",
@@ -80,7 +91,7 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
   
   return fig
 
-def plot_exploration_arm(df, title=""):
+def plot_exploration_arm(df, title="", window=20,  roll=False):
     rounds = len(df)
     arms   = np.unique(df['item'].values)
     arms_rewards = df['item'].values
@@ -97,9 +108,15 @@ def plot_exploration_arm(df, title=""):
     x    = sorted(df['idx'].values)
 
     for arm, values in count_per_arms.items():    
+
+        if roll:
+          y = pd.Series(values).rolling(window = window, min_periods=1).mean()
+        else:
+          y = np.cumsum(values)
+
         fig.add_trace(go.Scatter(
             name="Arm "+str(arm),
-            x=x, y=np.cumsum(values),
+            x=x, y=y,
             hoverinfo='x+y',
             mode='lines',
             line=dict(width=0.5),

@@ -1,10 +1,11 @@
 import streamlit as st
 
 from app import fetch_iteraction_results_path, load_all_iteraction_metrics, load_iteractions_params
-from plot import plot_line_iteraction, plot_exploration_arm
+from plot import plot_line_iteraction, plot_exploration_arm, get_colors
 import pandas as pd
 import argparse
 import copy
+import colorlover as cl
 
 
 def export(args):
@@ -37,19 +38,19 @@ def export(args):
   print(params.head())
   print(df_metrics_reward)
 
-
   # GERAL
   for input_metrics in ['Cumulative Reward', 'Cumulative Mean Reward', 'Cumulative Window Mean Reward']:
     fig = plot_line_iteraction(df, 'reward', 
                           title=input_metrics, 
                           legend=input_legend,
+                          line_dict=get_colors(input_iteraction),
                           yrange=[0,1], 
                           window=args.window_size,
                           cum=(input_metrics == 'Cumulative Reward'), 
                           mean=(input_metrics == 'Cumulative Mean Reward'),
                           roll=(input_metrics == 'Cumulative Window Mean Reward'))
 
-    fig.write_image(args.output+"/all_{}.png".format(input_metrics.replace(" ", "")))
+    fig.write_image(args.output+"/all_{}.png".format(input_metrics.replace(" ", ""))) #, width=1024, height=600, scale=2
 
   # PEr Parameter
   for param in input_legend:
@@ -62,6 +63,7 @@ def export(args):
         fig = plot_line_iteraction(df_group, 'reward', 
                               title=input_metrics, 
                               legend=input_legend,
+                              line_dict=get_colors(input_iteraction),
                               yrange=[0,1], 
                               window=args.window_size,
                               cum=(input_metrics == 'Cumulative Reward'), 
@@ -78,6 +80,7 @@ def export(args):
       fig = plot_line_iteraction(df_group, 'reward', 
                             title=input_metrics, 
                             legend=input_legend,
+                            line_dict=get_colors(input_iteraction),
                             yrange=[0,1], 
                             window=args.window_size,
                             cum=(input_metrics == 'Cumulative Reward'), 
@@ -87,13 +90,13 @@ def export(args):
       fig.write_image(args.output+"/{}_{}.png".format(group, input_metrics.replace(" ", "")))
 
 
-    fig = plot_exploration_arm(df_group, title=group)
+    fig = plot_exploration_arm(df_group, title=group, window=args.window_size, roll=False)
     fig.write_image(args.output+"/{}_explorer.png".format(group))
     
   metrics.to_csv(args.output+"/metrics.csv", index=False)
   params.to_csv(args.output+"/params.csv", index=False)
-  df_metrics_reward.merge(params.set_index("iteraction")[input_legend], on='iteraction').to_csv("tools/eval_viz/export/params_with_metrics_reward.csv", index=False)
-
+  df_metrics_reward.merge(params.set_index("iteraction")[input_legend], on='iteraction')\
+    [["iteraction"]+input_legend+[('reward', 'mean'), ('reward', 'sum')]].to_csv(args.output+"/params_with_metrics_reward.csv", index=False)
 # Params
 #
 if __name__ == "__main__":

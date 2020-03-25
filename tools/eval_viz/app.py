@@ -277,6 +277,7 @@ def display_iteraction_result():
                           title=input_metrics, 
                           legend=input_legend,
                           yrange=None, 
+                          line_dict=get_colors(input_iteraction),
                           window=add_slider,
                           cum=(input_metrics == 'Cumulative Reward'), 
                           mean=(input_metrics == 'Cumulative Mean Reward'),

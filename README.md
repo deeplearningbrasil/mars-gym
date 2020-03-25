@@ -269,38 +269,13 @@ gcloud compute instances update-container deep-reco-gym-1 \
 # https://cloud.google.com/compute/docs/machine-types?hl=pt-br
 export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
 gcloud ai-platform jobs submit training $MODEL_DIR \
-  --region us-west2 \
+  --region us-central1	 \
   --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago  \
   --scale-tier custom \
   --master-machine-type n1-standard-1	 \
   --master-accelerator count=1,type=nvidia-tesla-p4 \
   -- \
-  TrivagoModelInteraction \
-  --module=recommendation.task.model.trivago.trivago_models \
-  --project=trivago_contextual_bandit \
-  --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' \
-  --n-factors 50 \
-  --learning-rate 0.0001 \
-  --optimizer radam \
-  --epochs 250 \
-  --full-refit \
-  --obs-batch-size 100 \
-  --early-stopping-patience 10 \
-  --batch-size 20 \
-  --num-episodes 100 \
-  --bandit-policy epsilon_greedy \
-  --output-model-dir "gs://deepfood-results"
-
-
-export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
-gcloud ai-platform jobs submit training $MODEL_DIR \
-  --region us-west2 \
-  --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago  \
-  --scale-tier custom \
-  --master-machine-type n1-highmem-2	 \
-  --master-accelerator count=1,type=nvidia-tesla-p4 \
-  -- \
-  TrivagoModelInteraction \
+  TrivagoLogisticModelInteraction \
   --module=recommendation.task.model.trivago.trivago_models \
   --project=trivago_contextual_bandit \
   --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' \
@@ -312,8 +287,30 @@ gcloud ai-platform jobs submit training $MODEL_DIR \
   --early-stopping-patience 10 \
   --batch-size 200 \
   --num-episodes 200 \
-  --bandit-policy softmax_explorer \
-  --bandit-policy-params '{"logit_multiplier": 5.0}' \
+  --bandit-policy epsilon_greedy \
+  --bandit-policy-params '{"epsilon": 0.1}' \
+  --output-model-dir "gs://deepfood-results"
+
+
+export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
+gcloud ai-platform jobs submit training $MODEL_DIR \
+  --region us-central1	 \
+  --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago-2.0  \
+  --scale-tier BASIC_GPU \
+  -- \
+  TrivagoLogisticModelInteraction \
+  --module=recommendation.task.model.trivago.trivago_models \
+  --project=trivago_contextual_bandit \
+  --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' \
+  --n-factors 50 \
+  --learning-rate 0.001 \
+  --optimizer adam \
+  --epochs 250 \
+  --obs-batch-size 200 \
+  --early-stopping-patience 10 \
+  --batch-size 200 \
+  --num-episodes 200 \
+  --bandit-policy model \
   --output-model-dir "gs://deepfood-results"
 
 
