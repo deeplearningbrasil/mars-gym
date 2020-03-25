@@ -311,7 +311,7 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         arm_probs = np.zeros(len(arm_scores))
         argmax = int(np.argmax(arm_scores))
 
-        if max_score > exploration_threshold:
+        if max_score >= exploration_threshold:
             arm_probs[argmax] = 1.0
         else:
             arm_probs = np.ones(n_arms) / n_arms
@@ -335,11 +335,11 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         exploration_threshold = np.percentile(self._best_arm_history[pos], self._percentile) \
             if len(self._best_arm_history[pos]) >= self._window_size else self._initial_exploration_threshold
 
-        if max_score > exploration_threshold:
+        if max_score >= exploration_threshold:
             action = int(np.argmax(arm_scores))
         else:
             action = self._rng.choice(len(arm_indices), p=arm_probas)
-
+        
         if len(self._best_arm_history[pos]) >= self._window_size:
             #update history
             self._best_arm_history[pos].append(max_score)

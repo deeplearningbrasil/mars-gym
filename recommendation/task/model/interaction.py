@@ -13,6 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 from torchbearer import Trial
 from tqdm import tqdm
 import time
+import pickle
 
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
@@ -181,6 +182,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         self._save_params()
         self._save_log()
         self._save_metrics()
+        self._save_bandit_model()
         #df_metrics_reward = metrics.groupby("iteraction").agg({'reward': ['mean', 'sum']}).reset_index().sort_values([('reward', 'sum')], ascending=False)
 
         if self.test_size > 0:
@@ -189,7 +191,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         if self.output_model_dir:
             save_trained_data(self.output().path, self.output_model_dir)
 
-        
+    def _save_bandit_model(self):
+        # Save Bandit Object
+        with open(os.path.join(self.output().path, "bandit.pkl"), 'wb') as bandit_file:
+            pickle.dump(self.agent.bandit, bandit_file)
+
     def _save_log(self) -> None:
         columns = [self.project_config.user_column.name, self.project_config.item_column.name,
                    self.project_config.output_column.name]
