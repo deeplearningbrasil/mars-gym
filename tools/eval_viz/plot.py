@@ -91,10 +91,17 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
   
   return fig
 
-def plot_exploration_arm(df, title="", window=20,  roll=False):
-    rounds = len(df)
-    arms   = np.unique(df['item'].values)
+def plot_exploration_arm(df, title="", window=20,  roll=False, all_items = []):
+    rounds   = len(df)
+    arms     = np.unique(df['item'].values)
     arms_rewards = df['item'].values
+    
+    
+    arms_idx = {}
+    if len(all_items) == 0:
+      all_items = arms
+    for i, a in enumerate(all_items):
+      arms_idx[a] = i
 
     count_per_arms = {}
     
@@ -119,7 +126,7 @@ def plot_exploration_arm(df, title="", window=20,  roll=False):
             x=x, y=y,
             hoverinfo='x+y',
             mode='lines',
-            line=dict(width=0.5),
+            line=dict(width=0.5, color=px.colors.qualitative.Plotly[int(arms_idx[arm]%10)]),
             stackgroup='one',
             groupnorm='percent' # define stack group
         ))

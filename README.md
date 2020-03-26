@@ -219,7 +219,7 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContent
 
 ## Docker
 
-docker build . --tag gcr.io/deepfood/deep-reco-gym
+docker build . --tag gcr.io/deepfood/deep-reco-gym:trivago-3.0
 
 docker run -it gcr.io/deepfood/deep-reco-gym:trivago TrivagoModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' --n-factors 50 --learning-rate=0.0001 --optimizer radam --metrics '["loss"]' --epochs 250 --full-refit --obs-batch-size 100 --early-stopping-patience 10 --batch-size 20 --num-episodes 100 --bandit-policy epsilon_greedy
 
@@ -270,27 +270,10 @@ gcloud compute instances update-container deep-reco-gym-1 \
 export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
 gcloud ai-platform jobs submit training $MODEL_DIR \
   --region us-central1	 \
-  --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago  \
-  --scale-tier custom \
-  --master-machine-type n1-standard-1	 \
-  --master-accelerator count=1,type=nvidia-tesla-p4 \
+  --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago-3.0  \
+  --scale-tier BASIC_GPU \
   -- \
-  TrivagoLogisticModelInteraction \
-  --module=recommendation.task.model.trivago.trivago_models \
-  --project=trivago_contextual_bandit \
-  --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' \
-  --n-factors 50 \
-  --learning-rate 0.001 \
-  --optimizer adam \
-  --epochs 250 \
-  --obs-batch-size 200 \
-  --early-stopping-patience 10 \
-  --batch-size 200 \
-  --num-episodes 200 \
-  --bandit-policy epsilon_greedy \
-  --bandit-policy-params '{"epsilon": 0.1}' \
-  --output-model-dir "gs://deepfood-results"
-
+  TrivagoLogisticModelInteraction --module=recommendation.task.model.trivago.trivago_models --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' --n-factors 50 --learning-rate=0.001 --optimizer adam --metrics '["loss"]' --epochs 251 --obs-batch-size 200 --early-stopping-patience 10 --batch-size 200 --num-episodes 200 --output-model-dir "gs://deepfood-results" --bandit-policy percentile_adaptive --bandit-policy-params '{"exploration_threshold": 0.5}' 
 
 export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
 gcloud ai-platform jobs submit training $MODEL_DIR \

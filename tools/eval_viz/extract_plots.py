@@ -6,7 +6,7 @@ import pandas as pd
 import argparse
 import copy
 import colorlover as cl
-
+import numpy as np
 
 def export(args):
   input_legend      = args.legend.split(",")
@@ -90,7 +90,7 @@ def export(args):
       fig.write_image(args.output+"/{}_{}.png".format(group, input_metrics.replace(" ", "")))
 
 
-    fig = plot_exploration_arm(df_group, title=group, window=args.window_size, roll=False)
+    fig = plot_exploration_arm(df_group, title=group, window=args.window_size, roll=False, all_items = np.unique(df['item'].values))
     fig.write_image(args.output+"/{}_explorer.png".format(group))
     
   metrics.to_csv(args.output+"/metrics.csv", index=False)
