@@ -421,12 +421,14 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
               withColumn("prices", to_array_float_udf(df.prices))
 
 
+
       # Convert item_id to item_idx in impressions
       to_item_idx_from_dict_udf  = udf(lambda x: [item_idx_dict[i] for i in x], ArrayType(IntegerType()))
       df = df.withColumn("impressions", to_item_idx_from_dict_udf(df.impressions))
       
       # Explode
       df = df.select("*", posexplode("impressions").alias("pos_item_idx", "item_idx"))
+
 
       df = df.withColumn("price", df["prices"].getItem(df.pos_item_idx)).\
               withColumn("clicked", when(df.action_type_item_idx == df.item_idx, 1.0).otherwise(0.0)).\
@@ -447,7 +449,7 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       df = df.withColumn("ps", df.hist_views/df.user_view)
                            
 
-      print(df.toPandas().head())
+      # print(df.toPandas().head())
       df.orderBy('timestamp', "pos_item_idx").toPandas().to_csv(self.output().path, index=False)
       #sd
 
@@ -464,7 +466,7 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
 
     @property
     def stratification_property(self) -> str:
-        return "user_idx"
+        return "clicked"
 
     @property
     def timestamp_property(self) -> str:

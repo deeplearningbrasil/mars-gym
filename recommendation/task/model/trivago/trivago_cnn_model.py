@@ -104,3 +104,40 @@ class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
           'MRR':                mean_reciprocal_rank(list(df_eval['sorted_list']))
       }, indent = 4))
 
+class TrivagoLogisticModelTraining(InteractionTraining):
+  loss_function: str = luigi.ChoiceParameter(choices=["crm", "bce"], default="bce")
+  n_factors: int = luigi.IntParameter(default=128)
+  weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
+  dropout_prob: float = luigi.FloatParameter(default=0.1)
+  dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
+  activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
+  filter_sizes: List[int] = luigi.ListParameter(default=[1, 3, 5])
+  num_filters: int = luigi.IntParameter(default=64)
+
+  @property
+  def window_hist_size(self):
+      if not hasattr(self, "_window_hist_size"):
+          self._window_hist_size = int(self.train_data_frame.iloc[0]["window_hist_size"])
+      return self._window_hist_size
+
+  @property
+  def metadata_size(self):
+      if not hasattr(self, "_meta_data_size"):
+          self._meta_data_size = int(self.metadata_data_frame.shape[1] - 3)
+      return self._meta_data_size     
+
+
+  def create_module(self) -> nn.Module:
+
+      return SimpleLinearModel(
+          window_hist_size=self.window_hist_size,
+          vocab_size=self.vocab_size,
+          metadata_size=self.metadata_size,
+          n_users=self.n_users,
+          n_items=self.n_items,
+          n_factors=self.n_factors,
+          filter_sizes=self.filter_sizes,
+          num_filters=self.num_filters,
+          dropout_prob=self.dropout_prob,
+          dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
+      )

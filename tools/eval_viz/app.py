@@ -32,7 +32,7 @@ GRAPH_METRIC_MODEL = {
   "Box": plot_box
 }
 
-@st.cache
+#@st.cache
 def fetch_training_path():
     paths  = []
     models = []
@@ -44,7 +44,7 @@ def fetch_training_path():
               
     return dict(zip(models, paths))
 
-@st.cache
+#@st.cache
 def fetch_results_path():
     paths  = []
     models = []
@@ -56,7 +56,7 @@ def fetch_results_path():
               
     return dict(zip(models, paths))
 
-@st.cache
+#@st.cache
 def fetch_iteraction_results_path():
     paths  = []
     models = []
@@ -68,19 +68,19 @@ def fetch_iteraction_results_path():
               
     return dict(zip(models, paths))  
 
-@st.cache
+#@st.cache
 def load_data_metrics():
   return json2df(fetch_results_path(), 'metrics.json', 'path')
 
-@st.cache
+#@st.cache
 def load_eval_params():
   return json2df(fetch_results_path(), 'params.json', 'path')
 
-@st.cache
+#@st.cache
 def load_train_params():
   return json2df(fetch_training_path(), 'params.json', 'path')
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_iteractions_params(iteractions):
   if len(iteractions) == 0:
     return pd.DataFrame()
@@ -107,7 +107,7 @@ def load_iteractions_params(iteractions):
   
   return pd.concat(dfs)
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_data_iteractions_metrics(model, sample_size = 10000):
   random.seed(42)
   file      = os.path.join(fetch_iteraction_results_path()[model],'sim-datalog.csv')
@@ -130,15 +130,15 @@ def load_data_iteractions_metrics(model, sample_size = 10000):
   df        = df.sort_values("idx")
   return df
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_data_orders_metrics(model):
   return pd.read_csv(os.path.join(fetch_results_path()[model],'orders_with_metrics.csv'))
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_history_train(model):
   return pd.read_csv(os.path.join(fetch_training_path()[model],'history.csv')).set_index('epoch')
 
-@st.cache(allow_output_mutation=True)
+#@st.cache(allow_output_mutation=True)
 def load_all_iteraction_metrics(iteractions, sample_size):
   if len(iteractions) == 0:
     return pd.DataFrame()
@@ -277,6 +277,7 @@ def display_iteraction_result():
                           title=input_metrics, 
                           legend=input_legend,
                           yrange=None, 
+                          line_dict=get_colors(input_iteraction),
                           window=add_slider,
                           cum=(input_metrics == 'Cumulative Reward'), 
                           mean=(input_metrics == 'Cumulative Mean Reward'),

@@ -1,5 +1,4 @@
-FROM nvidia/cuda:10.0-base-ubuntu16.04 AS deep-reco-gym
-#FROM ubuntu:18.04 AS deep-reco-gym
+FROM pytorch/pytorch:1.2-cuda10.0-cudnn7-runtime 
 
 # Install some basic utilities
 RUN apt-get update && apt-get install -y \
@@ -59,13 +58,14 @@ ENV PATH=/home/user/miniconda/bin:$PATH
 ENV CONDA_AUTO_UPDATE_CONDA=false
 
 # Create a Python 3.6 environment
-RUN /home/user/miniconda/bin/conda create -y --name py36 python=3.6.9 \
+RUN /home/user/miniconda/bin/conda create -y --name py36 python=3.6.7 \
   && /home/user/miniconda/bin/conda clean -ya
 ENV CONDA_DEFAULT_ENV=py36
 ENV CONDA_PREFIX=/home/user/miniconda/envs/$CONDA_DEFAULT_ENV
 ENV PATH=$CONDA_PREFIX/bin:$PATH
 RUN /home/user/miniconda/bin/conda install conda-build=3.18.9=py36_3 \
   && /home/user/miniconda/bin/conda clean -ya
+
 
 # CUDA 10.0-specific steps
 # RUN conda install -y -c pytorch \
@@ -100,6 +100,7 @@ COPY output/trivago /app/output/trivago
 COPY environment.yml /app
 COPY luigi.cfg /app
 COPY taskrunner.sh /app
+COPY files/gcp.json /app
 
 RUN sudo chown -R user:user /app
 
@@ -109,5 +110,6 @@ EXPOSE 8502
 
 ENV CONDA_DEFAULT_ENV=deep-reco-gym
 ENV OUTPUT_PATH=/app/output
+ENV GOOGLE_APPLICATION_CREDENTIALS="/app/gcp.json"
 
 ENTRYPOINT ["bash", "/app/taskrunner.sh"]

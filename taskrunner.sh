@@ -8,8 +8,8 @@ source activate deep-reco-gym
 #exec env PYTHONPATH="." python -m luigi "$@"
 PYTHONPATH="." python -m luigi "$@"
 
-cd /app/output
-python -m  http.server 8502 & 
+#cd /app/output
+#python -m  http.server 8502 & 
 
-cd /app
-exec streamlit run tools/eval_viz/app.py 
+#cd /app
+#exec streamlit run tools/eval_viz/app.py 

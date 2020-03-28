@@ -10,8 +10,9 @@ from recommendation.model.transformer import *
 import copy
 
 class SimpleLinearModel(nn.Module):
-    def __init__(self, n_users: int, n_items: int, n_factors: int, vocab_size: int,
+    def __init__(self, n_users: int, n_items: int, n_factors: int, 
                 window_hist_size: int, metadata_size: int,
+                vocab_size: int = 88,
                 num_filters: int = 32, filter_sizes: List[int] = [1, 3, 5], 
                 dropout_prob: int = 0.0, dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout,                 
                 weight_init: Callable = lecun_normal_init):
@@ -20,11 +21,11 @@ class SimpleLinearModel(nn.Module):
         self.weight_init = weight_init
         self.apply(self.init_weights)
 
-        self.pe                     = PositionalEncoder(n_factors)
         self.user_embeddings        = nn.Embedding(n_users, n_factors)
-        self.item_embeddings        = nn.Embedding(n_items + 1, n_factors)
-        self.action_type_embeddings = nn.Embedding(10 + 1 , n_factors)
+        self.item_embeddings        = nn.Embedding(n_items, n_factors)
+        self.action_type_embeddings = nn.Embedding(11, n_factors)
         self.word_embeddings        = nn.Embedding(vocab_size, n_factors)
+        self.pe                     = PositionalEncoder(n_factors)
         
         # TODO
         context_embs = 12
