@@ -21,7 +21,7 @@ tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
-from recommendation.files import get_interaction_dir
+from recommendation.files import get_interaction_dir, get_test_set_predictions_path
 from recommendation.files import get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
 
 
@@ -214,8 +214,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 ob[ITEM_METADATA_KEY] = self._embeddings_for_metadata
             actions.append(self._act(ob))
 
-        self.test_data_frame["action"] = actions
-        self.test_data_frame.to_csv("test_set_predictions.csv", index=False)
+        self.test_data_frame["prediction"] = actions
+        self.test_data_frame.to_csv(get_test_set_predictions_path(self.output().path), index=False)
 
     @property
     def interactions_data_frame(self) -> pd.DataFrame:

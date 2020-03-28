@@ -33,4 +33,7 @@ def get_interator_datalog_path(task_dir: str) -> str:
     return os.path.join(task_dir, "all-datalog.csv")
 
 def get_ground_truth_datalog_path(task_dir: str) -> str:
-    return os.path.join(task_dir, "gt-datalog.csv")        
+    return os.path.join(task_dir, "gt-datalog.csv")
+
+def get_test_set_predictions_path(task_dir: str) -> str:
+    return os.path.join(task_dir, "test_set_predictions.csv")
