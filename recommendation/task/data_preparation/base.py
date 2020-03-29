@@ -52,6 +52,7 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "time", "column", "k_fold"], default="time")
+    column_stratification: str = luigi.Parameter()
     test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="random")
     n_splits: int = luigi.IntParameter(default=10)
     split_index: int = luigi.IntParameter(default=0)
@@ -183,10 +184,10 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         return train_df, test_df
 
     def column_train_test_split(self, df: pd.DataFrame, test_size: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        keys = df[self.stratification_property].unique()
+        keys = df[self.column_stratification].unique()
         keys_train, keys_test =  train_test_split(keys, test_size=test_size, random_state=self.seed)
-        return df[df[self.stratification_property].isin(keys_train)],\
-                df[df[self.stratification_property].isin(keys_test)],\
+        return df[df[self.column_stratification].isin(keys_train)],\
+                df[df[self.column_stratification].isin(keys_test)],\
 
     def time_train_test_split(self, df: pd.DataFrame, test_size: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
         if self.timestamp_property:
