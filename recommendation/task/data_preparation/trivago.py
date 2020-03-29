@@ -423,7 +423,7 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
 
 
       # Convert item_id to item_idx in impressions
-      to_item_idx_from_dict_udf  = udf(lambda x: [item_idx_dict[i] for i in x], ArrayType(IntegerType()))
+      to_item_idx_from_dict_udf  = udf(lambda x: [item_idx_dict[i] if i in item_idx_dict else 0 for i in x], ArrayType(IntegerType()))
       df = df.withColumn("impressions", to_item_idx_from_dict_udf(df.impressions))
       
       # Explode
@@ -508,13 +508,13 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
 
     def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
         # TODO
+
         df['n_users']          = self.num_users
         df['n_items']          = self.num_businesses
         df['clicked']          = df['clicked'].astype(float)
+        df['copy_clicked']     = df['clicked'].astype(float)
         df['vocab_size']       = self.vocab_size
         df['window_hist_size'] = self.window_hist
-        
-        #df['pos_item_idx']     = df['clicked']
 
         if not hasattr(self, "_scaler"):
             self._scaler = MinMaxScaler()
@@ -526,4 +526,6 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
           elif data_key == "VALIDATION_DATA":
             df['price'] = self._scaler.transform(df[['price']]).reshape(-1)
         
+
+
         return df        

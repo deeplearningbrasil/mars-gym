@@ -18,14 +18,16 @@ import pickle
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
 from recommendation.task.model.base import BaseTorchModelTraining
+from recommendation.plot import plot_history
 
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
-from recommendation.files import get_interaction_dir
+from recommendation.files import get_interaction_dir, get_history_path
 from recommendation.files import get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
 from recommendation.utils import save_trained_data 
+#from IPython import embed; embed()
 
 class BanditAgent(object):
 
@@ -77,17 +79,16 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
         batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
-        generator = NoAutoCollationDataLoader(
-            ob_dataset,
-            batch_sampler=batch_sampler, num_workers=self.generator_workers,
-            pin_memory=self.pin_memory if self.device == "cuda" else False)
+        generator     = NoAutoCollationDataLoader(ob_dataset,
+                            batch_sampler=batch_sampler, num_workers=self.generator_workers,
+                            pin_memory=self.pin_memory if self.device == "cuda" else False)
 
         trial = Trial(agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device,
                                                                                      requires_grad=True)) \
             .with_test_generator(generator).to(self.torch_device).eval()
 
         with torch.no_grad():
-            model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=2)
+            model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=0)
 
         scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
         scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
@@ -228,6 +229,10 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         
         df_metric.transpose().reset_index().to_csv(self.output().path + '/stats.csv', index=False)
 
+    def _save_trial_log(self, i, trial) -> None:
+        history_df = pd.read_csv(get_history_path(self.output().path))
+        plot_history(history_df).savefig(os.path.join(self.output().path, str(i)+"_history.jpg"))
+
     def _save_test_set_predictions(self) -> None:
         print("Saving test set predictions...")
         actions = []
@@ -261,10 +266,20 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return self._val_data_frame
 
     def _reset_dataset(self):
-        self._train_data_frame, self._val_data_frame = train_test_split(
-            self.known_observations_data_frame, test_size=self.val_size,
-            random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name]
-            if np.sum(self.known_observations_data_frame[self.project_config.output_column.name]) > 1 else None)
+        # self._train_data_frame, self._val_data_frame = train_test_split(
+        #     self.known_observations_data_frame, test_size=self.val_size,
+        #     random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name]
+        #     if np.sum(self.known_observations_data_frame[self.project_config.output_column.name]) > 1 else None)
+
+
+        # Time Split
+        df = self.known_observations_data_frame
+        size = len(df)
+        cut = int(size - size * self.val_size)
+        self._train_data_frame, self._val_data_frame = df.iloc[:cut], df.iloc[cut:]
+
+        #g = self._train_data_frame.groupby(self.project_config.output_column.name)
+        #self._train_data_frame = g.apply(lambda x: x.sample(g.size().min()).reset_index(drop=True))
 
         if hasattr(self, "_train_dataset"):
             del self._train_dataset
@@ -302,10 +317,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return self._env_data_frame
 
     def _act(self, ob: dict) -> int:
-        arm_indices = self._get_arm_indices(ob)
-        ob_dataset = self._create_ob_dataset(ob, arm_indices)
+        arm_indices  = self._get_arm_indices(ob)
+        ob_dataset   = self._create_ob_dataset(ob, arm_indices)
         arm_contexts = ob_dataset[:len(ob_dataset)][0]
-        arm_scores = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else None
+        arm_scores   = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else None
+
         return self.agent.act(arm_indices, arm_contexts, arm_scores)
 
     def run(self):
@@ -348,15 +364,22 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 if interactions % self.obs_batch_size == 0:
                     self._create_hist_columns()
                     self._reset_dataset()
+                    
+                    if self.agent.bandit.reward_model:
+                        if self.full_refit:
+                            self.agent.bandit.reward_model = self.create_module()
+                        
+                        trial = self.create_trial(self.agent.bandit.reward_model)
+                    else:
+                        trial = None
 
-                    if self.agent.bandit.reward_model and self.full_refit:
-                        self.agent.bandit.reward_model = self.create_module()
+                    self.agent.fit(trial,
+                                   self.get_train_generator(),
+                                   self.get_val_generator(),
+                                   self.epochs)
+                    self._save_trial_log(interactions, trial)
 
-                    self.agent.fit(
-                        self.create_trial(self.agent.bandit.reward_model) if self.agent.bandit.reward_model else None,
-                        self.get_train_generator(),
-                        self.get_val_generator(),
-                        self.epochs)
+
 
                     print("\n", k, ": Interaction Stats")
                     print(

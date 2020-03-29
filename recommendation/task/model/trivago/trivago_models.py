@@ -10,7 +10,7 @@ import torch.nn as nn
 from torchbearer import Trial
 import torchbearer
 import numpy as np
-from recommendation.model.trivago.trivago_models import SimpleCNNModel, SimpleRNNModel, SimpleLinearModel, SimpleCNNTransformerModel
+from recommendation.model.trivago.trivago_models import TestModel, SimpleCNNModel, SimpleRNNModel, SimpleLinearModel, SimpleCNNTransformerModel
 from recommendation.task.model.base import TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 from recommendation.task.model.interaction import InteractionTraining
@@ -55,6 +55,7 @@ class TrivagoModelTrainingMixin(object):
           dropout_prob=self.dropout_prob,
           dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
       )
+
 
 class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
   pass
@@ -104,7 +105,10 @@ class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
           'MRR':                mean_reciprocal_rank(list(df_eval['sorted_list']))
       }, indent = 4))
 
+
+
 class TrivagoLogisticModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
+
 
   def create_module(self) -> nn.Module:
 
@@ -120,3 +124,141 @@ class TrivagoLogisticModelInteraction(TrivagoModelTrainingMixin, InteractionTrai
           dropout_prob=self.dropout_prob,
           dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
       )
+
+class TrivagoLogisticModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
+
+    def create_module(self) -> nn.Module:
+
+        return SimpleCNNTransformerModel(
+            window_hist_size=self.window_hist_size,
+            vocab_size=self.vocab_size,
+            metadata_size=self.metadata_size,
+            n_users=self.n_users,
+            n_items=self.n_items,
+            n_factors=self.n_factors,
+            filter_sizes=self.filter_sizes,
+            num_filters=self.num_filters,
+            dropout_prob=self.dropout_prob,
+            dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
+        )
+
+    def evaluate(self):
+        module      = self.get_trained_module()
+        val_loader  = self.get_val_generator()
+
+        print("================== Evaluate ========================")
+        trial = Trial(module, self._get_optimizer(module), self._get_loss_function(), callbacks=[],
+                    metrics=self.metrics).to(self.torch_device)\
+                    .with_test_generator(val_loader)#.eval()
+
+        scores_tensor: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=2)
+        scores: np.ndarray = scores_tensor.detach().cpu().numpy().reshape(-1)
+
+        df_eval          = self.val_data_frame
+        df_eval['score'] = scores
+
+        group = df_eval.sort_values('pos_item_idx')\
+                        .groupby(['timestamp', 'user_idx', 'session_idx', 'step'])
+
+        df_eval                  = group.agg({'impressions': 'first'})
+        df_eval['list_item_idx'] = group['item_idx'].apply(list)
+        df_eval['list_score']    = group['score'].apply(list)
+        df_eval['pos_item_idx']  = group['pos_item_idx'].apply(list)
+        df_eval['clicked']       = group['clicked'].apply(list)
+        df_eval['item_idx']      = df_eval.apply(lambda row: int(np.max(np.array(row['clicked'])*np.array(row['list_item_idx']))), axis=1)
+
+        def sort_and_bin(row):
+            list_sorted, score = zip(*sorted(zip(row['list_item_idx'], row['list_score']), key = lambda x: x[1], reverse=True))
+            list_sorted = (np.array(list_sorted) == row['item_idx']).astype(int)
+            
+            return list(list_sorted)
+
+        df_eval['sorted_list'] = df_eval.apply(sort_and_bin, axis=1)
+        df_eval = df_eval.reset_index()
+
+        print(df_eval.head())
+
+        print(json.dumps({
+            'reciprocal_rank@5':  np.mean([reciprocal_rank_at_k(l, 5) for l in list(df_eval['sorted_list'])] ),
+            'precision@1':        np.mean([precision_at_k(l, 1) for l in list(df_eval['sorted_list'])] ),
+            'ndcg@5':             np.mean([ndcg_at_k(l, 5) for l in list(df_eval['sorted_list'])] ),
+            'MRR':                mean_reciprocal_rank(list(df_eval['sorted_list']))
+        }, indent = 4))
+
+
+class TestModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
+
+  def create_module(self) -> nn.Module:
+
+      return TestModel(
+          window_hist_size=self.window_hist_size,
+          vocab_size=self.vocab_size,
+          metadata_size=self.metadata_size,
+          n_users=self.n_users,
+          n_items=self.n_items,
+          n_factors=self.n_factors,
+          filter_sizes=self.filter_sizes,
+          num_filters=self.num_filters,
+          dropout_prob=self.dropout_prob,
+          dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
+      )    
+
+class TestModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
+
+  def create_module(self) -> nn.Module:
+
+      return TestModel(
+          window_hist_size=self.window_hist_size,
+          vocab_size=self.vocab_size,
+          metadata_size=self.metadata_size,
+          n_users=self.n_users,
+          n_items=self.n_items,
+          n_factors=self.n_factors,
+          filter_sizes=self.filter_sizes,
+          num_filters=self.num_filters,
+          dropout_prob=self.dropout_prob,
+          dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
+      )   
+
+  def evaluate(self):
+      module      = self.get_trained_module()
+      val_loader  = self.get_val_generator()
+
+      print("================== Evaluate ========================")
+      trial = Trial(module, self._get_optimizer(module), self._get_loss_function(), callbacks=[],
+                    metrics=self.metrics).to(self.torch_device)\
+                  .with_test_generator(val_loader)#.eval()
+
+      scores_tensor: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=2)
+      scores: np.ndarray = scores_tensor.detach().cpu().numpy().reshape(-1)
+      
+      df_eval          = self.val_data_frame
+      df_eval['score'] = scores
+
+      group = df_eval.sort_values('pos_item_idx')\
+                      .groupby(['timestamp', 'user_idx', 'session_idx', 'step'])
+      
+      df_eval                  = group.agg({'impressions': 'first'})
+      df_eval['list_item_idx'] = group['item_idx'].apply(list)
+      df_eval['list_score']    = group['score'].apply(list)
+      df_eval['pos_item_idx']  = group['pos_item_idx'].apply(list)
+      df_eval['clicked']       = group['clicked'].apply(list)
+      df_eval['item_idx']      = df_eval.apply(lambda row: int(np.max(np.array(row['clicked'])*np.array(row['list_item_idx']))), axis=1)
+      
+      def sort_and_bin(row):
+          list_sorted, score = zip(*sorted(zip(row['list_item_idx'], row['list_score']), key = lambda x: x[1], reverse=True))
+          list_sorted = (np.array(list_sorted) == row['item_idx']).astype(int)
+          
+          return list(list_sorted)
+      
+      df_eval['sorted_list'] = df_eval.apply(sort_and_bin, axis=1)
+      df_eval = df_eval.reset_index()
+
+      df_eval.head()
+
+      print(json.dumps({
+          'reciprocal_rank@5':  np.mean([reciprocal_rank_at_k(l, 5) for l in list(df_eval['sorted_list'])] ),
+          'precision@1':        np.mean([precision_at_k(l, 1) for l in list(df_eval['sorted_list'])] ),
+          'ndcg@5':             np.mean([ndcg_at_k(l, 5) for l in list(df_eval['sorted_list'])] ),
+          'MRR':                mean_reciprocal_rank(list(df_eval['sorted_list']))
+      }, indent = 4))      

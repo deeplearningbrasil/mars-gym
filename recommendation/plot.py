@@ -7,7 +7,7 @@ from matplotlib.figure import Figure
 import pandas as pd
 import seaborn as sns
 sns.set()
-
+plt.style.use('default')
 
 def plot_history(history_df: pd.DataFrame) -> Figure:
     metrics = [column for column in history_df.columns if column != "epoch" and "val_" not in column and "running_" not in column]
