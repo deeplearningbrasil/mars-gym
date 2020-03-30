@@ -2,6 +2,7 @@ import os
 import re
 from collections import Counter
 from pyspark.sql.functions import posexplode, explode#, arrays_zip
+import re
 
 import luigi
 import math
@@ -139,6 +140,8 @@ class TransformMetaDataset(luigi.Task):
       df_meta      = df_meta.join(tf_prop_meta).drop(['properties'], axis=1)#.shift(periods=1, fill_value=0)
       df_meta      = df_meta.append({'item_id': 0}, ignore_index=True).fillna(0) # Unknown
       df_meta      = df_meta.astype(int)
+      
+      df_meta['star'] = df_meta['1 star']*1 + df_meta['2 star']*2 + df_meta['3 star']*3 + df_meta['4 star']*4 + df_meta['5 star']*5
       df_meta['list_metadata'] = df_meta.drop('item_id', 1).values.tolist()
 
       df_meta.sort_values('item_id').to_csv(self.output().path, index=False)
@@ -152,7 +155,18 @@ class TransformSessionDataset(luigi.Task):
 
     def output(self):
       return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train_transform__size=%d.csv" % (self.sample_size))),\
-              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "text_vocabulary__size=%d.csv" % (self.sample_size)))
+              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "text_vocabulary__size=%d.csv" % (self.sample_size))),\
+              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "filter_session_size=%d.csv" % (self.sample_size)))
+
+
+    # 'a|b|c' -> ['a', 'b', 'c']
+    #
+    # 
+    def split_df_columns(self, df, column):
+      tf = CountVectorizer(tokenizer=lambda x: x.split("|"))
+      tf_df = tf.fit_transform(df[column].fillna("")).todense()
+      tf_df = pd.DataFrame(tf_df, columns = sorted(tf.vocabulary_.keys()))
+      return tf_df
 
     def run(self):
       df        = pd.read_csv(self.input()[0].path)  
@@ -160,6 +174,12 @@ class TransformSessionDataset(luigi.Task):
       # Transform impressions, prices
       df['impressions'] = df['impressions'].fillna("").apply(lambda x: [] if x == "" else [int(i) for i in x.split("|")] )
       df['prices']      = df['prices'].fillna("").apply(lambda x: [] if x == "" else [float(p) for p in x.split("|")])
+
+      # Transform current_filters
+
+      df_current_filters = self.split_df_columns(df, 'current_filters')
+      #df      = df.join(tf_current_filters).drop(['properties'], axis=1)#.shift(periods=1, fill_value=0)
+      df['list_current_filters'] = df_current_filters.values.tolist()
 
       # Transform reference in action_type
 
@@ -190,14 +210,14 @@ class TransformSessionDataset(luigi.Task):
 
       # Transform columns with text
       columns_with_string = ["reference_search_for_poi","reference_change_of_sort_order",
-                            "reference_search_for_destination","reference_filter_selection","current_filters"]
+                            "reference_search_for_destination","reference_filter_selection"]
       # vocabulario
       vocab = ["<none>"]
       for c in columns_with_string:
         vocab  += df[c].fillna("<none>").tolist()
 
       # Tokenizer
-      tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda x: x.split("|"), min_occurrences=1, reserved_tokens=[])
+      tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda x: re.split('\W+', x), min_occurrences=1, reserved_tokens=[])
 
       #Apply tokenizer
       for text_column in columns_with_string:
@@ -207,6 +227,7 @@ class TransformSessionDataset(luigi.Task):
       # Save
       df.to_csv(self.output()[0].path, index=False)
       pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
+      df_current_filters.to_csv(self.output()[2].path)
       
 class GenerateIndicesDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
@@ -311,7 +332,7 @@ class CreateIndexDataset(BasePySparkTask):
                           "reference_search_for_destination","reference_filter_selection",
                           "reference_interaction_item_image_idx","reference_interaction_item_rating_idx","reference_clickout_item_idx",
                           "reference_interaction_item_deals_idx","reference_search_for_item_idx","reference_interaction_item_info_idx",
-                          "platform_idx", "city_idx", "device_idx", "current_filters", "impressions", "prices")\
+                          "platform_idx", "city_idx", "device_idx", "list_current_filters", "current_filters", "impressions", "prices")\
               .toPandas()
       
       df.to_csv(self.output()[0].path, index=False)
@@ -372,7 +393,7 @@ class CreateAggregateIndexDataset(BasePySparkTask):
                   withColumn("list_reference_search_for_item_idx",    to_array_udf(collect_list("reference_search_for_item_idx").over(win_over_session))).\
                   withColumn("list_reference_interaction_item_info_idx",    to_array_udf(collect_list("reference_interaction_item_info_idx").over(win_over_session))).\
                   withColumn("list_action_type_idx",                  to_array_udf(collect_list("action_type_idx").over(win_over_session))).\
-                  withColumn("list_current_filters",                  to_array_udf(collect_list("current_filters").over(win_over_session))).\
+                  withColumn("list_current_filters_2",                  to_array_udf(collect_list("current_filters").over(win_over_session))).\
                   withColumn("action_type_item_idx",  
                                           when(train_df.action_type == "interaction item image", col("reference_interaction_item_image_idx")).\
                                           when(train_df.action_type == "interaction item rating", col("reference_interaction_item_rating_idx")).\
@@ -384,10 +405,19 @@ class CreateAggregateIndexDataset(BasePySparkTask):
                   withColumn("clicked",   when(train_df.action_type == "clickout item", 1.0).otherwise(0.0)).\
                   orderBy("timestamp")
 
+      # add feature 'sum_action_before'
+      win_item_action  = Window.partitionBy('session_idx', 'action_type_item_idx').orderBy('timestamp') \
+                          .rangeBetween(Window.unboundedPreceding, -1)
+
+      df_group         = df_group.withColumn("view", lit(1.0))\
+                                 .withColumn("sum_action_item_before", F.sum(col("view")).over(win_item_action))\
+                                 .fillna(0, subset=["sum_action_item_before"])
+
+
       # Filter only action type - clickout item
       df_group = df_group.filter(df_group.action_type == "clickout item") # 3,clickout item
 
-      df_group = df_group.select('timestamp', 'timestamp_diff', 'step', 'user_idx', 'session_idx', 'action_type_item_idx', 'action_type_idx',
+      df_group = df_group.select('timestamp', 'timestamp_diff', 'step', 'user_idx', 'session_idx', 'sum_action_item_before', 'action_type_item_idx', 'action_type_idx',
                                 'list_action_type_idx', 'list_reference_search_for_poi', 'list_reference_change_of_sort_order',
                                 'list_reference_search_for_destination', 'list_reference_filter_selection', 'list_reference_interaction_item_image_idx',
                                 'list_reference_interaction_item_rating_idx', 'list_reference_clickout_item_idx', 'list_reference_interaction_item_deals_idx',
@@ -420,10 +450,11 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       df = df.withColumn("impressions", to_array_int_udf(df.impressions)).\
               withColumn("prices", to_array_float_udf(df.prices))
 
-
+      array_mean = udf(lambda x: float(np.mean(x)), FloatType())
+      df = df.withColumn("list_mean_price", array_mean(df.prices))
 
       # Convert item_id to item_idx in impressions
-      to_item_idx_from_dict_udf  = udf(lambda x: [item_idx_dict[i] for i in x], ArrayType(IntegerType()))
+      to_item_idx_from_dict_udf  = udf(lambda x: [item_idx_dict[i] if i in item_idx_dict else 0 for i in x], ArrayType(IntegerType()))
       df = df.withColumn("impressions", to_item_idx_from_dict_udf(df.impressions))
       
       # Explode
@@ -433,7 +464,12 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       df = df.withColumn("price", df["prices"].getItem(df.pos_item_idx)).\
               withColumn("clicked", when(df.action_type_item_idx == df.item_idx, 1.0).otherwise(0.0)).\
               withColumn("view", lit(1.0)).orderBy('timestamp')  
-      
+
+      df = df.withColumn("is_first_in_impression", df.pos_item_idx == lit(0))
+      df = df.withColumn("diff_price", df.price - df.list_mean_price)
+
+
+      # add feature 'user_view', 'hist_views'
       win_user_item    = Window.partitionBy('user_idx', 'item_idx').orderBy('timestamp') \
                           .rangeBetween(Window.unboundedPreceding, -1)
       win_user         = Window.partitionBy('user_idx').orderBy('timestamp')\
@@ -449,7 +485,7 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       df = df.withColumn("ps", df.hist_views/df.user_view)
                            
 
-      # print(df.toPandas().head())
+      print(df.toPandas().head())
       df.orderBy('timestamp', "pos_item_idx").toPandas().to_csv(self.output().path, index=False)
       #sd
 
@@ -508,22 +544,24 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
 
     def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
         # TODO
+
         df['n_users']          = self.num_users
         df['n_items']          = self.num_businesses
         df['clicked']          = df['clicked'].astype(float)
+        df['is_first_in_impression']  = df['is_first_in_impression'].astype(float)
         df['vocab_size']       = self.vocab_size
         df['window_hist_size'] = self.window_hist
-        
-        #df['pos_item_idx']     = df['clicked']
 
         if not hasattr(self, "_scaler"):
             self._scaler = MinMaxScaler()
 
         if len(df) > 1:
           if data_key == "TRAIN_DATA":
-            df['price'] = self._scaler.fit_transform(df[['price']]).reshape(-1)
+            df['diff_price'] = self._scaler.fit_transform(df[['diff_price']]).reshape(-1)
 
-          elif data_key == "VALIDATION_DATA":
-            df['price'] = self._scaler.transform(df[['price']]).reshape(-1)
+          elif data_key == "VALIDATION_DATA" or data_key == "TEST_GENERATOR":
+            df['diff_price'] = self._scaler.transform(df[['diff_price']]).reshape(-1)
         
+
+
         return df        
