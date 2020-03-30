@@ -2,6 +2,7 @@ import os
 import re
 from collections import Counter
 from pyspark.sql.functions import posexplode, explode#, arrays_zip
+import re
 
 import luigi
 import math
@@ -216,7 +217,7 @@ class TransformSessionDataset(luigi.Task):
         vocab  += df[c].fillna("<none>").tolist()
 
       # Tokenizer
-      tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda x: x.split("|"), min_occurrences=1, reserved_tokens=[])
+      tokenizer = StaticTokenizerEncoder(vocab, tokenize=lambda x: re.split('\W+', x), min_occurrences=1, reserved_tokens=[])
 
       #Apply tokenizer
       for text_column in columns_with_string:
