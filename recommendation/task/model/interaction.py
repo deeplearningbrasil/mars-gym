@@ -266,11 +266,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return self._val_data_frame
 
     def _reset_dataset(self):
+        # Random Split
         # self._train_data_frame, self._val_data_frame = train_test_split(
         #     self.known_observations_data_frame, test_size=self.val_size,
         #     random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name]
         #     if np.sum(self.known_observations_data_frame[self.project_config.output_column.name]) > 1 else None)
-
 
         # Time Split
         df = self.known_observations_data_frame

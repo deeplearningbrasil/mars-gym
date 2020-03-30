@@ -1,2 +1,2 @@
-GCP_Bucket=
+GCP_Bucket=deepfood-results-coma-italy
 
