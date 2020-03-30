@@ -27,7 +27,7 @@ from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir, get_test_set_predictions_path, get_history_path
 from recommendation.files import get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
-from recommendation.utils import save_trained_data 
+from recommendation.utils import save_trained_data
 #from IPython import embed; embed()
 
 class BanditAgent(object):
@@ -47,6 +47,11 @@ class BanditAgent(object):
             arm_contexts: Tuple[np.ndarray, ...],
             arm_scores: Optional[List[float]]) -> int:
         return self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
+
+    def rank(self, arm_indices: List[int],
+            arm_contexts: Tuple[np.ndarray, ...],
+            arm_scores: Optional[List[float]]) -> Tuple[List[int], List[float]]:
+        return self.bandit.rank(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores, with_probs=True)
 
 
 class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
@@ -255,14 +260,18 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _save_test_set_predictions(self) -> None:
         print("Saving test set predictions...")
-        actions = []
+        sorted_actions_list = []
+        prob_actions_list = []
         obs = self.test_data_frame.to_dict('records')
         for ob in tqdm(obs, total=len(obs)):
             if self._embeddings_for_metadata is not None:
                 ob[ITEM_METADATA_KEY] = self._embeddings_for_metadata
-            actions.append(self._act(ob))
+            sorted_actions, prob_actions = self._rank(ob)
+            sorted_actions_list.append(sorted_actions)
+            prob_actions_list.append(prob_actions)
 
-        self.test_data_frame["prediction"] = actions
+        self.test_data_frame["sorted_actions"] = sorted_actions_list
+        self.test_data_frame["prob_actions"] = prob_actions_list
         self.test_data_frame.to_csv(get_test_set_predictions_path(self.output().path), index=False)
 
     @property
@@ -333,13 +342,20 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
         return self._env_data_frame
 
-    def _act(self, ob: dict) -> int:
-        arm_indices  = self._get_arm_indices(ob)
-        ob_dataset   = self._create_ob_dataset(ob, arm_indices)
+    def _prepare_for_agent(self, ob):
+        arm_indices = self._get_arm_indices(ob)
+        ob_dataset = self._create_ob_dataset(ob, arm_indices)
         arm_contexts = ob_dataset[:len(ob_dataset)][0]
-        arm_scores   = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else None
+        arm_scores = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else None
+        return arm_contexts, arm_indices, arm_scores
 
+    def _act(self, ob: dict) -> int:
+        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
         return self.agent.act(arm_indices, arm_contexts, arm_scores)
+
+    def _rank(self, ob: dict) -> Tuple[List[int], List[float]]:
+        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
+        return self.agent.rank(arm_indices, arm_contexts, arm_scores)
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
@@ -381,11 +397,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 if interactions % self.obs_batch_size == 0:
                     self._create_hist_columns()
                     self._reset_dataset()
-                    
+
                     if self.agent.bandit.reward_model:
                         if self.full_refit:
                             self.agent.bandit.reward_model = self.create_module()
-                        
+
                         trial = self.create_trial(self.agent.bandit.reward_model)
                     else:
                         trial = None

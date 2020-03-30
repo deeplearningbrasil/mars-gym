@@ -40,6 +40,9 @@ def calculate_fairness_metrics(df: pd.DataFrame, sub_keys: List[str], ground_tru
                 "true_negative_rate": tnr,
                 "positive_rate": pr,
                 "negative_rate": nr,
+                "num_positives": num_positives,
+                "num_negatives": num_negatives,
+                "num_total": num_positives+ num_negatives,
             })
 
     return pd.DataFrame(data=rows)
