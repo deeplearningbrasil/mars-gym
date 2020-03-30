@@ -78,7 +78,7 @@ class SimpleLinearModel(nn.Module):
         self.user_embeddings        = nn.Embedding(n_users, n_factors)
         self.item_embeddings        = nn.Embedding(n_items, n_factors)
         self.action_type_embeddings = nn.Embedding(11, n_factors)
-        self.platform_embeddings    = nn.Embedding(36, n_factors)
+        #self.platform_embeddings    = nn.Embedding(36, n_factors)
         
         self.word_embeddings        = nn.Embedding(vocab_size, n_factors)
         #self.pe                     = PositionalEncoder(n_factors)
@@ -145,7 +145,7 @@ class SimpleLinearModel(nn.Module):
         # Categorical embs
         actions_type_emb             = self.action_type_embeddings(list_action_type_idx)
 
-        platform_emb                 = self.platform_embeddings(platform_idx)
+        #platform_emb                 = self.platform_embeddings(platform_idx)
 
         # Item embs
         clickout_item_emb            = self.item_embeddings(list_clickout_item_idx)

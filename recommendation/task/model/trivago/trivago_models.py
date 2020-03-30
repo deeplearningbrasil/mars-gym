@@ -77,7 +77,6 @@ class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
       df_eval          = self.val_data_frame
       df_eval['score'] = scores
 
-#.sort_values('pos_item_idx')\
       group = df_eval.sample(frac=1)\
           .groupby(['timestamp', 'user_idx', 'session_idx', 'step'])
       
