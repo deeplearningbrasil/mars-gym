@@ -84,16 +84,17 @@ class SimpleLinearModel(nn.Module):
         #self.pe                     = PositionalEncoder(n_factors)
         
         # TODO
-        context_embs = 0#11
-        filter_size  = 45
-
+        context_embs   = 4
+        filter_size    = 0
+        continuos_size = 4
         # Dropout
         self.dropout: nn.Module = dropout_module(dropout_prob)
 
         # output
         #raise(Exception(2 * n_factors, context_embs * n_factors * window_hist_size, 2,  metadata_size))
         num_dense  = 1 * n_factors + context_embs * n_factors * window_hist_size + 2 + metadata_size + filter_size
-        num_dense  = 1 + 1 * n_factors + metadata_size + filter_size + window_hist_size#+ n_factors * n_factors
+        num_dense  = continuos_size + 1 * n_factors + metadata_size + filter_size + window_hist_size * 6 + context_embs * n_factors * window_hist_size#+ n_factors * n_factors
+        
         self.dense = nn.Sequential(
             nn.Linear(num_dense, int(num_dense/2)),
             nn.SELU(),
@@ -102,6 +103,15 @@ class SimpleLinearModel(nn.Module):
             nn.Linear(int(num_dense/4), 1)
         )
 
+        # self.filter_dense = nn.Sequential(
+        #     nn.Linear(filter_size, n_factors),
+        #     nn.SELU()
+        # )        
+
+        # self.metadata_dense = nn.Sequential(
+        #     nn.Linear(metadata_size, n_factors),
+        #     nn.SELU()
+        # )        
         # output
         #self.output = nn.Linear(n_factors, 1)
 
@@ -122,9 +132,14 @@ class SimpleLinearModel(nn.Module):
     def normalize(self, x):
         x = F.normalize(x, p=2, dim=1)   
         return x   
+
+    def item_dot_history(self, itemA, itemB):
+        dot  = torch.matmul(self.normalize(itemA.unsqueeze(1)), self.normalize(itemB.permute(0, 2, 1)))
+        return self.flatten(dot)
         
     def forward(self, user_ids, item_ids, 
                     price,  platform_idx, device_idx, pos_item_idx,
+                    sum_action_item_before, is_first_in_impression,
                     list_action_type_idx, list_clickout_item_idx,
                     list_interaction_item_image_idx, list_interaction_item_info_idx,
                     list_interaction_item_rating_idx, list_interaction_item_deals_idx,
@@ -136,61 +151,59 @@ class SimpleLinearModel(nn.Module):
 
 
         # Geral embs
-        user_emb           = self.user_embeddings(user_ids)
-        item_emb           = self.item_embeddings(item_ids)
+        user_emb                     = self.user_embeddings(user_ids)
+        item_emb                     = self.item_embeddings(item_ids)
 
         # Categorical embs
-        actions_type_emb   = self.action_type_embeddings(list_action_type_idx)
+        actions_type_emb             = self.action_type_embeddings(list_action_type_idx)
 
-        platform_emb       = self.platform_embeddings(platform_idx)
+        platform_emb                 = self.platform_embeddings(platform_idx)
 
         # Item embs
         clickout_item_emb            = self.item_embeddings(list_clickout_item_idx)
         interaction_item_image_emb   = self.item_embeddings(list_interaction_item_image_idx)
         interaction_item_info_emb    = self.item_embeddings(list_interaction_item_info_idx)
-        interaction_item_rating_emb  = self.item_embeddings(list_interaction_item_rating_idx)
-        interaction_item_deals_emb   = self.item_embeddings(list_interaction_item_deals_idx)
+        interaction_item_rating_emb  = self.item_embeddings(list_interaction_item_rating_idx) #less
+        interaction_item_deals_emb   = self.item_embeddings(list_interaction_item_deals_idx) #less
         search_for_item_emb          = self.item_embeddings(list_search_for_item_idx)
 
         # NLP embs
         search_for_poi_emb           = self.word_embeddings(list_search_for_poi)
-        change_of_sort_order_emb     = self.word_embeddings(list_change_of_sort_order)
         search_for_destination_emb   = self.word_embeddings(list_search_for_destination)
+        change_of_sort_order_emb     = self.word_embeddings(list_change_of_sort_order)
         filter_selection_emb         = self.word_embeddings(list_filter_selection)
-        #current_filters_emb          = self.word_embeddings(list_current_filters)
 
-        context_session_emb   = torch.cat((actions_type_emb, 
-                                            clickout_item_emb, 
-                                            interaction_item_image_emb,
-                                            interaction_item_info_emb, 
-                                            interaction_item_rating_emb, 
-                                            interaction_item_deals_emb,
-                                            search_for_item_emb, 
-                                            search_for_poi_emb, change_of_sort_order_emb,
-                                            search_for_destination_emb,
-                                            filter_selection_emb), dim=2)
+        context_session_emb          = self.flatten(
+                                            torch.cat((search_for_poi_emb, search_for_destination_emb,
+                                                        change_of_sort_order_emb, filter_selection_emb), dim=2))
 
-        #context_session_emb   = torch.cat((clickout_item_emb), dim=2)
-        #print(context_session_emb.shape)
-        #print(context_session_emb)
-        # x   = torch.cat((user_emb,
-        #                 item_emb,
-        #                 pos_item_idx.float().unsqueeze(1),
-        #                 price.float().unsqueeze(1),
-        #                 list_metadata.float(),
-        #                 list_current_filters.float()), dim=1)
-        #print(price.float().unsqueeze(1))
-        #print(item_emb.shape, clickout_item_emb.shape, clickout_item_emb.permute(0, 2, 1).shape)
-        item_clickout_item_emb = torch.matmul(item_emb.unsqueeze(1), clickout_item_emb.permute(0, 2, 1))
-        #raise(Exception(item_emb.unsqueeze(1).shape, clickout_item_emb.permute(0, 2, 1).shape, item_clickout_item_emb.shape, self.flatten(item_clickout_item_emb).unsqueeze(1).shape))
+        # Dot Item X History
+        item_dot_clickout_item_emb           = self.item_dot_history(item_emb, clickout_item_emb)
+        item_dot_interaction_item_image_emb  = self.item_dot_history(item_emb, interaction_item_image_emb)
+        item_dot_interaction_item_info_emb   = self.item_dot_history(item_emb, interaction_item_info_emb)
+        item_dot_interaction_item_info_emb   = self.item_dot_history(item_emb, interaction_item_info_emb)
+        item_dot_interaction_item_rating_emb = self.item_dot_history(item_emb, interaction_item_rating_emb)
+        item_dot_interaction_item_deals_emb  = self.item_dot_history(item_emb, interaction_item_deals_emb)
+        item_dot_search_for_item_emb         = self.item_dot_history(item_emb, search_for_item_emb)
+
+        #item_dot_user_emb         = self.item_dot_history(item_emb, user_emb)
+        #filter_dot_metadata = (self.filter_dense(list_current_filters.float()) * self.metadata_dense(list_metadata.float())).sum(1)
+
+        #raise(Exception(item_emb.shape, item_clickout_item_emb.shape,item_clickout_item_emb.unsqueeze(1).shape, self.flatten(item_clickout_item_emb).shape))
         x   = torch.cat((item_emb, 
-                        item_clickout_item_emb,
-                        self.flatten(item_clickout_item_emb).unsqueeze(1),
+                        item_dot_clickout_item_emb,
+                        item_dot_interaction_item_image_emb,
+                        item_dot_interaction_item_info_emb,
+                        item_dot_interaction_item_rating_emb,
+                        item_dot_interaction_item_deals_emb,
+                        item_dot_search_for_item_emb,
+                        is_first_in_impression.float().unsqueeze(1),
+                        pos_item_idx.float().unsqueeze(1),
+                        sum_action_item_before.float().unsqueeze(1),
                         price.float().unsqueeze(1),
                         list_metadata.float(),
-                        list_current_filters.float()), dim=1)
+                        context_session_emb), dim=1)
                 
-        # self.flatten(context_session_emb)
         x   = self.dense(x)
         out = torch.sigmoid(x)
         return out
@@ -214,7 +227,8 @@ class SimpleCNNModel(nn.Module):
         self.pe                     = PositionalEncoder(n_factors)
 
         # TODO
-        context_embs       = 12 # Session Context
+        context_embs  = 11 # Session Context
+        filter_size   = 45
 
         # Conv
         self.convs1  = nn.ModuleList(
@@ -287,7 +301,6 @@ class SimpleCNNModel(nn.Module):
         change_of_sort_order_emb     = self.pe(self.word_embeddings(list_change_of_sort_order))
         search_for_destination_emb   = self.pe(self.word_embeddings(list_search_for_destination))
         filter_selection_emb         = self.pe(self.word_embeddings(list_filter_selection))
-        current_filters_emb          = self.pe(self.word_embeddings(list_current_filters))
 
         context_session_emb   = torch.cat((actions_type_emb, 
                                             clickout_item_emb, 
@@ -298,21 +311,15 @@ class SimpleCNNModel(nn.Module):
                                             search_for_item_emb, 
                                             search_for_poi_emb, change_of_sort_order_emb,
                                             search_for_destination_emb,
-                                            filter_selection_emb, current_filters_emb), dim=2)
+                                            filter_selection_emb), dim=2)
         context_session_emb = self.conv_block(context_session_emb)
-        #print(context_emb.shape, platform_idx.shape, platform_idx.float().unsqueeze(0).shape, platform_idx.float().unsqueeze(1).shape)
-        
-        # raise(Exception(user_emb.shape,
-        #                          item_emb.shape,
-        #                          pos_item_idx.float().unsqueeze(1).shape,
-        #                          list_metadata.float().shape,
-        #                          price.float().unsqueeze(1).shape,
-        #                          context_session_emb.shape))
+
 
         context_emb = torch.cat((user_emb,
                                  item_emb,
                                  pos_item_idx.float().unsqueeze(1),
                                  list_metadata.float(),
+                                 list_current_filters.float(),
                                  price.float().unsqueeze(1),
                                  context_session_emb), dim=1)
 
