@@ -87,10 +87,10 @@ class RandomPolicy(BanditPolicy):
         super().__init__(None)
         self._rng = RandomState(seed)
 
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         n_arms = len(arm_scores)
         arms_probs = np.ones(n_arms) / n_arms
-        return arms_probs
+        return arms_probs.tolist()
 
     def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
@@ -112,11 +112,11 @@ class FixedPolicy(BanditPolicy):
         super().__init__(reward_model)
         self._arg = arg
 
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         n_arms     = len(arm_scores)
         arms_probs = np.zeros(n_arms)
         arms_probs[self._arg] = 1.0
-        return arms_probs
+        return arms_probs.tolist()
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
@@ -128,12 +128,12 @@ class ModelPolicy(BanditPolicy):
         super().__init__(reward_model)
         self._rng = RandomState(seed)
 
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         n_arms = len(arm_scores)
         arms_probs = np.zeros(n_arms)
         argmax = int(np.argmax(arm_scores))
         arms_probs[argmax] = 1.0
-        return arms_probs
+        return arms_probs.tolist()
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
@@ -178,7 +178,7 @@ class ExploreThenExploit(BanditPolicy):
     def decay(self, init, decay_rate, t):
         return init*(1-decay_rate)**t
 
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         n_arms = len(arm_scores)
         arm_probs = np.zeros(len(arm_scores))
         max_score = max(arm_scores)
@@ -189,7 +189,7 @@ class ExploreThenExploit(BanditPolicy):
         else: 
             arm_probs[argmax] = 1.0
 
-        return arm_probs
+        return arm_probs.tolist()
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
@@ -215,7 +215,7 @@ class EpsilonGreedy(BanditPolicy):
         self._rng = RandomState(seed)
         self._epsilon_decay = epsilon_decay
 
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         n_arms = len(arm_scores)
         arms_probs = self._epsilon * np.ones(n_arms) / n_arms
 
@@ -223,7 +223,7 @@ class EpsilonGreedy(BanditPolicy):
 
         arms_probs[argmax] += (1 - self._epsilon)
 
-        return arms_probs
+        return arms_probs.tolist()
 
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
@@ -254,7 +254,7 @@ class AdaptiveGreedy(BanditPolicy):
         self._rng = RandomState(seed)
         self._t = 0
 
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         n_arms = len(arm_scores)
         arm_probs = np.zeros(len(arm_scores))
         max_score = max(arm_scores)
@@ -265,7 +265,7 @@ class AdaptiveGreedy(BanditPolicy):
         else:
             arm_probs = np.ones(n_arms) / n_arms
 
-        return arm_probs
+        return arm_probs.tolist()
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
@@ -301,7 +301,7 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         self._percentile = percentile
         self._t = 0
     
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         n_arms = len(arm_scores)
         max_score = max(arm_scores)
 
@@ -316,7 +316,7 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         else:
             arm_probs = np.ones(n_arms) / n_arms
 
-        return arm_probs
+        return arm_probs.tolist()
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
@@ -402,13 +402,13 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
     def _calculate_score(self, original_score: Optional[float], x: np.ndarray, arm: int) -> float:
         pass
 
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         #In this case, we expected arm_scores to be arms_scores_with_cb
         n_arms = len(arm_scores)
         arms_probs = np.zeros(n_arms)
         argmax = int(np.argmax(arm_scores))
         arms_probs[argmax] = 1.0
-        return arms_probs
+        return arms_probs.tolist()
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: Optional[List[float]], pos: int) -> Union[int, Tuple[int, float]]:
@@ -510,10 +510,10 @@ class SoftmaxExplorer(BanditPolicy):
         self._rng = RandomState(seed)
         self._reverse_sigmoid = reverse_sigmoid
 
-    def _softmax(self, x):
+    def _softmax(self, x: np.ndarray) -> np.ndarray:
         return np.exp(x) / np.sum(np.exp(x), axis=0)
 
-    def _compute_prob(self, arm_scores):
+    def _compute_prob(self, arm_scores) -> List[float]:
         n_arms = len(arm_scores)
         arm_scores = np.array(arm_scores)
 
@@ -521,7 +521,7 @@ class SoftmaxExplorer(BanditPolicy):
             arm_scores = np.log(arm_scores + 1e-8/((1 - arm_scores) + 1e-8))
 
         arms_probs = self._softmax(self._logit_multiplier * arm_scores)
-        return arms_probs
+        return arms_probs.tolist()
 
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
