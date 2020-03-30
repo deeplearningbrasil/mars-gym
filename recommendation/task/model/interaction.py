@@ -230,8 +230,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         df_metric.transpose().reset_index().to_csv(self.output().path + '/stats.csv', index=False)
 
     def _save_trial_log(self, i, trial) -> None:
-        history_df = pd.read_csv(get_history_path(self.output().path))
-        plot_history(history_df).savefig(os.path.join(self.output().path, str(i)+"_history.jpg"))
+        if trial:
+            history_df = pd.read_csv(get_history_path(self.output().path))
+            plot_history(history_df).savefig(os.path.join(self.output().path, str(i)+"_history.jpg"))
 
     def _save_test_set_predictions(self) -> None:
         print("Saving test set predictions...")
