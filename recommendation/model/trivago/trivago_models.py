@@ -78,27 +78,32 @@ class SimpleLinearModel(nn.Module):
         self.user_embeddings        = nn.Embedding(n_users, n_factors)
         self.item_embeddings        = nn.Embedding(n_items, n_factors)
         self.action_type_embeddings = nn.Embedding(11, n_factors)
+        self.platform_embeddings    = nn.Embedding(36, n_factors)
+        
         self.word_embeddings        = nn.Embedding(vocab_size, n_factors)
-        self.pe                     = PositionalEncoder(n_factors)
+        #self.pe                     = PositionalEncoder(n_factors)
         
         # TODO
-        context_embs = 12
+        context_embs = 0#11
+        filter_size  = 45
 
         # Dropout
         self.dropout: nn.Module = dropout_module(dropout_prob)
 
         # output
         #raise(Exception(2 * n_factors, context_embs * n_factors * window_hist_size, 2,  metadata_size))
-        num_dense         = 2 * n_factors + context_embs * n_factors * window_hist_size + 2 + metadata_size
-
+        num_dense  = 1 * n_factors + context_embs * n_factors * window_hist_size + 2 + metadata_size + filter_size
+        num_dense  = 1 + 1 * n_factors + metadata_size + filter_size + window_hist_size#+ n_factors * n_factors
         self.dense = nn.Sequential(
             nn.Linear(num_dense, int(num_dense/2)),
-            nn.ReLU(),
-            nn.Linear(int(num_dense/2), n_factors)
+            nn.SELU(),
+            nn.Linear(int(num_dense/2), int(num_dense/4)),
+            nn.SELU(),
+            nn.Linear(int(num_dense/4), 1)
         )
 
         # output
-        self.output = nn.Linear(n_factors, 1)
+        #self.output = nn.Linear(n_factors, 1)
 
         # init
         weight_init(self.user_embeddings.weight)
@@ -119,15 +124,15 @@ class SimpleLinearModel(nn.Module):
         return x   
         
     def forward(self, user_ids, item_ids, 
-                price,  platform_idx, device_idx, pos_item_idx,
-                list_action_type_idx, list_clickout_item_idx,
-                list_interaction_item_image_idx, list_interaction_item_info_idx,
-                list_interaction_item_rating_idx, list_interaction_item_deals_idx,
-                list_search_for_item_idx,
-                list_search_for_poi, list_change_of_sort_order, 
-                list_search_for_destination, list_filter_selection, 
-                list_current_filters, 
-                list_metadata):
+                    price,  platform_idx, device_idx, pos_item_idx,
+                    list_action_type_idx, list_clickout_item_idx,
+                    list_interaction_item_image_idx, list_interaction_item_info_idx,
+                    list_interaction_item_rating_idx, list_interaction_item_deals_idx,
+                    list_search_for_item_idx,
+                    list_search_for_poi, list_change_of_sort_order, 
+                    list_search_for_destination, list_filter_selection, 
+                    list_current_filters, 
+                    list_metadata):
 
 
         # Geral embs
@@ -136,6 +141,8 @@ class SimpleLinearModel(nn.Module):
 
         # Categorical embs
         actions_type_emb   = self.action_type_embeddings(list_action_type_idx)
+
+        platform_emb       = self.platform_embeddings(platform_idx)
 
         # Item embs
         clickout_item_emb            = self.item_embeddings(list_clickout_item_idx)
@@ -150,7 +157,7 @@ class SimpleLinearModel(nn.Module):
         change_of_sort_order_emb     = self.word_embeddings(list_change_of_sort_order)
         search_for_destination_emb   = self.word_embeddings(list_search_for_destination)
         filter_selection_emb         = self.word_embeddings(list_filter_selection)
-        current_filters_emb          = self.word_embeddings(list_current_filters)
+        #current_filters_emb          = self.word_embeddings(list_current_filters)
 
         context_session_emb   = torch.cat((actions_type_emb, 
                                             clickout_item_emb, 
@@ -161,26 +168,31 @@ class SimpleLinearModel(nn.Module):
                                             search_for_item_emb, 
                                             search_for_poi_emb, change_of_sort_order_emb,
                                             search_for_destination_emb,
-                                            filter_selection_emb, current_filters_emb), dim=2)
-        #print(context_emb.shape, platform_idx.shape, platform_idx.float().unsqueeze(0).shape, platform_idx.float().unsqueeze(1).shape)
+                                            filter_selection_emb), dim=2)
 
-        # raise(Exception(user_emb.shape,
-        #                 item_emb.shape,
-        #                 pos_item_idx.float().unsqueeze(1).shape,
-        #                 list_metadata.float().shape,
-        #                 price.float().unsqueeze(1).shape,
-        #                 context_session_emb.shape))
-
-        x   = torch.cat((user_emb,
-                        item_emb,
-                        pos_item_idx.float().unsqueeze(1),
+        #context_session_emb   = torch.cat((clickout_item_emb), dim=2)
+        #print(context_session_emb.shape)
+        #print(context_session_emb)
+        # x   = torch.cat((user_emb,
+        #                 item_emb,
+        #                 pos_item_idx.float().unsqueeze(1),
+        #                 price.float().unsqueeze(1),
+        #                 list_metadata.float(),
+        #                 list_current_filters.float()), dim=1)
+        #print(price.float().unsqueeze(1))
+        #print(item_emb.shape, clickout_item_emb.shape, clickout_item_emb.permute(0, 2, 1).shape)
+        item_clickout_item_emb = torch.matmul(item_emb.unsqueeze(1), clickout_item_emb.permute(0, 2, 1))
+        #raise(Exception(item_emb.unsqueeze(1).shape, clickout_item_emb.permute(0, 2, 1).shape, item_clickout_item_emb.shape, self.flatten(item_clickout_item_emb).unsqueeze(1).shape))
+        x   = torch.cat((item_emb, 
+                        item_clickout_item_emb,
+                        self.flatten(item_clickout_item_emb).unsqueeze(1),
                         price.float().unsqueeze(1),
                         list_metadata.float(),
-                        self.flatten(context_session_emb)), dim=1)
-        
+                        list_current_filters.float()), dim=1)
+                
         # self.flatten(context_session_emb)
         x   = self.dense(x)
-        out = torch.sigmoid(self.output(x))
+        out = torch.sigmoid(x)
         return out
 
 class SimpleCNNModel(nn.Module):
@@ -324,8 +336,9 @@ class SimpleCNNTransformerModel(nn.Module):
         # TODO
         hist = window_hist_size
         meta = metadata_size
-        context_embs       = 12 # Session Context
-        continuos_features = 2 + meta # Price + Pos + Meta
+        filter_size        = 45
+        context_embs       = 11 # Session Context
+        continuos_features = 2 + meta + filter_size# Price + Pos + Meta
         self.transform_heads = 1
         self.transform_n = 1
 
@@ -346,11 +359,9 @@ class SimpleCNNTransformerModel(nn.Module):
         self.dropout: nn.Module = dropout_module(dropout_prob)
 
 
-
-
         # Dense
         #np.sum([K * num_filters for K in filter_sizes])
-        num_dense  = len(filter_sizes) * num_filters  + n_factors * 2 + 2 + meta
+        num_dense  = len(filter_sizes) * num_filters  + n_factors * 2 + 2 + meta + filter_size
 
         self.dense = nn.Sequential(
             nn.BatchNorm1d(num_features=num_dense),
@@ -424,7 +435,6 @@ class SimpleCNNTransformerModel(nn.Module):
         change_of_sort_order_emb     = self.word_embeddings(list_change_of_sort_order)
         search_for_destination_emb   = self.word_embeddings(list_search_for_destination)
         filter_selection_emb         = self.word_embeddings(list_filter_selection)
-        current_filters_emb          = self.word_embeddings(list_current_filters)
 
         context_session_emb   = torch.cat((actions_type_emb, 
                                             clickout_item_emb, 
@@ -435,7 +445,7 @@ class SimpleCNNTransformerModel(nn.Module):
                                             search_for_item_emb, 
                                             search_for_poi_emb, change_of_sort_order_emb,
                                             search_for_destination_emb,
-                                            filter_selection_emb, current_filters_emb), dim=2)
+                                            filter_selection_emb), dim=2)
 
         # Create transform mask
         #mask = (context_session_emb != 0).unsqueeze(-2)
@@ -457,6 +467,7 @@ class SimpleCNNTransformerModel(nn.Module):
                                  item_emb,
                                  pos_item_idx.float().unsqueeze(1),
                                  list_metadata.float(),
+                                 list_current_filters.float(), 
                                  price.float().unsqueeze(1),
                                  context_session_emb), dim=1)
 
@@ -488,8 +499,9 @@ class SimpleRNNModel(nn.Module):
         hist = window_hist_size
         meta = metadata_size
 
-        context_embs       = 12 # Session Context
-        continuos_features = 2 + meta + (recurrence_hidden_size * hist * context_embs)# Price + Meta
+        context_embs       = 11 # Session Context
+        filter_size        = 45
+        continuos_features = 2 + meta + filter_size + (recurrence_hidden_size * hist * context_embs)# Price + Meta
 
         self.rnn1 = nn.GRU(n_factors, recurrence_hidden_size, batch_first=True)
         self.rnn2 = nn.GRU(n_factors, recurrence_hidden_size, batch_first=True)
@@ -574,7 +586,6 @@ class SimpleRNNModel(nn.Module):
         change_of_sort_order_out, _     = self.rnn8(self.word_embeddings(list_change_of_sort_order))
         search_for_destination_out, _   = self.rnn9(self.word_embeddings(list_search_for_destination))
         filter_selection_out, _         = self.rnn10(self.word_embeddings(list_filter_selection))
-        current_filters_out, _          = self.rnn11(self.word_embeddings(list_current_filters))
 
         context_session_emb   = torch.cat((actions_type_out, 
                                             clickout_item_out, 
@@ -585,7 +596,7 @@ class SimpleRNNModel(nn.Module):
                                             search_for_item_out, 
                                             search_for_poi_out, change_of_sort_order_out,
                                             search_for_destination_out,
-                                            filter_selection_out, current_filters_out), dim=1)
+                                            filter_selection_out), dim=1)
         #raise(Exception(item_emb.shape, actions_type_out.shape, context_session_emb.shape, context_session_emb.view(len(user_ids), -1).shape))
         #context_session_emb = self.conv_block(context_session_emb)
         #print(context_emb.shape, platform_idx.shape, platform_idx.float().unsqueeze(0).shape, platform_idx.float().unsqueeze(1).shape)
@@ -595,6 +606,7 @@ class SimpleRNNModel(nn.Module):
                                  pos_item_idx.float().unsqueeze(1),
                                  context_session_emb.view(len(user_ids), -1), 
                                  list_metadata.float(),
+                                 list_current_filters.float(), 
                                  price.float().unsqueeze(1)), dim=1)
 
         #x   = self.dropout(context_emb)

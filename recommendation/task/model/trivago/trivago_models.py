@@ -77,8 +77,9 @@ class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
       df_eval          = self.val_data_frame
       df_eval['score'] = scores
 
-      group = df_eval.sort_values('pos_item_idx')\
-                      .groupby(['timestamp', 'user_idx', 'session_idx', 'step'])
+#.sort_values('pos_item_idx')\
+      group = df_eval.sample(frac=1)\
+          .groupby(['timestamp', 'user_idx', 'session_idx', 'step'])
       
       df_eval                  = group.agg({'impressions': 'first'})
       df_eval['list_item_idx'] = group['item_idx'].apply(list)
@@ -107,6 +108,6 @@ class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
 
       with open(os.path.join(self.output().path, "metric.json"), "w") as params_file:
           json.dump(metric, params_file, default=lambda o: dict(o), indent=4)
-
+    
       print(json.dumps(metric, indent = 4))
-
+      df_eval.to_csv(os.path.join(self.output().path, "df_eval.csv"))
