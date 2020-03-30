@@ -219,11 +219,11 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContent
 
 ## Docker
 
-docker build . --tag gcr.io/deepfood/deep-reco-gym:trivago-3.0
+docker build . --tag gcr.io/deepfood/deep-reco-gym:trivago-3.1
 
 docker run -it gcr.io/deepfood/deep-reco-gym:trivago TrivagoModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' --n-factors 50 --learning-rate=0.0001 --optimizer radam --metrics '["loss"]' --epochs 250 --full-refit --obs-batch-size 100 --early-stopping-patience 10 --batch-size 20 --num-episodes 100 --bandit-policy epsilon_greedy
 
-gcloud docker -- push gcr.io/deepfood/deep-reco-gym
+gcloud docker -- push gcr.io/deepfood/deep-reco-gym:trivago-3.1
 
 gcloud compute disks create deep-reco-gym-output-3 \
     --zone=us-central1-a \
@@ -275,10 +275,10 @@ gcloud ai-platform jobs submit training $MODEL_DIR \
   -- \
   TrivagoLogisticModelInteraction --module=recommendation.task.model.trivago.trivago_models --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' --n-factors 50 --learning-rate=0.001 --optimizer adam --metrics '["loss"]' --epochs 251 --obs-batch-size 200 --early-stopping-patience 10 --batch-size 200 --num-episodes 200 --output-model-dir "gs://deepfood-results" --bandit-policy percentile_adaptive --bandit-policy-params '{"exploration_threshold": 0.5}' 
 
-export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S)
-gcloud ai-platform jobs submit training $MODEL_DIR \
+export MODEL_DIR=deep_reco_gym_$(date +%Y%m%d_%H%M%S%sss)
+gcloud ai-platform jobs submit training deep_reco_gym_$(date +%Y%m%d_%H%M%S%sss) \
   --region us-central1	 \
-  --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago-2.0  \
+  --master-image-uri gcr.io/deepfood/deep-reco-gym:trivago-3.1  \
   --scale-tier BASIC_GPU \
   -- \
   TrivagoLogisticModelInteraction \

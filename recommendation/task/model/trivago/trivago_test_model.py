@@ -20,11 +20,11 @@ from recommendation.task.model.trivago.trivago_models import TrivagoModelTrainin
 
 
 
-class TrivagoCNNModelInteraction(TrivagoModelInteraction):
+class TrivagoTestInteraction(TrivagoModelInteraction):
 
   def create_module(self) -> nn.Module:
 
-      return SimpleCNNModel(
+      return TestModel(
           window_hist_size=self.window_hist_size,
           vocab_size=self.vocab_size,
           metadata_size=self.metadata_size,
@@ -37,11 +37,11 @@ class TrivagoCNNModelInteraction(TrivagoModelInteraction):
           dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
       )
 
-class TrivagoCNNModelTraining(TrivagoModelTraining):
+class TrivagoTestTraining(TrivagoModelTraining):
 
   def create_module(self) -> nn.Module:
 
-      return SimpleCNNModel(
+      return TestModel(
           window_hist_size=self.window_hist_size,
           vocab_size=self.vocab_size,
           metadata_size=self.metadata_size,

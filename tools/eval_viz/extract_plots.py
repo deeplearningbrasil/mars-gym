@@ -5,7 +5,6 @@ from plot import plot_line_iteraction, plot_exploration_arm, get_colors
 import pandas as pd
 import argparse
 import copy
-import colorlover as cl
 import numpy as np
 
 def export(args):

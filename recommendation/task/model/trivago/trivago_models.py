@@ -1,7 +1,7 @@
 from typing import List
 import functools
 from itertools import starmap
-
+import os
 import json
 
 import luigi
@@ -10,7 +10,7 @@ import torch.nn as nn
 from torchbearer import Trial
 import torchbearer
 import numpy as np
-from recommendation.model.trivago.trivago_models import SimpleCNNModel, SimpleRNNModel, SimpleLinearModel, SimpleCNNTransformerModel
+from recommendation.model.trivago.trivago_models import TestModel, SimpleCNNModel, SimpleRNNModel, SimpleLinearModel, SimpleCNNTransformerModel
 from recommendation.task.model.base import TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 from recommendation.task.model.interaction import InteractionTraining
@@ -56,6 +56,7 @@ class TrivagoModelTrainingMixin(object):
           dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
       )
 
+
 class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
   pass
         
@@ -76,8 +77,8 @@ class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
       df_eval          = self.val_data_frame
       df_eval['score'] = scores
 
-      group = df_eval.sort_values('pos_item_idx')\
-                      .groupby(['timestamp', 'user_idx', 'session_idx', 'step'])
+      group = df_eval.sample(frac=1)\
+          .groupby(['timestamp', 'user_idx', 'session_idx', 'step'])
       
       df_eval                  = group.agg({'impressions': 'first'})
       df_eval['list_item_idx'] = group['item_idx'].apply(list)
@@ -97,26 +98,15 @@ class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
 
       df_eval.head()
 
-      print(json.dumps({
+      metric = {
           'reciprocal_rank@5':  np.mean([reciprocal_rank_at_k(l, 5) for l in list(df_eval['sorted_list'])] ),
           'precision@1':        np.mean([precision_at_k(l, 1) for l in list(df_eval['sorted_list'])] ),
           'ndcg@5':             np.mean([ndcg_at_k(l, 5) for l in list(df_eval['sorted_list'])] ),
           'MRR':                mean_reciprocal_rank(list(df_eval['sorted_list']))
-      }, indent = 4))
+      }
 
-class TrivagoLogisticModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
-
-  def create_module(self) -> nn.Module:
-
-      return SimpleLinearModel(
-          window_hist_size=self.window_hist_size,
-          vocab_size=self.vocab_size,
-          metadata_size=self.metadata_size,
-          n_users=self.n_users,
-          n_items=self.n_items,
-          n_factors=self.n_factors,
-          filter_sizes=self.filter_sizes,
-          num_filters=self.num_filters,
-          dropout_prob=self.dropout_prob,
-          dropout_module=TORCH_DROPOUT_MODULES[self.dropout_module],            
-      )
+      with open(os.path.join(self.output().path, "metric.json"), "w") as params_file:
+          json.dump(metric, params_file, default=lambda o: dict(o), indent=4)
+    
+      print(json.dumps(metric, indent = 4))
+      df_eval.to_csv(os.path.join(self.output().path, "df_eval.csv"))
