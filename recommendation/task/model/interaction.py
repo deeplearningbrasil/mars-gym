@@ -278,9 +278,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         cut = int(size - size * self.val_size)
         self._train_data_frame, self._val_data_frame = df.iloc[:cut], df.iloc[cut:]
 
-        #g = self._train_data_frame.groupby(self.project_config.output_column.name)
-        #self._train_data_frame = g.apply(lambda x: x.sample(g.size().min()).reset_index(drop=True))
-
         if hasattr(self, "_train_dataset"):
             del self._train_dataset
 

@@ -32,10 +32,12 @@ PROJECTS: Dict[str, ProjectConfig] = {
         item_column=Column("item_idx", IOType.INDEX),
         available_arms_column_name="impressions",
         other_input_columns=[
-            Column("price", IOType.NUMBER), #price #action_type_item_idx
-            Column("platform_idx", IOType.NUMBER),
+            Column("diff_price", IOType.NUMBER), #price #action_type_item_idx
+            Column("platform_idx", IOType.INDEX),
             Column("device_idx", IOType.NUMBER),
             Column("pos_item_idx", IOType.NUMBER),
+            Column("sum_action_item_before", IOType.NUMBER),
+            Column("is_first_in_impression", IOType.NUMBER),
 
             Column("list_action_type_idx", IOType.INT_ARRAY),
             Column("list_reference_clickout_item_idx", IOType.INT_ARRAY),
@@ -60,7 +62,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         auxiliar_output_columns=[Column("ps", IOType.NUMBER)],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),    
-    "trivago_contextual_bandit_bce2": ProjectConfig(
+    "trivago_contextual_bandit_bce": ProjectConfig(
         base_dir=trivago.BASE_DIR,
         prepare_data_frames_task=trivago.PrepareTrivagoSessionsDataFrames,
         dataset_class=InteractionsDataset,
@@ -105,6 +107,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
         item_column=Column("item_idx", IOType.INDEX),
         available_arms_column_name="impressions",
         other_input_columns=[
+            Column("session_idx", IOType.NUMBER),
             Column("action_type_item_idx", IOType.INDEX)
         ],
         metadata_columns=[

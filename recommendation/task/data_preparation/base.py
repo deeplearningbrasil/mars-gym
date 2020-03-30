@@ -52,7 +52,7 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "time", "column", "k_fold"], default="time")
-    column_stratification: str = luigi.Parameter()
+    column_stratification: str = luigi.Parameter(default=None)
     test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="random")
     n_splits: int = luigi.IntParameter(default=10)
     split_index: int = luigi.IntParameter(default=0)
