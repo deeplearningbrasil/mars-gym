@@ -10,6 +10,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
+import torchbearer
 from torchbearer import Trial
 from tqdm import tqdm
 import time
@@ -18,7 +19,7 @@ import pickle
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
 from recommendation.task.model.base import BaseTorchModelTraining
-from recommendation.plot import plot_history
+from recommendation.plot import plot_history, plot_scores
 
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
@@ -230,9 +231,27 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         df_metric.transpose().reset_index().to_csv(self.output().path + '/stats.csv', index=False)
 
     def _save_trial_log(self, i, trial) -> None:
+        os.makedirs(os.path.join(self.output().path, "plot_history"), exist_ok=True)
+
         if trial:
             history_df = pd.read_csv(get_history_path(self.output().path))
-            plot_history(history_df).savefig(os.path.join(self.output().path, str(i)+"_history.jpg"))
+            plot_history(history_df).savefig(os.path.join(self.output().path, "plot_history", "history_{}.jpg".format(i)))
+            self._save_score_log(i, trial)
+
+
+    def _save_score_log(self, i, trial) -> None:
+        val_loader  = self.get_val_generator()
+        trial       = Trial(self.agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device, requires_grad=True)) \
+                         .with_generators(val_generator=val_loader).to(self.torch_device).eval()
+
+        with torch.no_grad():
+            model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=0, data_key=torchbearer.VALIDATION_DATA)
+
+        scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
+        scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
+
+        plot_scores(scores).savefig(os.path.join(self.output().path, "plot_history", "scores_{}.jpg".format(i)))
+
 
     def _save_test_set_predictions(self) -> None:
         print("Saving test set predictions...")
