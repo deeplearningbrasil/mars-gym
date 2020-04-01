@@ -57,6 +57,7 @@ class BanditAgent(object):
 class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     test_size:     float = luigi.FloatParameter(default=0.0)
     test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
+    val_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
     obs_batch_size:  int = luigi.IntParameter(default=10000)
     num_episodes:    int = luigi.IntParameter(default=1)
     full_refit:     bool = luigi.BoolParameter(default=False)
@@ -296,16 +297,17 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _reset_dataset(self):
         # Random Split
-        # self._train_data_frame, self._val_data_frame = train_test_split(
-        #     self.known_observations_data_frame, test_size=self.val_size,
-        #     random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name]
-        #     if np.sum(self.known_observations_data_frame[self.project_config.output_column.name]) > 1 else None)
-
-        # Time Split
-        df = self.known_observations_data_frame
-        size = len(df)
-        cut = int(size - size * self.val_size)
-        self._train_data_frame, self._val_data_frame = df.iloc[:cut], df.iloc[cut:]
+        if self.val_split_type == "random":
+            self._train_data_frame, self._val_data_frame = train_test_split(
+                self.known_observations_data_frame, test_size=self.val_size,
+                random_state=self.seed, stratify=self.known_observations_data_frame[self.project_config.output_column.name]
+                if np.sum(self.known_observations_data_frame[self.project_config.output_column.name]) > 1 else None)
+        else:
+            # Time Split
+            df = self.known_observations_data_frame
+            size = len(df)
+            cut = int(size - size * self.val_size)
+            self._train_data_frame, self._val_data_frame = df.iloc[:cut], df.iloc[cut:]
 
         if hasattr(self, "_train_dataset"):
             del self._train_dataset
