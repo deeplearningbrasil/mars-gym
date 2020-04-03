@@ -243,16 +243,21 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         print("Saving test set predictions...")
         sorted_actions_list = []
         prob_actions_list = []
+        action_scores_list = []
         obs = self.test_data_frame.to_dict('records')
         for ob in tqdm(obs, total=len(obs)):
             if self._embeddings_for_metadata is not None:
                 ob[ITEM_METADATA_KEY] = self._embeddings_for_metadata
-            sorted_actions, prob_actions = self._rank(ob)
+            sorted_actions, prob_actions, action_scores = self._rank(ob)
             sorted_actions_list.append(sorted_actions)
             prob_actions_list.append(prob_actions)
+            if action_scores:
+                action_scores_list.append(list(reversed(sorted(action_scores))))
 
         self.test_data_frame["sorted_actions"] = sorted_actions_list
         self.test_data_frame["prob_actions"] = prob_actions_list
+        if action_scores_list:
+            self.test_data_frame["action_scores"] = action_scores_list
         self.test_data_frame.to_csv(get_test_set_predictions_path(self.output().path), index=False)
 
     @property
@@ -323,7 +328,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
         return self._env_data_frame
 
-    def _prepare_for_agent(self, ob):
+    def _prepare_for_agent(self, ob) -> Tuple[np.ndarray, List[int], List[float]]:
         arm_indices = self._get_arm_indices(ob)
         ob_dataset = self._create_ob_dataset(ob, arm_indices)
         arm_contexts = ob_dataset[:len(ob_dataset)][0]
@@ -334,9 +339,10 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
         return self.agent.act(arm_indices, arm_contexts, arm_scores)
 
-    def _rank(self, ob: dict) -> Tuple[List[int], List[float]]:
+    def _rank(self, ob: dict) -> Tuple[List[int], List[float], List[float]]:
         arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
-        return self.agent.rank(arm_indices, arm_contexts, arm_scores)
+        sorted_actions, proba_actions = self.agent.rank(arm_indices, arm_contexts, arm_scores)
+        return sorted_actions, proba_actions, arm_scores
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)

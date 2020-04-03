@@ -435,9 +435,9 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     def n_items(self):
         return self.model_training.n_items
 
-    @property
-    def output_path(self):
-        return os.path.join("output", "evaluation", self.__class__.__name__, "results", self.task_name)
+    def output(self):
+        return luigi.LocalTarget(os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                                              self.task_name))
 
     def cache_cleanup(self):
         for a in self.cache_attrs:
@@ -445,7 +445,7 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
                 delattr(self, a)
 
     def _save_params(self):
-        with open(get_params_path(self.output_path), "w") as params_file:
+        with open(get_params_path(self.output().path), "w") as params_file:
             json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
 
 def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraining],
