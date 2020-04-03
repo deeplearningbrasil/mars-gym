@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     # Model Params
     parser.add_argument('--sample_size', default=5000,  type=int)
-    parser.add_argument('--window_size', default=500,  type=int)
+    parser.add_argument('--window_size', default=1000,  type=int)
     parser.add_argument('--models', default='',  type=str)
     parser.add_argument('--output', default='tools/eval_viz/export',  type=str)
     parser.add_argument('--legend', default='bandit_policy,bandit_policy_params.alpha',  type=str)

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import pandas as pd
 import seaborn as sns
+import numpy as np
 sns.set()
 plt.style.use('default')
 
@@ -24,6 +25,16 @@ def plot_history(history_df: pd.DataFrame) -> Figure:
         ax.set_xlabel('epoch')
         ax.set_ylabel(metric)
         ax.legend()
+
+    fig.tight_layout()
+
+    return fig
+
+def plot_scores(scores: np.array) -> Figure:
+    fig = plt.figure()
+
+    ax = fig.add_subplot(1, 1, 1)
+    ax.hist(scores)
 
     fig.tight_layout()
 

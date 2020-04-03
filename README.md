@@ -219,11 +219,11 @@ PYTHONPATH="." luigi --module recommendation.task.ifood EvaluateIfoodFullContent
 
 ## Docker
 
-docker build . --tag gcr.io/deepfood/deep-reco-gym:trivago-3.1
-
+docker build . --tag gcr.io/deepfood/deep-reco-gym:trivago-3.3
+trivago_logistic_model TrivagoLogisticModelInteraction
 docker run -it gcr.io/deepfood/deep-reco-gym:trivago TrivagoModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Como, Italy"}' --n-factors 50 --learning-rate=0.0001 --optimizer radam --metrics '["loss"]' --epochs 250 --full-refit --obs-batch-size 100 --early-stopping-patience 10 --batch-size 20 --num-episodes 100 --bandit-policy epsilon_greedy
 
-gcloud docker -- push gcr.io/deepfood/deep-reco-gym:trivago-3.1
+gcloud docker -- push gcr.io/deepfood/deep-reco-gym:trivago-3.3
 
 gcloud compute disks create deep-reco-gym-output-3 \
     --zone=us-central1-a \
