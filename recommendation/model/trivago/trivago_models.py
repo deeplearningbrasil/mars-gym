@@ -125,8 +125,8 @@ class SimpleLinearModel(nn.Module):
         dot  = torch.matmul(self.normalize(itemA.unsqueeze(1)), self.normalize(itemB.permute(0, 2, 1)))
         return self.flatten(dot)
         
-    def forward(self, user_ids, item_ids, 
-                    price,  platform_idx, device_idx, pos_item_idx,
+    def forward(self, user_ids, item_ids, pos_item_idx,
+                    price,  platform_idx, device_idx, 
                     sum_action_item_before, is_first_in_impression,
                     list_action_type_idx, list_clickout_item_idx,
                     list_interaction_item_image_idx, list_interaction_item_info_idx,
@@ -256,8 +256,8 @@ class SimpleCNNModel(nn.Module):
 
         return x
 
-    def forward(self, user_ids, item_ids, 
-                price,  platform_idx, device_idx, pos_item_idx,
+    def forward(self, user_ids, item_ids, pos_item_idx,
+                price,  platform_idx, device_idx, 
                 sum_action_item_before, is_first_in_impression,
                 list_action_type_idx, list_clickout_item_idx,
                 list_interaction_item_image_idx, list_interaction_item_info_idx,
@@ -394,8 +394,8 @@ class SimpleRNNModel(nn.Module):
 
         return x
 
-    def forward(self, user_ids, item_ids, 
-                price,  platform_idx, device_idx, pos_item_idx,
+    def forward(self, user_ids, item_ids, pos_item_idx,
+                price,  platform_idx, device_idx, 
                 sum_action_item_before, is_first_in_impression,
                 list_action_type_idx, list_clickout_item_idx,
                 list_interaction_item_image_idx, list_interaction_item_info_idx,
@@ -535,8 +535,8 @@ class SimpleCNNTransformerModel(nn.Module):
         x   = self.norm(x)
         return x
 
-    def forward(self, user_ids, item_ids, 
-                price,  platform_idx, device_idx, pos_item_idx,
+    def forward(self, user_ids, item_ids, pos_item_idx,
+                price,  platform_idx, device_idx,
                 sum_action_item_before, is_first_in_impression,
                 list_action_type_idx, list_clickout_item_idx,
                 list_interaction_item_image_idx, list_interaction_item_info_idx,

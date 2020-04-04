@@ -81,8 +81,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _get_arm_indices(self, ob: dict) -> Union[List[int], np.ndarray]:
         if self.project_config.available_arms_column_name:
-            return np.flatnonzero(ob[self.project_config.available_arms_column_name])
-        return self.unique_items
+            arm_indices = np.flatnonzero(ob[self.project_config.available_arms_column_name])
+        else:
+            arm_indices = self.unique_items
+
+        return arm_indices
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
         batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)

@@ -3,6 +3,7 @@ import re
 from collections import Counter
 from pyspark.sql.functions import posexplode, explode#, arrays_zip
 import re
+from scipy.sparse.csr import csr_matrix
 
 import luigi
 import math
@@ -39,6 +40,7 @@ def to_array(xs):
                 for c in literal_eval_if_str(xs)] if xs is not None else None
 to_array_int_udf   = udf(lambda x: to_array(x), ArrayType(IntegerType()))
 to_array_float_udf = udf(lambda x: to_array(x), ArrayType(FloatType()))
+array_mean         = udf(lambda x: float(np.mean(x)), FloatType())
 
 class CheckDataset(luigi.Task):
     def output(self):
@@ -438,6 +440,14 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
     def output(self):
       return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__explode_indexed__size=%d_window=%d.csv" % (self.sample_size, self.window_hist)))
 
+    def most_popular_array(self, df):
+      df_item = df.select("action_type_item_idx").toPandas()
+      df_item = df_item.action_type_item_idx.value_counts()
+
+      #df_item = df_item.to_dict()
+      #df_array = csr_matrix((list(df_item.values), (np.zeros(len(df_item)), list(df_item.index))), shape=(1, np.max(list(df_item.index))+1)).toarray()[0] 
+      return df_item.to_dict()
+
     def main(self, sc: SparkContext, *args):
       os.makedirs(DATASET_DIR, exist_ok=True)
       spark = SparkSession(sc)
@@ -445,18 +455,21 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       df            = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)
       item_idx_df   = spark.read.csv(self.input()[1][0].path, header=True, inferSchema=True)
       item_idx_dict = item_idx_df.toPandas().set_index('item_id')['item_idx'].to_dict()
+      item_idx_most_dict = self.most_popular_array(df)
+      print(item_idx_most_dict)
 
       # Expand impressions interactions
       df = df.withColumn("impressions", to_array_int_udf(df.impressions)).\
               withColumn("prices", to_array_float_udf(df.prices))
 
-      array_mean = udf(lambda x: float(np.mean(x)), FloatType())
+      sort_array_by_dict = udf(lambda x: sorted(x, key=lambda _x: item_idx_most_dict[_x] if _x in item_idx_most_dict else 0 , reverse=True), ArrayType(IntegerType()))
       df = df.withColumn("list_mean_price", array_mean(df.prices))
-
+      
       # Convert item_id to item_idx in impressions
       to_item_idx_from_dict_udf  = udf(lambda x: [item_idx_dict[i] if i in item_idx_dict else 0 for i in x], ArrayType(IntegerType()))
       df = df.withColumn("impressions", to_item_idx_from_dict_udf(df.impressions))
-      
+      df = df.withColumn("impressions_popularity", sort_array_by_dict(df.impressions))
+
       # Explode
       df = df.select("*", posexplode("impressions").alias("pos_item_idx", "item_idx"))
 
@@ -466,6 +479,8 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
               withColumn("view", lit(1.0)).orderBy('timestamp')  
 
       df = df.withColumn("is_first_in_impression", df.pos_item_idx == lit(0))
+      df = df.withColumn("first_item_idx", df["impressions"].getItem(lit(0)))
+      df = df.withColumn("popularity_item_idx", df["impressions_popularity"].getItem(lit(0)))
       df = df.withColumn("diff_price", df.price - df.list_mean_price)
 
 

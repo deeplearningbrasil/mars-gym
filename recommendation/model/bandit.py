@@ -108,9 +108,10 @@ class RandomPolicy(BanditPolicy):
         return action
 
 class FixedPolicy(BanditPolicy):
-    def __init__(self, reward_model: nn.Module, arg: int = 0, seed: int = 42) -> None:
-        super().__init__(reward_model)
+    def __init__(self, reward_model: nn.Module, arg: int = 1, seed: int = 42) -> None:
+        super().__init__(None)
         self._arg = arg
+        self._arm_index = 1
 
     def _compute_prob(self, arm_scores) -> List[float]:
         n_arms     = len(arm_scores)
@@ -118,10 +119,27 @@ class FixedPolicy(BanditPolicy):
         arms_probs[self._arg] = 1.0
         return arms_probs.tolist()
 
+    def _flatten_input_and_extract_arms(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
+        flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
+        return np.delete(flattened_input, self._arm_index, axis=1), flattened_input[:, self._arm_index]
+
+
+    def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+        return self._select_idx(arm_indices, arm_contexts, arm_scores, pos)
+
+
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
 
-        return int(self._arg)
+        X, arms    = self._flatten_input_and_extract_arms(arm_contexts)
+        
+        arm_scores = [int(x[self._arg] == arm) for x, arm in zip(X, arms)]
+
+
+        action     = int(np.argmax(arm_scores))
+
+        return action
 
 class ModelPolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:

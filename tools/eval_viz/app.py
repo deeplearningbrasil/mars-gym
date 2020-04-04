@@ -108,6 +108,15 @@ def load_iteractions_params(iteractions):
   return pd.concat(dfs)
 
 #@st.cache(allow_output_mutation=True)
+def load_item_most_popular(model):
+  random.seed(42)
+  file      = os.path.join(fetch_iteraction_results_path()[model],'gt-datalog.csv')
+
+  df = pd.read_csv(file, columns=["item_idx"])
+
+  return df
+
+#@st.cache(allow_output_mutation=True)
 def load_data_iteractions_metrics(model, sample_size = 10000):
   random.seed(42)
   file      = os.path.join(fetch_iteraction_results_path()[model],'sim-datalog.csv')

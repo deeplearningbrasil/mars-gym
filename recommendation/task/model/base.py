@@ -82,6 +82,7 @@ class BaseModelTraining(luigi.Task):
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
     seed: int = luigi.IntParameter(default=SEED)
+    observation: str = luigi.Parameter(default="")
 
     @property
     def cache_attrs(self):
