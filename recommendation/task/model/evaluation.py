@@ -37,15 +37,12 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
             df = pd.merge(df, self.model_training.metadata_data_frame, left_on="action",
                           right_on=self.model_training.project_config.item_column.name, suffixes=("", "_action"))
 
-        fairness_metrics = calculate_fairness_metrics(df, self.fairness_columns,
-                                                      self.model_training.project_config.item_column.name, "action")
-        fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
-
         with Pool(self.num_processes) as p:
             print("Creating the relevance lists...")
             df["relevance_list"] = list(
-                tqdm(p.starmap(_create_relevance_list, zip(df["sorted_actions"],
-                                                           df[self.model_training.project_config.item_column.name])),
+                tqdm(p.starmap(_create_relevance_list,
+                               zip(df["sorted_actions"], df[self.model_training.project_config.item_column.name],
+                                   df[self.model_training.project_config.output_column.name])),
                      total=len(df)))
 
             print("Calculating average precision...")
@@ -77,8 +74,9 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
                     tqdm(p.starmap(_get_rhat_scores, zip(df["relevance_list"], df["action_scores"])),
                          total=len(df)))
 
+                # The ground truth of the dataset is the Direct Estimator
                 df["rhat_rewards"] = list(
-                    tqdm(p.starmap(_get_rhat_rewards, zip(df["relevance_list"], df["action_scores"])),
+                    tqdm(p.map(_get_rhat_rewards, df["relevance_list"]),
                          # Should come from Direct Estimator?
                          total=len(df)))
 
@@ -90,26 +88,32 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         catalog = list(range(df.iloc[0]["n_items"]))
 
+        ground_truth_df = df[df[self.model_training.project_config.output_column.name] == 1]
+
+        fairness_metrics = calculate_fairness_metrics(ground_truth_df, self.fairness_columns,
+                                                      self.model_training.project_config.item_column.name, "action")
+        fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
+
         metrics = {
             "model_task": self.model_task_id,
             "count": len(df),
-            "mean_average_precision": df["average_precision"].mean(),
-            "precision_at_1": df["precision_at_1"].mean(),
-            "ndcg_at_5": df["ndcg_at_5"].mean(),
-            "ndcg_at_10": df["ndcg_at_10"].mean(),
-            "ndcg_at_15": df["ndcg_at_15"].mean(),
-            "ndcg_at_20": df["ndcg_at_20"].mean(),
-            "ndcg_at_50": df["ndcg_at_50"].mean(),
-            "coverage_at_5": prediction_coverage_at_k(df["sorted_actions"], catalog, 5),
-            "coverage_at_10": prediction_coverage_at_k(df["sorted_actions"], catalog, 10),
-            "coverage_at_15": prediction_coverage_at_k(df["sorted_actions"], catalog, 15),
-            "coverage_at_20": prediction_coverage_at_k(df["sorted_actions"], catalog, 20),
-            "coverage_at_50": prediction_coverage_at_k(df["sorted_actions"], catalog, 50),
-            "personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
-            "personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
-            "personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
-            "personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
-            "personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
+            "mean_average_precision": ground_truth_df["average_precision"].mean(),
+            "precision_at_1": ground_truth_df["precision_at_1"].mean(),
+            "ndcg_at_5": ground_truth_df["ndcg_at_5"].mean(),
+            "ndcg_at_10": ground_truth_df["ndcg_at_10"].mean(),
+            "ndcg_at_15": ground_truth_df["ndcg_at_15"].mean(),
+            "ndcg_at_20": ground_truth_df["ndcg_at_20"].mean(),
+            "ndcg_at_50": ground_truth_df["ndcg_at_50"].mean(),
+            "coverage_at_5": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 5),
+            "coverage_at_10": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 10),
+            "coverage_at_15": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 15),
+            "coverage_at_20": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 20),
+            "coverage_at_50": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 50),
+            "personalization_at_5": personalization_at_k(ground_truth_df["sorted_actions"], 5),
+            "personalization_at_10": personalization_at_k(ground_truth_df["sorted_actions"], 10),
+            "personalization_at_15": personalization_at_k(ground_truth_df["sorted_actions"], 15),
+            "personalization_at_20": personalization_at_k(ground_truth_df["sorted_actions"], 20),
+            "personalization_at_50": personalization_at_k(ground_truth_df["sorted_actions"], 50),
         }
 
         if not self.no_offpolicy_eval:
@@ -139,8 +143,11 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         return rhat_rewards, rewards, ps_eval, ps
 
 
-def _create_relevance_list(sorted_actions: List[int], expected_action: int) -> List[int]:
-    return [1 if action == expected_action else 0 for action in sorted_actions]
+def _create_relevance_list(sorted_actions: List[int], expected_action: int, reward: int) -> List[int]:
+    if reward == 1:
+        return [1 if action == expected_action else 0 for action in sorted_actions]
+    else:
+        return [0 for _ in sorted_actions]
 
 
 def _ps_policy_eval(relevance_list: List[int], prob_actions: List[float]) -> List[float]:
@@ -151,5 +158,5 @@ def _get_rhat_scores(relevance_list: List[int], action_scores: List[float]) -> L
     return np.sum(np.array(relevance_list) * np.array(action_scores[:len(relevance_list)])).tolist()
 
 
-def _get_rhat_rewards(relevance_list: List[int], action_scores: List[float]) -> float:
-    return action_scores[0]
+def _get_rhat_rewards(relevance_list: List[int]) -> float:
+    return relevance_list[0]
