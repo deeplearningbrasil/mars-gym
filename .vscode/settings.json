@@ -1,4 +1,4 @@
 {
   "python.formatting.provider": "black",
-  "python.pythonPath": "/home/marlesson/anaconda3/bin/python"
+  "python.pythonPath": "/home/marlesson/anaconda3/envs/deep-reco-gym/bin/python"
 }

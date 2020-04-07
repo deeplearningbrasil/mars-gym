@@ -9,6 +9,7 @@ import numpy as np
 import os
 
 models_and_legend = {
+  "____fixed_":           ["bandit_policy", "observation"],
   "____lin_ucb_":         ["bandit_policy", "bandit_policy_params.alpha", "full_refit", "val_split_type"],
   "____model_":           ["bandit_policy","full_refit", "val_split_type"],
   "____custom_lin_ucb_":  ["bandit_policy", "bandit_policy_params.alpha", "full_refit", "val_split_type"],

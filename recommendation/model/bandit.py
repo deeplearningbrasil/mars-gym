@@ -32,9 +32,12 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         pass
 
     def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
-        inputs: torch.Tensor = default_convert(arm_contexts)
-        scores: torch.Tensor = self.reward_model(*inputs)
-        return scores.detach().cpu().numpy().tolist()
+        if self.reward_model:
+            inputs: torch.Tensor = default_convert(arm_contexts)
+            scores: torch.Tensor = self.reward_model(*inputs)
+            return scores.detach().cpu().numpy().tolist()
+        else:
+            return None
 
     def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
@@ -52,8 +55,10 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
              arm_scores: List[float] = None, with_probs: bool = False,
              limit: int = None) -> Union[List[int], Tuple[List[int], List[float]]]:
         assert arm_contexts is not None or arm_scores is not None
+        
         if not arm_scores:
             arm_scores = self._calculate_scores(arm_contexts)
+        
         assert len(arm_indices) == len(arm_scores)
         self._limit = limit
         ranked_arms = []
@@ -63,11 +68,11 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         if with_probs:
             prob_ranked_arms = []
             arm_probs = list(self._compute_prob(arm_scores))
-
+        #from IPython import embed; embed()
+        #  
         n = len(arm_indices) if limit is None else min(len(arm_indices), limit)
         for i in range(n):
-            idx = self.select_idx(arm_indices, arm_scores=arm_scores, pos=i)
-
+            idx = self.select_idx(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores, pos=i)
             ranked_arms.append(arm_indices[idx])
 
             if with_probs:
@@ -87,14 +92,13 @@ class RandomPolicy(BanditPolicy):
         super().__init__(None)
         self._rng = RandomState(seed)
 
+    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+        return self._compute_prob(arm_contexts[0])
+
     def _compute_prob(self, arm_scores) -> List[float]:
         n_arms = len(arm_scores)
         arms_probs = np.ones(n_arms) / n_arms
         return arms_probs.tolist()
-
-    def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
-                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
-        return self._select_idx(arm_indices, arm_contexts, arm_scores, pos)
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
@@ -113,6 +117,12 @@ class FixedPolicy(BanditPolicy):
         self._arg = arg
         self._arm_index = 1
 
+    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+        X, arms    = self._flatten_input_and_extract_arms(arm_contexts)
+        arm_scores = [int(x[self._arg] == arm) for x, arm in zip(X, arms)]
+
+        return arm_scores
+
     def _compute_prob(self, arm_scores) -> List[float]:
         n_arms     = len(arm_scores)
         arms_probs = np.zeros(n_arms)
@@ -123,19 +133,8 @@ class FixedPolicy(BanditPolicy):
         flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
         return np.delete(flattened_input, self._arm_index, axis=1), flattened_input[:, self._arm_index]
 
-
-    def select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
-                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
-        return self._select_idx(arm_indices, arm_contexts, arm_scores, pos)
-
-
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...],
                     arm_scores: List[float], pos: int) -> Union[int, Tuple[int, float]]:
-
-        X, arms    = self._flatten_input_and_extract_arms(arm_contexts)
-        
-        arm_scores = [int(x[self._arg] == arm) for x, arm in zip(X, arms)]
-
 
         action     = int(np.argmax(arm_scores))
 

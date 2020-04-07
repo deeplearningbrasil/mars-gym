@@ -190,9 +190,11 @@ def display_compare_results():
     except:
       df_train_params = df_hist = None
 
+    GRAPH_METRIC[input_graph](df_metrics.transpose() if input_df_trans else df_metrics,
+                  title="Comparison of Recsys Metrics")
+
     st.markdown('## Metrics')
     st.dataframe(df_metrics)
-    GRAPH_METRIC[input_graph](df_metrics.transpose() if input_df_trans else df_metrics)
 
     if df_train_params is not None:
       st.markdown('## Params (Train)')
@@ -324,18 +326,17 @@ def main():
 
     st.sidebar.markdown("## Navigation")
     
-    # input_page        = st.sidebar.radio("Choose a page", ["[Model Result]", "[Compare Results]", "[Iteraction Results]"])
+    input_page        = st.sidebar.radio("Choose a page", ["[Iteraction Results]", "[RecSys Metrics]", "[Fairness Metrics]"]) #"[Model Result]", 
 
-    # if input_page == "[Compare Results]":
-    #   display_compare_results()
-    # elif input_page == "[Model Result]":
-    #   display_one_result()
-    # else:
-    #   display_iteraction_result()
+    if input_page == "[Iteraction Results]":
+      display_iteraction_result()
+    elif input_page == "[RecSys Metrics]":
+      display_compare_results()
+      
 
-    input_page        = st.sidebar.radio("Choose a page", ["[Iteraction Results]"])
+    #input_page        = st.sidebar.radio("Choose a page", ["[Iteraction Results]"])
 
-    display_iteraction_result()
+    #display_iteraction_result()
 
     st.sidebar.title("About")
     st.sidebar.info(

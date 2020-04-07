@@ -15,6 +15,7 @@ from torchbearer import Trial
 from tqdm import tqdm
 import time
 import pickle
+from gym import spaces
 
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
@@ -265,22 +266,33 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     def _save_test_set_predictions(self) -> None:
         print("Saving test set predictions...")
         sorted_actions_list = []
-        prob_actions_list = []
-        action_scores_list = []
+        prob_actions_list   = []
+        action_scores_list  = []
         obs = self.test_data_frame.to_dict('records')
+
         for ob in tqdm(obs, total=len(obs)):
+
             if self._embeddings_for_metadata is not None:
                 ob[ITEM_METADATA_KEY] = self._embeddings_for_metadata
+
+            if self.project_config.available_arms_column_name:
+                items = np.zeros(np.max(ob[self.project_config.available_arms_column_name]) + 1)
+                items[ob[self.project_config.available_arms_column_name]] = 1
+                ob[self.project_config.available_arms_column_name]        = items
+
             sorted_actions, prob_actions, action_scores = self._rank(ob)
             sorted_actions_list.append(sorted_actions)
             prob_actions_list.append(prob_actions)
+
             if action_scores:
                 action_scores_list.append(list(reversed(sorted(action_scores))))
 
         self.test_data_frame["sorted_actions"] = sorted_actions_list
-        self.test_data_frame["prob_actions"] = prob_actions_list
+        self.test_data_frame["prob_actions"]   = prob_actions_list
+
         if action_scores_list:
             self.test_data_frame["action_scores"] = action_scores_list
+
         self.test_data_frame.to_csv(get_test_set_predictions_path(self.output().path), index=False)
 
     @property
@@ -356,16 +368,20 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         arm_indices = self._get_arm_indices(ob)
         ob_dataset = self._create_ob_dataset(ob, arm_indices)
         arm_contexts = ob_dataset[:len(ob_dataset)][0]
-        arm_scores = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else None
+        arm_scores = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else self.agent.bandit._calculate_scores(arm_contexts)
         return arm_contexts, arm_indices, arm_scores
 
     def _act(self, ob: dict) -> int:
         arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
+        #from IPython import embed; embed()
+
         return self.agent.act(arm_indices, arm_contexts, arm_scores)
 
     def _rank(self, ob: dict) -> Tuple[List[int], List[float], List[float]]:
         arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
         sorted_actions, proba_actions = self.agent.rank(arm_indices, arm_contexts, arm_scores)
+        #from IPython import embed; embed()
+        
         return sorted_actions, proba_actions, arm_scores
 
     def run(self):
@@ -375,13 +391,13 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         self._save_params()
 
-        env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame,
+        self.env: RecSysEnv = gym.make('recsys-v0', dataset=self.env_data_frame,
                                   available_items_column=self.project_config.available_arms_column_name,
                                   item_column=self.project_config.item_column.name,
                                   number_of_items=self.interactions_data_frame[
                                                       self.project_config.item_column.name].max() + 1,
                                   item_metadata=self.embeddings_for_metadata)
-        env.seed(42)
+        self.env.seed(42)
 
         self.agent: BanditAgent = self.create_agent()
 
@@ -389,14 +405,14 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         interactions = 0
         k = 0
         for i in range(self.num_episodes):
-            ob = env.reset()
+            ob = self.env.reset()
 
             while True:
                 interactions += 1
 
                 action = self._act(ob)
 
-                new_ob, reward, done, info = env.step(action)
+                new_ob, reward, done, info = self.env.step(action)
                 rewards.append(reward)
                 self._accumulate_known_observations(ob, action, reward)
 
@@ -443,7 +459,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                     k += 1
                     self._save_log()
 
-        env.close()
+        self.env.close()
         self.end_time = time.time()
         # Save logs
         self._save_result()

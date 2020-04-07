@@ -26,7 +26,9 @@ def plot_bar(df, title=""):
   
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", 
+                    xaxis_title="Metric", yaxis_title="Value",
+                    legend=dict(y=-0.2), title=title)
   st.plotly_chart(fig)
 
 def plot_line(df, title="", yrange=[0, 1], cum=False):
