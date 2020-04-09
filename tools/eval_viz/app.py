@@ -81,6 +81,11 @@ def load_fairness_metrics():
   return df
 
 #@st.cache
+def load_fairness_df():
+  df            = csv2df(fetch_results_path(), 'fairness_df.csv', 'path')
+  return df
+
+#@st.cache
 def load_eval_params():
   return json2df(fetch_results_path(), 'params.json', 'path')
 
@@ -329,27 +334,53 @@ def display_fairness_metrics():
 
   if input_models_eval and len(fetch_results_path().keys()) > 0:
     df_all_metrics    = load_fairness_metrics()
+    df_instances      = load_fairness_df()
 
-    input_features    = st.sidebar.selectbox("Features", sorted(df_all_metrics['sub_key'].unique()))
+    #####################################################################
+    st.sidebar.markdown("### Disparate Treatment")
+
+    input_features_1   = st.sidebar.selectbox("Features (Treatment)", sorted(df_all_metrics['sub_key'].unique()))
+    df_mean_action     = df_instances.groupby(["action", input_features_1]).agg({"rewards": "count", "rhat_scores": "mean"}).reset_index()
+
+    input_items        = st.sidebar.multiselect("Items", sorted(df_mean_action['action'].unique()))
+
+
+    st.markdown('### Disparate Treatment')
+
+    st.dataframe(df_mean_action)
+    plot_fairness_treatment(df_instances, input_features_1, input_items, title="Feature: "+input_features_1)
+
+
+    #####################################################################
+    st.sidebar.markdown("### Disparate Mistreatment")
+
+    input_features    = st.sidebar.selectbox("Features (Mistreatment)", sorted(df_all_metrics['sub_key'].unique()))
     input_metrics     = st.sidebar.selectbox("Metrics",  sorted(df_all_metrics.columns))
+    df_all_metric_filter = df_all_metrics[df_all_metrics.sub_key.isin([input_features])]
 
-    #st.sidebar.markdown("## Graph Options")
 
-    #input_graph       = st.sidebar.radio("Graph", list(GRAPH_METRIC.keys()))
-    #input_df_trans    = st.sidebar.checkbox("Transpose Data?")
-    #input_sorted      = st.sidebar.selectbox("Sort", [""] + sorted(df_metrics.columns), index=0)
+    st.markdown('### Disparate Mistreatment')
+
+
     columns         = ['sub_key', 'sub', 'feature'] + [input_metrics]
     df_metrics      = filter_df(df_all_metrics, input_models_eval, columns, 'sub')
+    
     df_metrics      = df_metrics[df_metrics.sub_key.isin([input_features])]
+    df_metrics      = df_metrics.sort_values("feature").set_index("feature")
 
-    df_metrics      = df_metrics.set_index("feature")
+    plot_fairness_bar(df_metrics, input_metrics, title="Feature: "+input_features+" | "+input_metrics)
 
-    #df_metrics.set_index(["sub_key", "sub"])
+    #plot_fairness_treemap_size(df_instances, input_metrics)
+    #####################################################################
 
-    plot_fairness_bar(df_metrics, input_metrics)
 
-    st.markdown('## Metrics')
-    st.dataframe(df_metrics)
+    st.markdown('### Metrics')
+    st.dataframe(df_all_metric_filter)
+
+    st.markdown('### Individuos')
+    st.dataframe(df_instances.groupby(input_features).count())
+
+
 
 def main():
     """Main function of the App"""

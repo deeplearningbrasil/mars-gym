@@ -208,10 +208,48 @@ def plot_metrics(df, title=""):
 
   st.plotly_chart(fig)
 
+def plot_fairness_treatment(df, metric, items, title=""):
+  score = 'rhat_scores'
+  df    = df.groupby(["action", metric]).mean().reset_index()#.sort_values("rhat_scores")
+  df    = df[df.action.isin(items)]#loc[items,metric]
+  data  = []
+  st.dataframe(df)
+  
+  i     = 0
+  for group, rows in df.groupby('action'):
+    data.append(go.Bar(name="Item:"+str(group), 
+                      x=[metric+"."+str(a) for a in rows[metric]], 
+                      y=rows[score], text=rows[score])) #px.colors.sequential.Purp
+    i += 1
+  fig = go.Figure(data=data)
+  # Change the bar mode
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", 
+                    xaxis_title="Feature", yaxis_title=score,
+                    legend=dict(y=-0.2), title=title)
+  #fig.update_traces(texttemplate='%{text:.2s}', textposition='outside')
+
+  fig.update_layout(shapes=[
+      dict(
+        type= 'line',
+        line=dict(
+            width=1,
+            dash="dot",
+        ),        
+        xref='paper', x0= 0, x1= 1,
+        yref='y', y0= df[score].mean(), y1= df[score].mean()
+      )
+  ])
+  
+  st.plotly_chart(fig)
+  
+  return fig
+
 def plot_fairness_bar(df, metric, title=""):
   data = []
-
-  data.append(go.Bar(x=df.index, y=df[metric]))
+  
+  data.append(go.Bar(x=df.index, y=df[metric], 
+                    marker={'color': list(range(len(df.index))), 
+                            'colorscale': px.colors.sequential.Purp})) #Plotly3
   #for i, row in df.iterrows():
   #  data.append(go.Bar(name=row.name, x=row.keys(), y=row.values))
   
@@ -220,7 +258,22 @@ def plot_fairness_bar(df, metric, title=""):
   fig.update_layout(template=TEMPLATE, legend_orientation="h", 
                     xaxis_title="Feature", yaxis_title=metric,
                     legend=dict(y=-0.2), title=title)
+
+  fig.update_layout(shapes=[
+      dict(
+        type= 'line',
+        line=dict(
+            width=1,
+            dash="dot",
+        ),        
+        xref='paper', x0= 0, x1= 1,
+        yref='y', y0= df[metric].mean(), y1= df[metric].mean()
+      )
+  ])
+
   st.plotly_chart(fig)
+  
+  return fig
 
 def _color_by_metric(metric):
   if "ndcg" in metric:
