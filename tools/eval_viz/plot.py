@@ -208,6 +208,20 @@ def plot_metrics(df, title=""):
 
   st.plotly_chart(fig)
 
+def plot_fairness_bar(df, metric, title=""):
+  data = []
+
+  data.append(go.Bar(x=df.index, y=df[metric]))
+  #for i, row in df.iterrows():
+  #  data.append(go.Bar(name=row.name, x=row.keys(), y=row.values))
+  
+  fig = go.Figure(data=data)
+  # Change the bar mode
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", 
+                    xaxis_title="Feature", yaxis_title=metric,
+                    legend=dict(y=-0.2), title=title)
+  st.plotly_chart(fig)
+
 def _color_by_metric(metric):
   if "ndcg" in metric:
     return '#DD8452'

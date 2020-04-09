@@ -73,6 +73,14 @@ def load_data_metrics():
   return json2df(fetch_results_path(), 'metrics.json', 'path')
 
 #@st.cache
+def load_fairness_metrics():
+  df            = csv2df(fetch_results_path(), 'fairness_metrics.csv', 'path')
+  df['sub']     = df['sub'].astype(int).astype(str)
+  df['feature'] = df['sub_key'] + "." + df['sub']
+
+  return df
+
+#@st.cache
 def load_eval_params():
   return json2df(fetch_results_path(), 'params.json', 'path')
 
@@ -313,7 +321,35 @@ def display_iteraction_result():
   #st.markdown('## Params')
   #st.dataframe(load_iteractions_params(input_iteraction).transpose())
 
+def display_fairness_metrics():
+  st.title("[Fairness Results]")
 
+  st.sidebar.markdown("## Filter Options")
+  input_models_eval = st.sidebar.selectbox("Results", [""] + sorted(fetch_results_path().keys()), index=0)
+
+  if input_models_eval and len(fetch_results_path().keys()) > 0:
+    df_all_metrics    = load_fairness_metrics()
+
+    input_features    = st.sidebar.selectbox("Features", sorted(df_all_metrics['sub_key'].unique()))
+    input_metrics     = st.sidebar.selectbox("Metrics",  sorted(df_all_metrics.columns))
+
+    #st.sidebar.markdown("## Graph Options")
+
+    #input_graph       = st.sidebar.radio("Graph", list(GRAPH_METRIC.keys()))
+    #input_df_trans    = st.sidebar.checkbox("Transpose Data?")
+    #input_sorted      = st.sidebar.selectbox("Sort", [""] + sorted(df_metrics.columns), index=0)
+    columns         = ['sub_key', 'sub', 'feature'] + [input_metrics]
+    df_metrics      = filter_df(df_all_metrics, input_models_eval, columns, 'sub')
+    df_metrics      = df_metrics[df_metrics.sub_key.isin([input_features])]
+
+    df_metrics      = df_metrics.set_index("feature")
+
+    #df_metrics.set_index(["sub_key", "sub"])
+
+    plot_fairness_bar(df_metrics, input_metrics)
+
+    st.markdown('## Metrics')
+    st.dataframe(df_metrics)
 
 def main():
     """Main function of the App"""
@@ -332,7 +368,8 @@ def main():
       display_iteraction_result()
     elif input_page == "[RecSys Metrics]":
       display_compare_results()
-      
+    else:
+      display_fairness_metrics()
 
     #input_page        = st.sidebar.radio("Choose a page", ["[Iteraction Results]"])
 
