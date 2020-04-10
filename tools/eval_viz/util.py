@@ -3,6 +3,24 @@ import json
 import os
 from pandas.io.json import json_normalize
 
+def csv2df(paths, file, idx):
+  data = []
+  for model, path in paths.items():
+    file_path = os.path.join(path, file)
+    try:
+      d = pd.read_csv(file_path)
+      d['path']  = path.split("/")[-1]
+      d['model'] = path.split("/")[-1].replace("_"+path.split("/")[-1].split("_")[-1], "")
+
+      data.append(d)
+    except:
+      pass
+
+  df = pd.concat(data)
+  df = df.set_index(idx)
+
+  return df
+
 def json2df(paths, file, idx):
   data = []
   for model, path in paths.items():

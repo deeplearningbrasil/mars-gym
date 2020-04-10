@@ -73,6 +73,19 @@ def load_data_metrics():
   return json2df(fetch_results_path(), 'metrics.json', 'path')
 
 #@st.cache
+def load_fairness_metrics():
+  df            = csv2df(fetch_results_path(), 'fairness_metrics.csv', 'path')
+  df['sub']     = df['sub'].astype(int).astype(str)
+  df['feature'] = df['sub_key'] + "." + df['sub']
+
+  return df
+
+#@st.cache
+def load_fairness_df():
+  df            = csv2df(fetch_results_path(), 'fairness_df.csv', 'path')
+  return df
+
+#@st.cache
 def load_eval_params():
   return json2df(fetch_results_path(), 'params.json', 'path')
 
@@ -204,55 +217,6 @@ def display_compare_results():
     st.dataframe(df_eval_params)
   
 
-def display_one_result():
-  st.sidebar.markdown("## Filter Options")  
-  input_model_eval  = st.sidebar.selectbox("Result", fetch_results_path().keys(), index=0)
-  st.title("[Model Result]")
-  st.write(input_model_eval)
-
-  if len(fetch_results_path().keys()) > 0:
-    df_metrics        = filter_df(load_data_metrics(), [input_model_eval]).transpose()
-    df_eval_params    = filter_df(load_eval_params(), [input_model_eval]).transpose()
-    df_orders         = load_data_orders_metrics(input_model_eval)
-
-    try:
-      df_train_params   = filter_df(load_train_params(), cut_name([input_model_eval])).transpose()
-      df_hist           = load_history_train(cut_name([input_model_eval])[0])
-    except:
-      df_train_params = df_hist = None
-
-    st.sidebar.markdown("## Graph Options")
-    if df_hist is not None:
-      input_coluns_tl = st.sidebar.multiselect("Columns Train Log", sorted(df_hist.columns), default=['loss', 'val_loss'])
-
-    input_column    = st.sidebar.multiselect("Column (orders_with_metrics.csv)", sorted(df_orders.columns), default=['rhat_scores'])
-    input_graph     = st.sidebar.radio("Graph", list(GRAPH_METRIC_MODEL.keys()))
-
-    if df_hist is not None:
-      st.markdown('## Train Logs')
-      plot_history(df_hist[input_coluns_tl], "History")
-
-    st.markdown('## Metrics')
-    plot_metrics(df_metrics.loc[~df_metrics.index.isin(['count', 'model','model_task'])].transpose(), "Metrics")
-    st.dataframe(df_metrics)
-
-    st.markdown('''
-      ## Orders with Metrics
-      ### orders_with_metrics.csv
-    ''')
-    
-    st.dataframe(df_orders.head())
-    if len(input_column) > 0:
-      GRAPH_METRIC_MODEL[input_graph](df_orders[input_column], "Distribution Variables")
-
-    if df_train_params is not None:
-      st.markdown('## Params (Train)')
-      st.dataframe(df_train_params)
-
-    st.markdown('## Params (Eval)')
-    st.dataframe(df_eval_params)
-
-
 def display_iteraction_result():
   st.sidebar.markdown("## Filter Options")
 
@@ -313,6 +277,66 @@ def display_iteraction_result():
   #st.markdown('## Params')
   #st.dataframe(load_iteractions_params(input_iteraction).transpose())
 
+def display_fairness_metrics():
+  st.title("[Fairness Results]")
+
+  st.sidebar.markdown("## Filter Options")
+  input_models_eval = st.sidebar.selectbox("Results", [""] + sorted(fetch_results_path().keys()), index=0)
+
+  if input_models_eval and len(fetch_results_path().keys()) > 0:
+    df_all_metrics    = load_fairness_metrics()
+    df_instances      = load_fairness_df()
+    input_features    = st.sidebar.selectbox("Features", sorted(df_all_metrics['sub_key'].unique()))
+
+    #####################################################################
+    st.sidebar.markdown("### Disparate Mistreatment")
+
+    input_metrics     = st.sidebar.selectbox("Metrics",  sorted(df_all_metrics.columns))
+    df_all_metric_filter = df_all_metrics[df_all_metrics.sub_key.isin([input_features])]
+
+    st.markdown('### Disparate Mistreatment')
+
+    columns         = ['sub_key', 'sub', 'feature'] + [input_metrics]
+    df_metrics      = filter_df(df_all_metrics, input_models_eval, columns, 'sub')
+    
+    df_metrics      = df_metrics[df_metrics.sub_key.isin([input_features])]
+    df_metrics      = df_metrics.sort_values("feature").set_index("feature")
+
+    plot_fairness_mistreatment(df_metrics, input_metrics, 
+                      title="Disparate Mistreatment - Feature: "+input_features+" | "+input_metrics)
+
+    #####################################################################
+    st.sidebar.markdown("### Disparate Treatment and Impact")
+
+    df_mean_action     = df_instances.groupby(["action", input_features]).agg({"rewards": "count", "rhat_scores": "mean"}).reset_index()
+    input_items        = st.sidebar.multiselect("Items", sorted(df_mean_action['action'].unique()))
+    input_items_top    = st.sidebar.checkbox("Top 5 Items?")
+
+    st.markdown('### Disparate Treatment')
+
+    plot_fairness_treatment(df_instances, input_features, input_items, top=input_items_top, 
+                          title="Disparate Treatment - Feature: "+input_features)
+
+    #####################################################################
+    st.sidebar.markdown("### Disparate Impact")
+    #input_features_1   = st.sidebar.selectbox("Features (Treatment)", sorted(df_all_metrics['sub_key'].unique()))
+    df_mean_action     = df_instances.groupby(["action", input_features]).agg({"rewards": "count", "rhat_scores": "mean"}).reset_index()
+
+    #st.markdown('### Disparate Impact')
+    #st.dataframe(df_mean_action)
+    plot_fairness_impact(df_instances, input_features, input_items, top=input_items_top, 
+                        title="Disparate Impact - Feature: "+input_features)
+
+
+
+    #######################################################################
+
+    #st.markdown('### Metrics')
+    #st.dataframe(df_all_metric_filter)
+
+    #st.markdown('### Individuos')
+    #st.dataframe(df_instances.groupby(input_features).count())
+
 
 
 def main():
@@ -332,7 +356,8 @@ def main():
       display_iteraction_result()
     elif input_page == "[RecSys Metrics]":
       display_compare_results()
-      
+    else:
+      display_fairness_metrics()
 
     #input_page        = st.sidebar.radio("Choose a page", ["[Iteraction Results]"])
 

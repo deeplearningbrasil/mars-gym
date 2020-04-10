@@ -132,9 +132,13 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
                     p.starmap(_ps_policy_eval, zip(df["relevance_list"], df["prob_actions"])), total=len(df)))
 
         catalog          = list(range(ground_truth_df.iloc[0]["n_items"]))
-        fairness_metrics = calculate_fairness_metrics(ground_truth_df, self.fairness_columns,
+
+
+        fairness_df      = ground_truth_df[[self.model_training.project_config.item_column.name, "action", "rewards", "rhat_scores", *self.fairness_columns]]
+        fairness_metrics = calculate_fairness_metrics(fairness_df, self.fairness_columns,
                                                       self.model_training.project_config.item_column.name, "action")
         fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
+        fairness_df.to_csv(os.path.join(self.output().path, "fairness_df.csv"), index=False)
 
         metrics = {
             "model_task": self.model_task_id,
