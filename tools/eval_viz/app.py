@@ -335,26 +335,11 @@ def display_fairness_metrics():
   if input_models_eval and len(fetch_results_path().keys()) > 0:
     df_all_metrics    = load_fairness_metrics()
     df_instances      = load_fairness_df()
-
-    #####################################################################
-    st.sidebar.markdown("### Disparate Treatment")
-
-    input_features_1   = st.sidebar.selectbox("Features (Treatment)", sorted(df_all_metrics['sub_key'].unique()))
-    df_mean_action     = df_instances.groupby(["action", input_features_1]).agg({"rewards": "count", "rhat_scores": "mean"}).reset_index()
-
-    input_items        = st.sidebar.multiselect("Items", sorted(df_mean_action['action'].unique()))
-
-
-    st.markdown('### Disparate Treatment')
-
-    st.dataframe(df_mean_action)
-    plot_fairness_treatment(df_instances, input_features_1, input_items, title="Feature: "+input_features_1)
-
+    input_features    = st.sidebar.selectbox("Features", sorted(df_all_metrics['sub_key'].unique()))
 
     #####################################################################
     st.sidebar.markdown("### Disparate Mistreatment")
 
-    input_features    = st.sidebar.selectbox("Features (Mistreatment)", sorted(df_all_metrics['sub_key'].unique()))
     input_metrics     = st.sidebar.selectbox("Metrics",  sorted(df_all_metrics.columns))
     df_all_metric_filter = df_all_metrics[df_all_metrics.sub_key.isin([input_features])]
 
@@ -372,7 +357,36 @@ def display_fairness_metrics():
 
     #plot_fairness_treemap_size(df_instances, input_metrics)
     #####################################################################
+    st.sidebar.markdown("### Disparate Impact")
+    #input_features_1   = st.sidebar.selectbox("Features (Treatment)", sorted(df_all_metrics['sub_key'].unique()))
+    df_mean_action     = df_instances.groupby(["action", input_features]).agg({"rewards": "count", "rhat_scores": "mean"}).reset_index()
 
+    input_items        = st.sidebar.multiselect("Items", sorted(df_mean_action['action'].unique()))
+
+
+    st.markdown('### Disparate Impact')
+
+    st.dataframe(df_mean_action)
+
+    plot_fairness_impact(df_instances, input_features, input_items, title="Feature: "+input_features)
+
+
+    #####################################################################
+    st.sidebar.markdown("### Disparate Treatment")
+
+    #input_features_1   = st.sidebar.selectbox("Features (Treatment)", sorted(df_all_metrics['sub_key'].unique()))
+    df_mean_action     = df_instances.groupby(["action", input_features]).agg({"rewards": "count", "rhat_scores": "mean"}).reset_index()
+
+    #input_items        = st.sidebar.multiselect("Items", sorted(df_mean_action['action'].unique()))
+
+
+    st.markdown('### Disparate Treatment')
+
+    st.dataframe(df_mean_action)
+
+    plot_fairness_treatment(df_instances, input_features, input_items, title="Feature: "+input_features)
+
+    #######################################################################
 
     st.markdown('### Metrics')
     st.dataframe(df_all_metric_filter)
