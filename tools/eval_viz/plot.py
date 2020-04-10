@@ -208,92 +208,12 @@ def plot_metrics(df, title=""):
 
   st.plotly_chart(fig)
 
-def plot_fairness_treatment(df, metric, items, title=""):
-  score = 'rhat_scores'
-  df    = df.groupby(["action", metric]).mean().reset_index()#.sort_values("rhat_scores")
-  df    = df[df.action.isin(items)]#loc[items,metric]
-  data  = []
-  
-  i     = 0
-  for group, rows in df.groupby(metric):
-    data.append(go.Bar(name=metric+"."+str(group), 
-                      x=["Item"+":"+str(a) for a in rows["action"]], 
-                      y=rows[score], text=rows[score])) #px.colors.sequential.Purp
-    i += 1
-  fig = go.Figure(data=data)
-  # Change the bar mode
-  fig.update_layout(template=TEMPLATE, legend_orientation="h", 
-                    xaxis_title="Feature", yaxis_title=score,
-                    legend=dict(y=-0.2), title=title)
-  #fig.update_traces(texttemplate='%{text:.2s}', textposition='outside')
-
-  fig.update_layout(shapes=[
-      dict(
-        type= 'line',
-        line=dict(
-            width=1,
-            dash="dot",
-        ),        
-        xref='paper', x0= 0, x1= 1,
-        yref='y', y0= df[score].mean(), y1= df[score].mean()
-      )
-  ])
-  
-  st.plotly_chart(fig)
-  
-  return fig
-
-
-def plot_fairness_impact(df, metric, items, title=""):
-  df    = df[df.action.isin(items)]#loc[items,metric]
-  df    = df.groupby(["action", metric]).agg({"rewards": 'count', 'rhat_scores': 'mean' }).reset_index()#.sort_values("rhat_scores")
-  df    = df.merge(df.groupby(metric).agg(total_rewards=("rewards", 'sum')).reset_index(), on=metric)
-  df['action_mean'] = df['rewards']/df['total_rewards']#.sum()
-
-
-  score = 'action_mean'
-  data  = []
-  i     = 0
-
-  st.dataframe(df)
-
-
-  for group, rows in df.groupby('action'):
-    data.append(go.Bar(name="Item:"+str(group), 
-                      x=[metric+"."+str(a) for a in rows[metric]], 
-                      y=rows[score], text=rows[score])) #px.colors.sequential.Purp
-    i += 1
-  fig = go.Figure(data=data)
-  # Change the bar mode
-  fig.update_layout(template=TEMPLATE, legend_orientation="h", 
-                    xaxis_title="Feature", yaxis_title=score,
-                    legend=dict(y=-0.2), title=title)
-  #fig.update_traces(texttemplate='%{text:.2s}', textposition='outside')
-
-  fig.update_layout(shapes=[
-      dict(
-        type= 'line',
-        line=dict(
-            width=1,
-            dash="dot",
-        ),        
-        xref='paper', x0= 0, x1= 1,
-        yref='y', y0= df[score].mean(), y1= df[score].mean()
-      )
-  ])
-  
-  st.plotly_chart(fig)
-  
-  return fig
-
-def plot_fairness_bar(df, metric, title=""):
+def plot_fairness_mistreatment(df, metric, title=""):
   data = []
   
   data.append(go.Bar(x=df.index, y=df[metric], 
                     marker={'color': list(range(len(df.index))), 
-                            'colorscale': px.colors.sequential.Purp})) #Plotly3
-  #for i, row in df.iterrows():
-  #  data.append(go.Bar(name=row.name, x=row.keys(), y=row.values))
+                            'colorscale': 'Purp'})) #Plotly3
   
   fig = go.Figure(data=data)
   # Change the bar mode
@@ -314,8 +234,109 @@ def plot_fairness_bar(df, metric, title=""):
   ])
 
   st.plotly_chart(fig)
-  
+
   return fig
+
+def plot_fairness_treatment(df, metric, items, min_count=10, top=False, title=""):
+  data  = []
+  i     = 0
+  score = 'rhat_scores'
+
+  df    = df.groupby(["action", metric]).agg({"rewards": 'count', score: 'mean'}).reset_index()#.sort_values("rhat_scores")
+  df    = df[df.rewards > min_count] # filter min interactions
+
+  if top:
+    # Diff min max score
+    df_diff = df.groupby('action').agg(min_score=(score, 'min'), max_score=(score, 'max'))
+    df_diff['diff'] = df_diff['max_score']-df_diff['min_score']
+    #st.dataframe(df_diff.sort_values('diff', ascending=False))
+    items  = df_diff.sort_values('diff', ascending=False).index[:5]
+  
+  df    = df[df.action.isin(items)]
+  
+  for group, rows in df.groupby(metric):
+    data.append(go.Bar(name=metric+"."+str(group), 
+                        x=["Item"+":"+str(a) for a in rows["action"]], 
+                        y=rows[score], 
+                        marker={'color': px.colors.sequential.Purp[int(i%7)]})) #px.colors.sequential.Purp [i for i in range(len(rows))]
+    i += 1
+  fig = go.Figure(data=data)
+  
+  # Change the bar mode
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", 
+                    yaxis_title=score,
+                    legend=dict(y=-0.2), title=title)
+  #fig.update_traces(texttemplate='%{text:.2s}', textposition='outside')
+  fig.update_layout(coloraxis = {'colorscale':'Purp'})
+
+  fig.update_layout(shapes=[
+      dict(
+        type= 'line',
+        line=dict(
+            width=1,
+            dash="dot",
+        ),        
+        xref='paper', x0= 0, x1= 1,
+        yref='y', y0= df[score].mean(), y1= df[score].mean()
+      )
+  ])
+  
+  st.plotly_chart(fig)
+  st.dataframe(df)
+
+  return fig
+
+def plot_fairness_impact(df, metric, items, min_count=10, top=False, title=""):
+  score = 'action_percent'
+  df    = df.groupby(["action", metric]).agg({"rewards": 'count', 'rhat_scores': 'mean' }).reset_index()#.sort_values("rhat_scores")
+  df    = df.merge(df.groupby(metric).agg(total_rewards=("rewards", 'sum')).reset_index(), on=metric)
+  df[score] = df['rewards']/df['total_rewards']#.sum()
+
+  if top:
+    # Diff min max score
+    df_diff = df.groupby("action").agg(min_score=(score, 'min'), max_score=(score, 'max'))
+    df_diff['diff'] = df_diff['max_score']-df_diff['min_score']
+    items  = df_diff.sort_values('diff', ascending=False).index[:5]
+  
+  df    = df[df.action.isin(items)]
+  df    = df[df.rewards > min_count] # filter min interactions
+
+  data  = []
+  i     = 0
+
+  for group, rows in df.groupby('action'):
+    data.append(go.Bar(name="Item:"+str(group), 
+                      x=[metric+"."+str(a) for a in rows[metric]], 
+                      y=rows[score],
+                      marker={'color': px.colors.qualitative.Pastel[int(i%10)]})) 
+    i += 1
+  fig = go.Figure(data=data)
+  # Change the bar mode
+  #fig.update_traces(overwrite=True, marker={'color': px.colors.qualitative.Plotly[int(arms_idx[arm]%10)]})
+
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", 
+                    yaxis_title=score,
+                    legend=dict(y=-0.2), title=title)
+  #fig.update_traces(texttemplate='%{text:.2s}', textposition='outside')
+
+  fig.update_layout(shapes=[
+      dict(
+        type= 'line',
+        line=dict(
+            width=1,
+            dash="dot",
+        ),        
+        xref='paper', x0= 0, x1= 1,
+        yref='y', y0= df[score].mean(), y1= df[score].mean()
+      )
+  ])
+  
+  st.plotly_chart(fig)
+  st.dataframe(df)
+
+  return fig
+
+
 
 def _color_by_metric(metric):
   if "ndcg" in metric:
