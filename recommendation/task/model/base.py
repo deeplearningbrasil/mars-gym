@@ -39,7 +39,7 @@ from recommendation.files import get_params_path, get_weights_path, get_interact
 from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization
 from recommendation.plot import plot_history
 from recommendation.summary import summary
-from recommendation.task.config import PROJECTS
+from recommendation.task.config import PROJECTS, ProjectConfig
 from recommendation.task.cuda import CudaRepository
 from recommendation.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from recommendation.utils import lecun_normal_init, he_init
@@ -117,7 +117,7 @@ class BaseModelTraining(luigi.Task):
         return luigi.LocalTarget(get_task_dir(self.__class__, self.task_id))
 
     @property
-    def project_config(self):
+    def project_config(self) -> ProjectConfig:
         return PROJECTS[self.project]
 
     def _save_params(self):
@@ -305,7 +305,7 @@ class BaseTorchModelTraining(BaseModelTraining):
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
             with redirect_stdout(summary_file):
-                sample_input = default_convert(self.train_dataset[0][0])
+                sample_input = self.get_sample_batch()
                 summary(module, sample_input)
             summary(module, sample_input)
 
@@ -324,6 +324,8 @@ class BaseTorchModelTraining(BaseModelTraining):
         self.evaluate()
         self.cache_cleanup()
 
+    def get_sample_batch(self):
+        return default_convert(self.train_dataset[0][0])
 
     def after_fit(self):
         pass
@@ -394,7 +396,9 @@ class BaseTorchModelTraining(BaseModelTraining):
                                          num_workers=self.generator_workers,
                                          pin_memory=self.pin_memory if self.device == "cuda" else False)
 
-    def get_val_generator(self) -> DataLoader:
+    def get_val_generator(self) -> Optional[DataLoader]:
+        if len(self.val_data_frame) == 0:
+            return None
         batch_sampler = FasterBatchSampler(self.val_dataset, self.batch_size, shuffle=False)
         return NoAutoCollationDataLoader(self.val_dataset, batch_sampler=batch_sampler,
                                          num_workers=self.generator_workers,

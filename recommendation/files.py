@@ -2,6 +2,7 @@ import os
 import json
 from typing import Type
 
+
 OUTPUT_PATH = os.environ['OUTPUT_PATH'] if 'OUTPUT_PATH' in os.environ else 'output'
 
 def get_params_path(task_dir: str) -> str:

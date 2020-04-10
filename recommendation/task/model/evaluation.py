@@ -1,4 +1,6 @@
 import functools
+import importlib
+import inspect
 import json
 import os
 from itertools import starmap
@@ -8,27 +10,70 @@ from typing import List, Tuple
 import luigi
 import numpy as np
 import pandas as pd
+import torch
+import torchbearer
+from torchbearer import Trial
 from tqdm import tqdm
 
+from recommendation.data import preprocess_interactions_data_frame
 from recommendation.fairness_metrics import calculate_fairness_metrics
 from recommendation.files import get_test_set_predictions_path
 from recommendation.offpolicy_metrics import eval_IPS, eval_CIPS, eval_SNIPS, eval_doubly_robust
 from recommendation.rank_metrics import average_precision, precision_at_k, ndcg_at_k, prediction_coverage_at_k, \
     personalization_at_k
-from recommendation.task.model.base import BaseEvaluationTask
+from recommendation.task.model.base import BaseEvaluationTask, BaseTorchModelTraining
+from recommendation.task.model.policy_estimator import PolicyEstimatorTraining
+from recommendation.torch import FasterBatchSampler, NoAutoCollationDataLoader
 from recommendation.utils import parallel_literal_eval
 
 
 class EvaluateTestSetPredictions(BaseEvaluationTask):
+    direct_estimator_module: str = luigi.Parameter(default=None)
+    direct_estimator_cls: str = luigi.Parameter(default=None)
+
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     fairness_columns: List[str] = luigi.ListParameter()
 
+    def get_direct_estimator(self, extra_params: dict) -> BaseTorchModelTraining:
+        assert self.direct_estimator_module is not None
+        assert self.direct_estimator_cls is not None
+
+        estimator_module = importlib.import_module(self.direct_estimator_module)
+        estimator_class = getattr(estimator_module, self.direct_estimator_cls)
+
+        attribute_names = set(list(zip(*(
+            inspect.getmembers(estimator_class, lambda a: not (inspect.isroutine(a))))))[0])
+
+        params = {key: value for key, value in self.model_training.param_kwargs.items()
+                  if key in attribute_names}
+        return estimator_class(**{**params, **extra_params})
+
+    @property
+    def direct_estimator(self):
+        if not hasattr(self, "_direct_estimator"):
+            self._direct_estimator = self.get_direct_estimator({"loss_function": "bce"})
+        return self._direct_estimator
+
+    @property
+    def policy_estimator(self):
+        if not hasattr(self, "_policy_estimator"):
+            self._policy_estimator = PolicyEstimatorTraining(
+                project=self.model_training.project,
+                data_frames_preparation_extra_params=self.model_training.data_frames_preparation_extra_params)
+        return self._policy_estimator
+
+    def requires(self):
+        if not self.no_offpolicy_eval:
+            return [self.direct_estimator, self.policy_estimator]
+        return []
+
     def run(self):
         os.makedirs(self.output().path)
 
-        df: pd.DataFrame     = pd.read_csv(get_test_set_predictions_path(self.model_training.output().path))
-
+        df: pd.DataFrame     = preprocess_interactions_data_frame(
+            pd.read_csv(get_test_set_predictions_path(self.model_training.output().path)),
+            self.model_training.project_config)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
         df["prob_actions"]   = parallel_literal_eval(df["prob_actions"])
@@ -39,15 +84,15 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
             df = pd.merge(df, self.model_training.metadata_data_frame, left_on="action",
                           right_on=self.model_training.project_config.item_column.name, suffixes=("", "_action"))
 
-        ground_truth_df  = df[df[self.model_training.project_config.output_column.name] == 1]
-
         with Pool(self.num_processes) as p:
             print("Creating the relevance lists...")
-            ground_truth_df["relevance_list"] = list(
+            df["relevance_list"] = list(
                 tqdm(p.starmap(_create_relevance_list,
-                               zip(ground_truth_df["sorted_actions"], ground_truth_df[self.model_training.project_config.item_column.name],
-                                   ground_truth_df[self.model_training.project_config.output_column.name])),
-                     total=len(ground_truth_df)))
+                               zip(df["sorted_actions"], df[self.model_training.project_config.item_column.name],
+                                   df[self.model_training.project_config.output_column.name])),
+                     total=len(df)))
+
+            ground_truth_df = df[df[self.model_training.project_config.output_column.name] == 1]
 
             print("Calculating average precision...")
             ground_truth_df["average_precision"] = list(
@@ -74,20 +119,17 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
                 tqdm(p.map(functools.partial(ndcg_at_k, k=50), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
 
             if not self.no_offpolicy_eval:
-                ground_truth_df["rhat_scores"] = list(
-                    tqdm(p.starmap(_get_rhat_scores, zip(ground_truth_df["relevance_list"], ground_truth_df["action_scores"])),
-                         total=len(ground_truth_df)))
+                self.fill_rhat_rewards(df)
+                self.fill_ps(df, p)
 
-                # The ground truth of the dataset is the Direct Estimator
-                ground_truth_df["rhat_rewards"] = list(
-                    tqdm(p.map(_get_rhat_rewards, ground_truth_df["relevance_list"]),
-                         total=len(ground_truth_df)))
+                df["rhat_scores"] = list(
+                    tqdm(p.starmap(_get_rhat_scores, zip(df["relevance_list"], df["action_scores"])), total=len(df)))
 
-                ground_truth_df["rewards"] =  ground_truth_df["rhat_rewards"] # ground_truth_df[self.model_training.project_config.output_column.name]
+                df["rewards"] = df[self.model_training.project_config.output_column.name]
 
                 print("Calculate ps policy eval...")
-                ground_truth_df["ps_eval"] = list(tqdm(
-                    p.starmap(_ps_policy_eval, zip(ground_truth_df["relevance_list"], ground_truth_df["prob_actions"])), total=len(ground_truth_df)))
+                df["ps_eval"] = list(tqdm(
+                    p.starmap(_ps_policy_eval, zip(df["relevance_list"], df["prob_actions"])), total=len(df)))
 
         catalog          = list(range(ground_truth_df.iloc[0]["n_items"]))
         fairness_metrics = calculate_fairness_metrics(ground_truth_df, self.fairness_columns,
@@ -117,7 +159,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         }
 
         if not self.no_offpolicy_eval:
-            rhat_rewards, rewards, ps_eval, ps = self._offpolicy_eval(ground_truth_df)
+            rhat_rewards, rewards, ps_eval, ps = self._offpolicy_eval(df)
 
             metrics["IPS"]   = eval_IPS(rewards, ps_eval, ps)
             metrics["CIPS"]  = eval_CIPS(rewards, ps_eval, ps)
@@ -127,6 +169,42 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         with open(os.path.join(self.output().path, "metrics.json"), "w") as metrics_file:
             json.dump(metrics, metrics_file, indent=4)
+
+    def fill_ps(self, df: pd.DataFrame, pool: Pool):
+        dataset = self.policy_estimator.project_config.dataset_class(df, None, self.policy_estimator.project_config)
+        batch_sampler = FasterBatchSampler(dataset, self.policy_estimator.batch_size, shuffle=False)
+        data_loader = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
+
+        trial = Trial(self.policy_estimator.get_trained_module(),
+                      criterion=lambda *args: torch.zeros(1, device=self.policy_estimator.torch_device, requires_grad=True)) \
+            .with_generators(val_generator=data_loader).to(self.policy_estimator.torch_device).eval()
+
+        with torch.no_grad():
+            log_probas: torch.Tensor = trial.predict(verbose=0, data_key=torchbearer.VALIDATION_DATA)
+        probas: np.ndarray = torch.exp(log_probas).cpu().numpy()
+
+        item_indices = df[self.model_training.project_config.item_column.name]
+
+        params = zip(item_indices, probas, df[self.model_training.project_config.available_arms_column_name]) \
+            if self.model_training.project_config.available_arms_column_name else zip(item_indices, probas)
+        df[self.model_training.project_config.propensity_score_column_name] = list(
+            tqdm(pool.starmap(_get_ps_from_probas, params), total=len(df)))
+
+    def fill_rhat_rewards(self, df: pd.DataFrame):
+        dataset = self.direct_estimator.project_config.dataset_class(df, self.direct_estimator.embeddings_for_metadata,
+                                                                     self.direct_estimator.project_config)
+        batch_sampler = FasterBatchSampler(dataset, self.direct_estimator.batch_size, shuffle=False)
+        data_loader = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
+
+        trial = Trial(self.direct_estimator.get_trained_module(),
+                      criterion=lambda *args: torch.zeros(1, device=self.direct_estimator.torch_device, requires_grad=True)) \
+            .with_generators(val_generator=data_loader).to(self.direct_estimator.torch_device).eval()
+
+        with torch.no_grad():
+            rewards_tensor: torch.Tensor = trial.predict(verbose=0, data_key=torchbearer.VALIDATION_DATA)
+        rewards: np.ndarray = rewards_tensor[:, 0].cpu().numpy()
+
+        df["rhat_rewards"] = rewards
 
     def _offpolicy_eval(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         # Filter df used in offpolicy evaluation
@@ -139,6 +217,12 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         ps           = df_offpolicy[ps_column].values
 
         return rhat_rewards, rewards, ps_eval, ps
+
+
+def _get_ps_from_probas(item_idx: int, probas: np.ndarray, available_item_indices: List[int] = None) -> float:
+    if available_item_indices:
+        probas /= np.sum(probas[available_item_indices])
+    return probas[item_idx]
 
 
 def _create_relevance_list(sorted_actions: List[int], expected_action: int, reward: int) -> List[int]:

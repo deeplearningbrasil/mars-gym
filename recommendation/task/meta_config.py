@@ -10,6 +10,7 @@ from recommendation.task.data_preparation.base import BasePrepareDataFrames
 class IOType(Enum):
     INDEX = auto()
     NUMBER = auto()
+    INDEX_ARRAY = auto()
     FLOAT_ARRAY = auto()
     INT_ARRAY = auto()
 
@@ -45,6 +46,8 @@ class ProjectConfig(object):
                  output_column: Column,
                  recommender_type: RecommenderType,
                  dataset_extra_params: dict = {},
+                 user_is_input: bool = True,
+                 item_is_input: bool = True,
                  hist_view_column_name: str = "hist_view",
                  hist_output_column_name: str = "hist_output",
                  timestamp_column_name: str = "timestamp",
@@ -65,6 +68,8 @@ class ProjectConfig(object):
         self.item_column = item_column
         self.other_input_columns = other_input_columns
         self.output_column = output_column
+        self.user_is_input = user_is_input
+        self.item_is_input = item_is_input
         self.hist_view_column_name = hist_view_column_name
         self.hist_output_column_name = hist_output_column_name
         self.timestamp_column_name = timestamp_column_name
@@ -77,3 +82,14 @@ class ProjectConfig(object):
         self.default_balance_fields = default_balance_fields
         self.metadata_columns = metadata_columns
         self.possible_negative_indices_columns = possible_negative_indices_columns
+
+    @property
+    def input_columns(self):
+        input_columns: List[Column] = []
+        if self.user_is_input:
+            input_columns.append(self.user_column)
+        if self.item_is_input:
+            self._item_input_index = len(input_columns)
+            input_columns.append(self.item_column)
+        input_columns.extend(self.other_input_columns)
+        return input_columns

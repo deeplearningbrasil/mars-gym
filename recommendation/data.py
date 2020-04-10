@@ -7,13 +7,16 @@ from torch.utils.data import Dataset
 from recommendation.task.meta_config import ProjectConfig, IOType, Column
 from recommendation.utils import parallel_literal_eval
 
+
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
-        if (column.type == IOType.FLOAT_ARRAY or column.type == IOType.INT_ARRAY) and column.name in data_frame:
+        if column.type in (IOType.FLOAT_ARRAY, IOType.INT_ARRAY, IOType.INDEX_ARRAY) and column.name in data_frame:
             data_frame[column.name] = parallel_literal_eval(data_frame[column.name])
 
 
 def preprocess_interactions_data_frame(data_frame: pd.DataFrame, project_config: ProjectConfig):
+    if len(data_frame) == 0:
+        return data_frame
     data_frame[project_config.user_column.name] = data_frame[project_config.user_column.name].astype(int)
     data_frame[project_config.item_column.name] = data_frame[project_config.item_column.name].astype(int)
     literal_eval_array_columns(
@@ -46,8 +49,9 @@ class InteractionsDataset(Dataset):
                  embeddings_for_metadata: Optional[Dict[str, np.ndarray]],
                  project_config: ProjectConfig) -> None:
         self._project_config = project_config
-        self._input_columns = [project_config.user_column, project_config.item_column] + [
-            input_column for input_column in project_config.other_input_columns]
+        self._input_columns: List[Column] = project_config.input_columns
+        if project_config.item_is_input:
+            self._item_input_index = self._input_columns.index(project_config.item_column)
 
         input_column_names = [input_column.name for input_column in self._input_columns]
         auxiliar_output_column_names = [auxiliar_output_column.name
@@ -65,7 +69,7 @@ class InteractionsDataset(Dataset):
             return value.astype(np.int64)
         if type == IOType.NUMBER:
             return value.astype(np.float64)            
-        if type == IOType.INT_ARRAY:
+        if type in (IOType.INT_ARRAY, IOType.INDEX_ARRAY):
             return np.array([np.array(v, dtype=np.int64) for v in value])
         if type == IOType.FLOAT_ARRAY:
             return np.array([np.array(v, dtype=np.float64) for v in value])
@@ -78,8 +82,8 @@ class InteractionsDataset(Dataset):
         rows: pd.Series = self._data_frame.iloc[indices]
 
         inputs = tuple(self._convert_dtype(rows[column.name].values, column.type) for column in self._input_columns)
-        if self._embeddings_for_metadata is not None:
-            item_indices = inputs[1]
+        if self._project_config.item_is_input and self._embeddings_for_metadata is not None:
+            item_indices = inputs[self._item_input_index]
             inputs += tuple(self._embeddings_for_metadata[column.name][item_indices]
                             for column in self._project_config.metadata_columns)
 

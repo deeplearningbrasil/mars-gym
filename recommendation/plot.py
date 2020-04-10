@@ -20,7 +20,8 @@ def plot_history(history_df: pd.DataFrame) -> Figure:
         if metric == "loss":
             ax.set_yscale('log')
         ax.plot(history_df[metric], label="train")
-        ax.plot(history_df[f"val_{metric}"], label="validation")
+        if f"val_{metric}" in history_df:
+            ax.plot(history_df[f"val_{metric}"], label="validation")
         ax.set_title(metric)
         ax.set_xlabel('epoch')
         ax.set_ylabel(metric)

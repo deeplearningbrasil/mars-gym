@@ -155,15 +155,18 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
                 train_df, test_df = self.time_train_test_split(df, test_size=self.test_size)
         else:
             train_df, test_df = df, df[:0]
-        
-        if self.dataset_split_method == "holdout":
-            train_df, val_df = self.random_train_test_split(train_df, test_size=self.val_size)
-        elif self.dataset_split_method == "column":
-            train_df, val_df = self.column_train_test_split(train_df, test_size=self.val_size)
-        elif self.dataset_split_method == "time":
-            train_df, val_df = self.time_train_test_split(train_df, test_size=self.val_size)
+
+        if self.val_size:
+            if self.dataset_split_method == "holdout":
+                train_df, val_df = self.random_train_test_split(train_df, test_size=self.val_size)
+            elif self.dataset_split_method == "column":
+                train_df, val_df = self.column_train_test_split(train_df, test_size=self.val_size)
+            elif self.dataset_split_method == "time":
+                train_df, val_df = self.time_train_test_split(train_df, test_size=self.val_size)
+            else:
+                train_df, val_df = self.kfold_split(train_df)
         else:
-            train_df, val_df = self.kfold_split(train_df)
+            train_df, val_df = train_df, train_df[:0]
 
         if self.sampling_strategy != "none":
             train_df = self.balance_dataset(train_df)

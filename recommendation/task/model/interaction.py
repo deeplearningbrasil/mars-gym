@@ -7,6 +7,7 @@ import luigi
 import numpy as np
 import pandas as pd
 import torch
+from copy import deepcopy
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
@@ -19,7 +20,8 @@ from gym import spaces
 
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
-from recommendation.task.model.base import BaseTorchModelTraining
+from recommendation.task.meta_config import ProjectConfig, Column, IOType
+from recommendation.task.model.base import BaseTorchModelTraining, TORCH_LOSS_FUNCTIONS
 from recommendation.plot import plot_history, plot_scores
 
 tqdm.pandas()
@@ -56,6 +58,7 @@ class BanditAgent(object):
 
 
 class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
+    loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="crm")
     test_size:     float = luigi.FloatParameter(default=0.0)
     test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
     val_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
@@ -65,6 +68,16 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     bandit_policy:   str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="model")
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     output_model_dir: str = luigi.Parameter(default='')
+
+    @property
+    def project_config(self) -> ProjectConfig:
+        if not hasattr(self, "_project_config"):
+            self._project_config = deepcopy(super().project_config)
+            if self.loss_function == "crm" and self.project_config.propensity_score_column_name not in self.project_config.auxiliar_output_columns:
+                self._project_config.auxiliar_output_columns = [
+                    *self._project_config.auxiliar_output_columns,
+                    Column(self.project_config.propensity_score_column_name, IOType.NUMBER)]
+        return self._project_config
 
     def output(self):
         return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
