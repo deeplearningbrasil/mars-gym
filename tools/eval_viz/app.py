@@ -32,6 +32,20 @@ GRAPH_METRIC_MODEL = {
   "Box": plot_box
 }
 
+MISTREATMENT_METRICS = [
+    "total_class",
+    "false_positive_rate",
+    "false_negative_rate",
+    "true_positive_rate",
+    "true_negative_rate",
+    "positive_rate",
+    "negative_rate",
+    "accuracy",
+    "balance_accuracy",
+    "total_positives",
+    "total_negatives",
+    "total_individuals"]
+    
 #@st.cache
 def fetch_training_path():
     paths  = []
@@ -282,6 +296,9 @@ def display_fairness_metrics():
   st.title("[Fairness Results]")
 
   st.sidebar.markdown("## Filter Options")
+
+  
+
   input_models_eval = st.sidebar.selectbox("Results", [""] + sorted(fetch_results_path().keys()), index=0)
 
   if input_models_eval and len(fetch_results_path().keys()) > 0:
@@ -292,12 +309,14 @@ def display_fairness_metrics():
     #####################################################################
     st.sidebar.markdown("### Disparate Mistreatment")
 
-    input_metrics     = st.sidebar.selectbox("Metrics",  sorted(df_all_metrics.columns))
+    input_metrics     = st.sidebar.selectbox("Metrics",  sorted(MISTREATMENT_METRICS))
     df_all_metric_filter = df_all_metrics[df_all_metrics.sub_key.isin([input_features])]
 
     st.markdown('### Disparate Mistreatment')
 
-    columns         = ['sub_key', 'sub', 'feature'] + [input_metrics]
+    columns         = ['sub_key', 'sub', 'feature'] + [input_metrics] 
+    if input_metrics+"_C" in df_all_metrics.columns:
+      columns.append(input_metrics+"_C")
 
     df_metrics      = filter_df(df_all_metrics, input_models_eval, columns, 'sub')
 

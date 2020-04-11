@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import os
 import seaborn as sns
 import plotly.express as px
+from util import mean_confidence_interval
 
 TEMPLATE = 'plotly_white' #simple_white
 #https://seaborn.pydata.org/generated/seaborn.color_palette.html#seaborn.color_palette
@@ -212,7 +213,7 @@ def plot_fairness_mistreatment(df, metric, title=""):
   data = []
   
   data.append(go.Bar(y=df.index, x=df[metric], orientation='h',
-                    error_x=dict(type='data', array=[0.3, 0.3, 0.3]),
+                    error_x= dict(type='data', array=df[metric+"_C"]) if metric+"_C" in df.columns else {}  ,
                     marker={'color': list(range(len(df.index))), 
                             'colorscale': 'Tealgrn'})) #Plotly3
   
@@ -222,7 +223,7 @@ def plot_fairness_mistreatment(df, metric, title=""):
                     xaxis_title=metric, 
                     xaxis_range=(0, np.max([1, df[metric].max()])),
                     legend=dict(y=-0.2), title=title)
-  fig.update_traces(texttemplate='%{x:.2f}', textposition='outside')
+  #fig.update_traces(texttemplate='%{x:.2f}', textposition='outside')
 
   fig.update_layout(shapes=[
       dict(
@@ -251,18 +252,20 @@ def plot_fairness_treatment(df, metric, items, min_count=10, top=False, title=""
     #df_diff['diff'] = df_diff['max_score']-df_diff['min_score']
     items  = df_diff.sort_values('total', ascending=False).index[:5]
 
-  df    = df.groupby(["action", metric]).agg({"rewards": 'count', score: 'mean'}).reset_index()#.sort_values("rhat_scores")
+  df    = df.groupby(["action", metric]).agg(
+              rewards=("rewards", 'count'),
+              metric=(score, 'mean'),
+              confidence=(score, confidence)).reset_index()#.sort_values("rhat_scores")
+  
   df    = df[df.rewards > min_count] # filter min interactions
 
-  
   df    = df[df.action.isin(items)]
   
   for group, rows in df.groupby(metric):
     data.append(go.Bar(name=metric+"."+str(group), 
                         x=["Item"+":"+str(a) for a in rows["action"]], 
-                        y=rows[score])) #px.colors.sequential.Purp [i for i in range(len(rows))]
-    #, 
-                        #marker={'color': px.colors.sequential.Purp[int(i%7)]}
+                        y=rows['metric'],
+                        error_y= dict(type='data', array=rows['confidence']) )) #px.colors.sequential.Purp [i for i in range(len(rows))]
 
     i += 1
   fig = go.Figure(data=data)
@@ -271,7 +274,7 @@ def plot_fairness_treatment(df, metric, items, min_count=10, top=False, title=""
   fig.update_layout(template=TEMPLATE, legend_orientation="h", 
                     yaxis_title=score,
                     legend=dict(y=-0.2), title=title)
-  fig.update_traces(texttemplate='%{y:.2f}', textposition='outside')
+  #fig.update_traces(texttemplate='%{y:.2f}', textposition='outside')
   #fig.update_layout(coloraxis = {'colorscale':'Purp'})
 
   fig.update_layout(shapes=[
@@ -282,7 +285,7 @@ def plot_fairness_treatment(df, metric, items, min_count=10, top=False, title=""
             dash="dot",
         ),        
         xref='paper', x0= 0, x1= 1,
-        yref='y', y0= df[score].mean(), y1= df[score].mean()
+        yref='y', y0= df['metric'].mean(), y1= df['metric'].mean()
       )
   ])
   
@@ -301,10 +304,13 @@ def plot_fairness_impact(df, metric, items, min_count=10, top=False, title=""):
     #df_diff['diff'] = df_diff['max_score']-df_diff['min_score']
     items  = df_diff.sort_values('total', ascending=False).index[:5]
 
-  df    = df.groupby(["action", metric]).agg({"rewards": 'count', 'rhat_scores': 'mean'}).reset_index()#.sort_values("rhat_scores")
+  df    = df.groupby(["action", metric]).agg(
+              rewards=("rewards", 'count'),
+              rhat_scores=("rhat_scores", 'mean'),
+              confidence=("rhat_scores", confidence)).reset_index()#.sort_values("rhat_scores")
+
   df    = df.merge(df.groupby(metric).agg(total_rewards=("rewards", 'sum')).reset_index(), on=metric)
   df[score] = df['rewards']/df['total_rewards']#.sum()
-  #st.dataframe(df)
 
   df    = df[df.action.isin(items)]
   df    = df[df.rewards > min_count] # filter min interactions
@@ -345,7 +351,8 @@ def plot_fairness_impact(df, metric, items, min_count=10, top=False, title=""):
 
   return fig
 
-
+def confidence(x):
+  return mean_confidence_interval(x)[1]
 
 def _color_by_metric(metric):
   if "ndcg" in metric:

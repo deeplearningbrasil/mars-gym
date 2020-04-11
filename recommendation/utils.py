@@ -5,6 +5,7 @@ from multiprocessing.pool import Pool
 from typing import List, Union, Dict, Tuple
 from zipfile import ZipFile 
 from google.cloud import storage
+import json
 
 import numpy as np
 import pandas as pd
@@ -199,7 +200,15 @@ def save_trained_data(source_dir: str, target_dir: str):
         shutil.copy(source_dir+'/'+zip_filename, target_dir+'/'+zip_filename)
 
 
-import json
+def mean_confidence_interval(data, confidence=0.95):
+    data = np.array(data)
+    data = data[~np.isnan(data)]
+    a = 1.0 * data
+    n = len(a)
+    m, se = np.mean(a), scipy.stats.sem(a)
+    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+    return m, h
+
 class JsonEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
