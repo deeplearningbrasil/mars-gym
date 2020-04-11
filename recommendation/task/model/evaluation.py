@@ -31,6 +31,8 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
     direct_estimator_module: str = luigi.Parameter(default=None)
     direct_estimator_cls: str = luigi.Parameter(default=None)
 
+    policy_estimator_extra_params: dict = luigi.DictParameter(default={})
+
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     fairness_columns: List[str] = luigi.ListParameter()
@@ -60,7 +62,9 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         if not hasattr(self, "_policy_estimator"):
             self._policy_estimator = PolicyEstimatorTraining(
                 project=self.model_training.project,
-                data_frames_preparation_extra_params=self.model_training.data_frames_preparation_extra_params)
+                data_frames_preparation_extra_params=self.model_training.data_frames_preparation_extra_params,
+                **self.policy_estimator_extra_params,
+            )
         return self._policy_estimator
 
     def requires(self):

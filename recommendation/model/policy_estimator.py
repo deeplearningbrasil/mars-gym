@@ -8,7 +8,7 @@ from recommendation.utils import lecun_normal_init
 
 class PolicyEstimator(nn.Module):
     def __init__(self, n_items: int, embedding_dim: int, input_columns: List[Column],
-                 num_elements_per_embeddings: List[int], sample_batch: List[torch.Tensor],
+                 num_elements_per_embeddings: List[int], layers: List[int], sample_batch: List[torch.Tensor],
                  weight_init: Callable = lecun_normal_init) -> None:
         super().__init__()
 
@@ -17,7 +17,13 @@ class PolicyEstimator(nn.Module):
 
         sample_transformed_inputs = self.transform_inputs(sample_batch)
 
-        self.output = nn.Linear(sample_transformed_inputs.shape[1], n_items)
+        input_dim = sample_transformed_inputs.shape[1]
+        self.layers = nn.ModuleList(
+            [nn.Linear(
+                input_dim if i == 0 else layers[i - 1],
+                layer_size
+            ) for i, layer_size in enumerate(layers)])
+        self.output = nn.Linear(layers[-1], n_items)
 
         self.weight_init = weight_init
         self.apply(self.init_weights)
@@ -50,5 +56,8 @@ class PolicyEstimator(nn.Module):
 
     def forward(self, *inputs: torch.Tensor) -> torch.Tensor:
         out = self.transform_inputs(inputs)
+
+        for layer in self.layers:
+            out = torch.selu(layer(out))
         out = self.output(out)
         return torch.log_softmax(out, dim=1)

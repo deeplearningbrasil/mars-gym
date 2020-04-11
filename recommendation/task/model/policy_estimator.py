@@ -1,4 +1,5 @@
 from copy import deepcopy
+from typing import List
 
 import luigi
 import numpy as np
@@ -15,10 +16,11 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
     monitor_metric = "loss"
     loss_function = "nll"
 
+    layers: List[int] = luigi.ListParameter(default=[512, 512])
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
 
     embedding_dim: int = luigi.IntParameter(default=100)
-    epochs = luigi.IntParameter(default=500)
+    epochs = luigi.IntParameter(default=1000)
     early_stopping_patience: int = luigi.IntParameter(default=20)
     metrics = luigi.ListParameter(default=["loss", "acc"])
 
@@ -36,5 +38,11 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
         num_elements_per_embeddings = [np.max(self.train_data_frame[input_column.name].values.tolist()) + 1
                                        for input_column in input_columns
                                        if input_column.type in (IOType.INDEX, IOType.INDEX_ARRAY)]
-        return PolicyEstimator(self.n_items, self.embedding_dim, input_columns, num_elements_per_embeddings,
-                               self.get_sample_batch(), TORCH_WEIGHT_INIT[self.weight_init])
+        return PolicyEstimator(
+            n_items=self.n_items,
+            embedding_dim=self.embedding_dim,
+            input_columns=input_columns,
+            num_elements_per_embeddings=num_elements_per_embeddings,
+            layers=self.layers,
+            sample_batch=self.get_sample_batch(),
+            weight_init=TORCH_WEIGHT_INIT[self.weight_init])
