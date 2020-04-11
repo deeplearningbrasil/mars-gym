@@ -109,6 +109,8 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         with open(os.path.join(self.output().path, "metrics.json"), "w") as metrics_file:
             json.dump(metrics, metrics_file, cls=JsonEncoder, indent=4)
                  
+        df_offpolicy.to_csv(os.path.join(self.output().path, "df_offpolicy.csv"), index=False)
+
         df_fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
         df_fairness.to_csv(os.path.join(self.output().path, "fairness_df.csv"), index=False)
 
@@ -183,19 +185,16 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
             rhat_rewards, rewards, ps_eval, ps = self._offpolicy_eval(df)
 
-            l_ips, ips, h_ips       = eval_IPS(rewards, ps_eval, ps)
-            l_cips, cips, h_cips    = eval_CIPS(rewards, ps_eval, ps)
-            l_snips, snips, h_snips = eval_SNIPS(rewards, ps_eval, ps)
+            ips, c_ips     = eval_IPS(rewards, ps_eval, ps)
+            cips, c_cips   = eval_CIPS(rewards, ps_eval, ps)
+            snips, c_snips = eval_SNIPS(rewards, ps_eval, ps)
 
-            metrics["IPS_L"]        = l_ips
             metrics["IPS"]          = ips
-            metrics["IPS_H"]        = h_ips
-            metrics["CIPS_L"]       = l_cips
+            metrics["IPS_C"]        = c_ips
             metrics["CIPS"]         = cips
-            metrics["CIPS_H"]       = h_cips
-            metrics["SNIPS_L"]      = l_snips
+            metrics["CIPS_C"]       = c_cips
             metrics["SNIPS"]        = snips
-            metrics["SNIPS_H"]      = h_snips
+            metrics["SNIPS_C"]      = c_snips
 
             metrics["DirectEstimator"] = np.mean(rhat_rewards)
             metrics["DoublyRobust"]    = eval_doubly_robust(rhat_rewards, rewards, ps_eval, ps)
@@ -253,7 +252,8 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
     def _offpolicy_eval(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         # Filter df used in offpolicy evaluation
         ps_column    = self.model_training.project_config.propensity_score_column_name
-        df_offpolicy = df[df[ps_column] > 0]
+        e            = 0.01
+        df_offpolicy = df[df[ps_column] > e]
 
         rewards      = df_offpolicy["rewards"].values
         rhat_rewards = df_offpolicy["rhat_rewards"].values

@@ -6,7 +6,7 @@ from typing import List, Union, Dict, Tuple
 from zipfile import ZipFile 
 from google.cloud import storage
 import json
-
+import scipy
 import numpy as np
 import pandas as pd
 import torch

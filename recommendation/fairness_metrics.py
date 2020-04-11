@@ -72,7 +72,7 @@ def calculate_fairness_metrics(df: pd.DataFrame, sub_keys: List[str], ground_tru
             rows.append({
                 "sub_key": sub_key,
                 "sub": sub,
-                "total_class": len(acc),
+                "total_class": len(tp),
                 "false_positive_rate": fpr,
                 "false_positive_rate_C": fpr_c,
                 "false_negative_rate": fnr,

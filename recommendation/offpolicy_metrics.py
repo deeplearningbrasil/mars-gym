@@ -38,10 +38,11 @@ def eval_IPS(rewards, t_props, l_props):
   stddev = np.sqrt(var)
 
   # C.I. assuming unknown variance - use t-distribution and effective sample size
-  min_bound = E_t - cv * stddev / np.sqrt(int(n_e))
-  max_bound = E_t + cv * stddev / np.sqrt(int(n_e))
+  c = cv * stddev / np.sqrt(int(n_e))
+  min_bound = E_t - c
+  max_bound = E_t + c
 
-  result = (min_bound, E_t, max_bound) # 0.025, 0.500, 0.975
+  result = (E_t, c) # 0.025, 0.500, 0.975
   return result
 
 def eval_CIPS(rewards, t_props, l_props, cap=15):
@@ -63,10 +64,12 @@ def eval_CIPS(rewards, t_props, l_props, cap=15):
   stddev_capped = np.sqrt(var_capped)
 
   # C.I. assuming unknown variance - use t-distribution and effective sample size
-  min_bound_capped = E_t_capped - cv * stddev_capped / np.sqrt(int(n_e))
-  max_bound_capped = E_t_capped + cv * stddev_capped / np.sqrt(int(n_e))
+  c = cv * stddev_capped / np.sqrt(int(n_e))
 
-  result = (min_bound_capped, E_t_capped, max_bound_capped) # 0.025, 0.500, 0.975
+  min_bound_capped = E_t_capped - c
+  max_bound_capped = E_t_capped + c
+
+  result = (E_t_capped, c) # 0.025, 0.500, 0.975
 
   return result
 
@@ -86,14 +89,15 @@ def eval_SNIPS(rewards, t_props, l_props):
   stddev_normed = np.sqrt(var_normed)
 
   # C.I. assuming unknown variance - use t-distribution and effective sample size
-  min_bound_normed = E_t_normed - cv * stddev_normed / np.sqrt(int(n_e))
-  max_bound_normed = E_t_normed + cv * stddev_normed / np.sqrt(int(n_e))
+  c = cv * stddev_normed / np.sqrt(int(n_e))
+
+  min_bound_normed = E_t_normed - c
+  max_bound_normed = E_t_normed + c
 
   # Store result
-  result = (min_bound_normed, E_t_normed, max_bound_normed) # 0.025, 0.500, 0.975
+  result = (E_t_normed, c) # 0.025, 0.500, 0.975
 
   return result
-
 
 def eval_doubly_robust(rhat_rewards, rewards, t_props, l_props, cap=None):
   # Calculate Sample Weigths

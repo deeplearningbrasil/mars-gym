@@ -20,10 +20,11 @@ def get_colors(models, color=px.colors.qualitative.Plotly):
   return line_dict
 
 
-def plot_bar(df, title=""):
+def plot_bar(df, confidence=None, title=""):
   data = []
   for i, row in df.iterrows():
-    data.append(go.Bar(name=row.name, x=row.keys(), y=row.values))
+    data.append(go.Bar(name=row.name, x=row.keys(), y=row.values,
+                      error_y= dict(type='data', array=confidence.loc[row.name].values)))
   
   fig = go.Figure(data=data)
   # Change the bar mode
@@ -32,7 +33,7 @@ def plot_bar(df, title=""):
                     legend=dict(y=-0.2), title=title)
   st.plotly_chart(fig)
 
-def plot_line(df, title="", yrange=[0, 1], cum=False):
+def plot_line(df, confidence=None, title="", yrange=[0, 1], cum=False):
   data = []
   ymax = yrange[1] if yrange else 1
   
@@ -46,6 +47,22 @@ def plot_line(df, title="", yrange=[0, 1], cum=False):
   fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
   if yrange is not None:
     fig.update_yaxes(range=[yrange[0], ymax+(ymax*0.1)])
+
+  st.plotly_chart(fig)
+
+def plot_radar(df, confidence=None, title=""):
+  data = []
+  for i, row in df.iterrows():
+    data.append(go.Scatterpolar(
+      r=row.values,
+      theta=row.keys(),
+      fill='toself',
+      name=row.name
+    ))
+  
+  fig = go.Figure(data=data)
+  # Change the bar mode
+  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
 
   st.plotly_chart(fig)
 
@@ -144,21 +161,6 @@ def plot_exploration_arm(df, title="", window=20,  roll=False, all_items = []):
 
     return fig  
 
-def plot_radar(df, title=""):
-  data = []
-  for i, row in df.iterrows():
-    data.append(go.Scatterpolar(
-      r=row.values,
-      theta=row.keys(),
-      fill='toself',
-      name=row.name
-    ))
-  
-  fig = go.Figure(data=data)
-  # Change the bar mode
-  fig.update_layout( template=TEMPLATE, legend_orientation="h", legend=dict(x=-.0, y=1.5), title=title)
-
-  st.plotly_chart(fig)
 
 def plot_hist(df, title=""):
   data = []

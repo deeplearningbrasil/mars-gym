@@ -32,6 +32,31 @@ GRAPH_METRIC_MODEL = {
   "Box": plot_box
 }
 
+RECSYS_METRICS = [
+  "count",
+  "mean_average_precision",
+  "precision_at_1",
+  "ndcg_at_5",
+  "ndcg_at_10",
+  "ndcg_at_15",
+  "ndcg_at_20",
+  "ndcg_at_50",
+  "coverage_at_5",
+  "coverage_at_10",
+  "coverage_at_15",
+  "coverage_at_20",
+  "coverage_at_50",
+  "personalization_at_5",
+  "personalization_at_10",
+  "personalization_at_15",
+  "personalization_at_20",
+  "personalization_at_50",
+  "IPS",
+  "CIPS",
+  "SNIPS",
+  "DirectEstimator",
+  "DoublyRobust"]
+
 MISTREATMENT_METRICS = [
     "total_class",
     "false_positive_rate",
@@ -194,35 +219,50 @@ def load_all_iteraction_metrics(iteractions, sample_size):
   return pd.concat(metrics)
 
 def display_compare_results():
-  st.title("[Compare Results]")
+  st.title("[RecSys Metrics]")
 
   st.sidebar.markdown("## Filter Options")
   input_models_eval = st.sidebar.multiselect("Results", sorted(fetch_results_path().keys()))
+  
 
   if len(fetch_results_path().keys()) > 0:
+    data_metrics       = load_data_metrics()
+    data_params        = load_eval_params()
 
-    input_metrics     = st.sidebar.multiselect("Metrics", sorted(load_data_metrics().columns), default=['ndcg_at_5', 'mean_average_precision'])
-    input_params      = st.sidebar.multiselect("Parameters", sorted(load_eval_params().columns))
+    input_metrics      = st.sidebar.multiselect("Metrics", sorted(RECSYS_METRICS), default=['ndcg_at_5', 'mean_average_precision'])
+    input_params       = st.sidebar.multiselect("Parameters", sorted(data_params.columns))
+
+    confidence_metrics = data_metrics[[c for c in data_metrics.columns if "_C" in c]]
+    for c in input_metrics:
+      c_column = c+"_C" 
+      confidence_metrics[c_column] = data_metrics[c_column] if c_column in data_metrics else None
+    confidence_metrics = confidence_metrics[[c+"_C" for c in input_metrics]]
+
 
     st.sidebar.markdown("## Graph Options")
 
     input_graph       = st.sidebar.radio("Graph", list(GRAPH_METRIC.keys()))
     input_df_trans    = st.sidebar.checkbox("Transpose Data?")
-    input_sorted      = st.sidebar.selectbox("Sort", [""] + sorted(load_data_metrics().columns), index=0)
+    input_sorted      = st.sidebar.selectbox("Sort", [""] + sorted(data_metrics.columns), index=0)
 
-    df_metrics      = filter_df(load_data_metrics(), input_models_eval, input_metrics, input_sorted)
-    df_eval_params  = filter_df(load_eval_params(), input_models_eval, input_params).transpose()
+    df_metrics        = filter_df(data_metrics, input_models_eval, input_metrics, input_sorted)
+    df_eval_params    = filter_df(data_params, input_models_eval, input_params).transpose()
     
     try:
       df_train_params   = filter_df(load_train_params(), cut_name(input_models_eval)).transpose()
     except:
       df_train_params = df_hist = None
 
+
+
     GRAPH_METRIC[input_graph](df_metrics.transpose() if input_df_trans else df_metrics,
+                  confidence = confidence_metrics,
                   title="Comparison of Recsys Metrics")
 
     st.markdown('## Metrics')
     st.dataframe(df_metrics)
+    st.dataframe(confidence_metrics)
+    
 
     if df_train_params is not None:
       st.markdown('## Params (Train)')
@@ -230,7 +270,6 @@ def display_compare_results():
 
     st.markdown('## Params (Eval)')
     st.dataframe(df_eval_params)
-  
 
 def display_iteraction_result():
   st.sidebar.markdown("## Filter Options")
@@ -302,8 +341,8 @@ def display_fairness_metrics():
   input_models_eval = st.sidebar.selectbox("Results", [""] + sorted(fetch_results_path().keys()), index=0)
 
   if input_models_eval and len(fetch_results_path().keys()) > 0:
-    df_all_metrics    = load_fairness_metrics()
-    df_instances      = load_fairness_df()
+    df_all_metrics    = load_fairness_metrics().loc[input_models_eval]
+    df_instances      = load_fairness_df().loc[input_models_eval]
     input_features    = st.sidebar.selectbox("Features", sorted(df_all_metrics['sub_key'].unique()))
 
     #####################################################################
@@ -327,6 +366,8 @@ def display_fairness_metrics():
 
     plot_fairness_mistreatment(df_metrics, input_metrics, 
                       title="Disparate Mistreatment - Feature: "+input_features+" | "+input_metrics)
+    st.dataframe(df_all_metrics[['total_class', 'total_individuals']].sum())
+
     #####################################################################
     st.sidebar.markdown("### Disparate Treatment and Impact")
 
@@ -358,7 +399,6 @@ def display_fairness_metrics():
 
     #st.markdown('### Individuos')
     #st.dataframe(df_instances.groupby(input_features).count())
-
 
 
 def main():
