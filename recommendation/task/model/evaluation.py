@@ -6,7 +6,7 @@ import os
 from itertools import starmap
 from multiprocessing.pool import Pool
 from typing import List, Tuple
-
+import pprint
 import luigi
 import numpy as np
 import pandas as pd
@@ -24,7 +24,7 @@ from recommendation.rank_metrics import average_precision, precision_at_k, ndcg_
 from recommendation.task.model.base import BaseEvaluationTask, BaseTorchModelTraining
 from recommendation.task.model.policy_estimator import PolicyEstimatorTraining
 from recommendation.torch import FasterBatchSampler, NoAutoCollationDataLoader
-from recommendation.utils import parallel_literal_eval
+from recommendation.utils import parallel_literal_eval, JsonEncoder
 
 
 class EvaluateTestSetPredictions(BaseEvaluationTask):
@@ -80,99 +80,224 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         df["action_scores"]  = parallel_literal_eval(df["action_scores"])
         df["action"]         = df["sorted_actions"].apply(lambda sorted_actions: sorted_actions[0])
 
-        if self.model_training.metadata_data_frame is not None:
-            df = pd.merge(df, self.model_training.metadata_data_frame, left_on="action",
-                          right_on=self.model_training.project_config.item_column.name, suffixes=("", "_action"))
-
         with Pool(self.num_processes) as p:
             print("Creating the relevance lists...")
             df["relevance_list"] = list(
                 tqdm(p.starmap(_create_relevance_list,
-                               zip(df["sorted_actions"], df[self.model_training.project_config.item_column.name],
-                                   df[self.model_training.project_config.output_column.name])),
-                     total=len(df)))
+                                zip(df["sorted_actions"], df[self.model_training.project_config.item_column.name],
+                                    df[self.model_training.project_config.output_column.name])),
+                        total=len(df)))
 
-            ground_truth_df = df[df[self.model_training.project_config.output_column.name] == 1]
+        if self.model_training.metadata_data_frame is not None:
+            df = pd.merge(df, self.model_training.metadata_data_frame, left_on="action",
+                          right_on=self.model_training.project_config.item_column.name, suffixes=("", "_action"))
 
+        # Ground Truth
+        ground_truth_df = df[df[self.model_training.project_config.output_column.name] == 1]
+
+        df_rank, dict_rank               = self.rank_metrics(ground_truth_df)
+        df_offpolicy, dict_offpolice     = self.offpolice_metrics(df)
+        df_fairness, df_fairness_metrics = self.fairness_metrics(ground_truth_df)
+        
+        # Save Logs
+        metrics = {**dict_rank, **dict_offpolice}
+        pprint.pprint(metrics)
+        with open(os.path.join(self.output().path, "metrics.json"), "w") as metrics_file:
+            json.dump(metrics, metrics_file, cls=JsonEncoder, indent=4)
+                 
+        df_fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
+        df_fairness.to_csv(os.path.join(self.output().path, "fairness_df.csv"), index=False)
+
+
+    def rank_metrics(self, df: pd.DataFrame):
+        with Pool(self.num_processes) as p:
             print("Calculating average precision...")
-            ground_truth_df["average_precision"] = list(
-                tqdm(p.map(average_precision, ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+            df["average_precision"] = list(
+                tqdm(p.map(average_precision, df["relevance_list"]), total=len(df)))
 
             print("Calculating precision at 1...")
-            ground_truth_df["precision_at_1"] = list(
-                tqdm(p.map(functools.partial(precision_at_k, k=1), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+            df["precision_at_1"] = list(
+                tqdm(p.map(functools.partial(precision_at_k, k=1), df["relevance_list"]), total=len(df)))
 
             print("Calculating nDCG at 5...")
-            ground_truth_df["ndcg_at_5"] = list(
-                tqdm(p.map(functools.partial(ndcg_at_k, k=5), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+            df["ndcg_at_5"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=5), df["relevance_list"]), total=len(df)))
             print("Calculating nDCG at 10...")
-            ground_truth_df["ndcg_at_10"] = list(
-                tqdm(p.map(functools.partial(ndcg_at_k, k=10), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+            df["ndcg_at_10"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=10), df["relevance_list"]), total=len(df)))
             print("Calculating nDCG at 15...")
-            ground_truth_df["ndcg_at_15"] = list(
-                tqdm(p.map(functools.partial(ndcg_at_k, k=15), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+            df["ndcg_at_15"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=15), df["relevance_list"]), total=len(df)))
             print("Calculating nDCG at 20...")
-            ground_truth_df["ndcg_at_20"] = list(
-                tqdm(p.map(functools.partial(ndcg_at_k, k=20), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+            df["ndcg_at_20"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=20), df["relevance_list"]), total=len(df)))
             print("Calculating nDCG at 50...")
-            ground_truth_df["ndcg_at_50"] = list(
-                tqdm(p.map(functools.partial(ndcg_at_k, k=50), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+            df["ndcg_at_50"] = list(
+                tqdm(p.map(functools.partial(ndcg_at_k, k=50), df["relevance_list"]), total=len(df)))
 
-            if not self.no_offpolicy_eval:
-                self.fill_rhat_rewards(df)
-                self.fill_ps(df, p)
-
-                df["rhat_scores"] = list(
-                    tqdm(p.starmap(_get_rhat_scores, zip(df["relevance_list"], df["action_scores"])), total=len(df)))
-
-                df["rewards"] = df[self.model_training.project_config.output_column.name]
-
-                print("Calculate ps policy eval...")
-                df["ps_eval"] = list(tqdm(
-                    p.starmap(_ps_policy_eval, zip(df["relevance_list"], df["prob_actions"])), total=len(df)))
-
-        catalog          = list(range(ground_truth_df.iloc[0]["n_items"]))
-
-
-        fairness_df      = ground_truth_df[[self.model_training.project_config.item_column.name, "action", "rewards", "rhat_scores", *self.fairness_columns]]
-        fairness_metrics = calculate_fairness_metrics(fairness_df, self.fairness_columns,
-                                                      self.model_training.project_config.item_column.name, "action")
-        fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
-        fairness_df.to_csv(os.path.join(self.output().path, "fairness_df.csv"), index=False)
+        catalog          = list(range(df.iloc[0]["n_items"]))
 
         metrics = {
             "model_task": self.model_task_id,
-            "count": len(ground_truth_df),
-            "mean_average_precision": ground_truth_df["average_precision"].mean(),
-            "precision_at_1": ground_truth_df["precision_at_1"].mean(),
-            "ndcg_at_5":  ground_truth_df["ndcg_at_5"].mean(),
-            "ndcg_at_10": ground_truth_df["ndcg_at_10"].mean(),
-            "ndcg_at_15": ground_truth_df["ndcg_at_15"].mean(),
-            "ndcg_at_20": ground_truth_df["ndcg_at_20"].mean(),
-            "ndcg_at_50": ground_truth_df["ndcg_at_50"].mean(),
-            "coverage_at_5":  prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 5),
-            "coverage_at_10": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 10),
-            "coverage_at_15": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 15),
-            "coverage_at_20": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 20),
-            "coverage_at_50": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 50),
-            "personalization_at_5":  personalization_at_k(ground_truth_df["sorted_actions"], 5),
-            "personalization_at_10": personalization_at_k(ground_truth_df["sorted_actions"], 10),
-            "personalization_at_15": personalization_at_k(ground_truth_df["sorted_actions"], 15),
-            "personalization_at_20": personalization_at_k(ground_truth_df["sorted_actions"], 20),
-            "personalization_at_50": personalization_at_k(ground_truth_df["sorted_actions"], 50),
+            "count": len(df),
+            "mean_average_precision": df["average_precision"].mean(),
+            "precision_at_1": df["precision_at_1"].mean(),
+            "ndcg_at_5":      df["ndcg_at_5"].mean(),
+            "ndcg_at_10":     df["ndcg_at_10"].mean(),
+            "ndcg_at_15":     df["ndcg_at_15"].mean(),
+            "ndcg_at_20":     df["ndcg_at_20"].mean(),
+            "ndcg_at_50":     df["ndcg_at_50"].mean(),
+            "coverage_at_5":  prediction_coverage_at_k(df["sorted_actions"], catalog, 5),
+            "coverage_at_10": prediction_coverage_at_k(df["sorted_actions"], catalog, 10),
+            "coverage_at_15": prediction_coverage_at_k(df["sorted_actions"], catalog, 15),
+            "coverage_at_20": prediction_coverage_at_k(df["sorted_actions"], catalog, 20),
+            "coverage_at_50": prediction_coverage_at_k(df["sorted_actions"], catalog, 50),
+            "personalization_at_5":  personalization_at_k(df["sorted_actions"], 5),
+            "personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
+            "personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
+            "personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
+            "personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
         }
 
-        if not self.no_offpolicy_eval:
+        return df, metrics
+        # with Pool(self.num_processes) as p:
+        #     print("Creating the relevance lists...")
+        #     df["relevance_list"] = list(
+        #         tqdm(p.starmap(_create_relevance_list,
+        #                        zip(df["sorted_actions"], df[self.model_training.project_config.item_column.name],
+        #                            df[self.model_training.project_config.output_column.name])),
+        #              total=len(df)))
+
+        #     ground_truth_df = df[df[self.model_training.project_config.output_column.name] == 1]
+
+        #     print("Calculating average precision...")
+        #     ground_truth_df["average_precision"] = list(
+        #         tqdm(p.map(average_precision, ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+
+        #     print("Calculating precision at 1...")
+        #     ground_truth_df["precision_at_1"] = list(
+        #         tqdm(p.map(functools.partial(precision_at_k, k=1), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+
+        #     print("Calculating nDCG at 5...")
+        #     ground_truth_df["ndcg_at_5"] = list(
+        #         tqdm(p.map(functools.partial(ndcg_at_k, k=5), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+        #     print("Calculating nDCG at 10...")
+        #     ground_truth_df["ndcg_at_10"] = list(
+        #         tqdm(p.map(functools.partial(ndcg_at_k, k=10), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+        #     print("Calculating nDCG at 15...")
+        #     ground_truth_df["ndcg_at_15"] = list(
+        #         tqdm(p.map(functools.partial(ndcg_at_k, k=15), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+        #     print("Calculating nDCG at 20...")
+        #     ground_truth_df["ndcg_at_20"] = list(
+        #         tqdm(p.map(functools.partial(ndcg_at_k, k=20), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+        #     print("Calculating nDCG at 50...")
+        #     ground_truth_df["ndcg_at_50"] = list(
+        #         tqdm(p.map(functools.partial(ndcg_at_k, k=50), ground_truth_df["relevance_list"]), total=len(ground_truth_df)))
+
+        #     if not self.no_offpolicy_eval:
+        #         self.fill_rhat_rewards(df)
+        #         self.fill_ps(df, p)
+
+        #         df["rhat_scores"] = list(
+        #             tqdm(p.starmap(_get_rhat_scores, zip(df["relevance_list"], df["action_scores"])), total=len(df)))
+
+        #         df["rewards"] = df[self.model_training.project_config.output_column.name]
+
+        #         print("Calculate ps policy eval...")
+        #         df["ps_eval"] = list(tqdm(
+        #             p.starmap(_ps_policy_eval, zip(df["relevance_list"], df["prob_actions"])), total=len(df)))
+
+        # catalog          = list(range(ground_truth_df.iloc[0]["n_items"]))
+
+
+        # fairness_df      = ground_truth_df[[self.model_training.project_config.item_column.name, "action", "rewards", "rhat_scores", *self.fairness_columns]]
+        # fairness_metrics = calculate_fairness_metrics(fairness_df, self.fairness_columns,
+        #                                               self.model_training.project_config.item_column.name, "action")
+        # fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
+        # fairness_df.to_csv(os.path.join(self.output().path, "fairness_df.csv"), index=False)
+
+        # metrics = {
+        #     "model_task": self.model_task_id,
+        #     "count": len(ground_truth_df),
+        #     "mean_average_precision": ground_truth_df["average_precision"].mean(),
+        #     "precision_at_1": ground_truth_df["precision_at_1"].mean(),
+        #     "ndcg_at_5":  ground_truth_df["ndcg_at_5"].mean(),
+        #     "ndcg_at_10": ground_truth_df["ndcg_at_10"].mean(),
+        #     "ndcg_at_15": ground_truth_df["ndcg_at_15"].mean(),
+        #     "ndcg_at_20": ground_truth_df["ndcg_at_20"].mean(),
+        #     "ndcg_at_50": ground_truth_df["ndcg_at_50"].mean(),
+        #     "coverage_at_5":  prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 5),
+        #     "coverage_at_10": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 10),
+        #     "coverage_at_15": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 15),
+        #     "coverage_at_20": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 20),
+        #     "coverage_at_50": prediction_coverage_at_k(ground_truth_df["sorted_actions"], catalog, 50),
+        #     "personalization_at_5":  personalization_at_k(ground_truth_df["sorted_actions"], 5),
+        #     "personalization_at_10": personalization_at_k(ground_truth_df["sorted_actions"], 10),
+        #     "personalization_at_15": personalization_at_k(ground_truth_df["sorted_actions"], 15),
+        #     "personalization_at_20": personalization_at_k(ground_truth_df["sorted_actions"], 20),
+        #     "personalization_at_50": personalization_at_k(ground_truth_df["sorted_actions"], 50),
+        # }
+
+        # if not self.no_offpolicy_eval:
+        #     rhat_rewards, rewards, ps_eval, ps = self._offpolicy_eval(df)
+
+        #     metrics["IPS"]   = eval_IPS(rewards, ps_eval, ps)
+        #     metrics["CIPS"]  = eval_CIPS(rewards, ps_eval, ps)
+        #     metrics["SNIPS"] = eval_SNIPS(rewards, ps_eval, ps)
+        #     metrics["DirectEstimator"] = np.mean(rhat_rewards)
+        #     metrics["DoublyRobust"]    = eval_doubly_robust(rhat_rewards, rewards, ps_eval, ps)
+
+        # with open(os.path.join(self.output().path, "metrics.json"), "w") as metrics_file:
+        #     json.dump(metrics, metrics_file, indent=4)
+
+    def offpolice_metrics(self, df: pd.DataFrame):
+        metrics = {}
+        
+        if self.no_offpolicy_eval:
+            return metrics
+
+        df["rewards"] = df[self.model_training.project_config.output_column.name]
+
+        with Pool(self.num_processes) as p:
+            self.fill_rhat_rewards(df)
+            self.fill_ps(df, p)
+
+            print("Calculate ps policy eval...")
+            df["ps_eval"] = list(tqdm(
+                p.starmap(_ps_policy_eval, zip(df["relevance_list"], df["prob_actions"])), total=len(df)))
+
             rhat_rewards, rewards, ps_eval, ps = self._offpolicy_eval(df)
 
-            metrics["IPS"]   = eval_IPS(rewards, ps_eval, ps)
-            metrics["CIPS"]  = eval_CIPS(rewards, ps_eval, ps)
-            metrics["SNIPS"] = eval_SNIPS(rewards, ps_eval, ps)
+            l_ips, ips, h_ips       = eval_IPS(rewards, ps_eval, ps)
+            l_cips, cips, h_cips    = eval_CIPS(rewards, ps_eval, ps)
+            l_snips, snips, h_snips = eval_SNIPS(rewards, ps_eval, ps)
+
+            metrics["IPS_L"]        = l_ips
+            metrics["IPS"]          = ips
+            metrics["IPS_H"]        = h_ips
+            metrics["CIPS_L"]       = l_cips
+            metrics["CIPS"]         = cips
+            metrics["CIPS_H"]       = h_cips
+            metrics["SNIPS_L"]      = l_snips
+            metrics["SNIPS"]        = snips
+            metrics["SNIPS_H"]      = h_snips
+
             metrics["DirectEstimator"] = np.mean(rhat_rewards)
             metrics["DoublyRobust"]    = eval_doubly_robust(rhat_rewards, rewards, ps_eval, ps)
 
-        with open(os.path.join(self.output().path, "metrics.json"), "w") as metrics_file:
-            json.dump(metrics, metrics_file, indent=4)
+        return df, metrics
+
+    def fairness_metrics(self, df: pd.DataFrame):
+        
+        df["action"]      = df["sorted_actions"].apply(lambda sorted_actions: sorted_actions[0])
+        df["rhat_scores"] = df["action_scores"].apply(lambda action_scores: action_scores[0])
+        df["rewards"]     = df["relevance_list"].apply(lambda relevance_list: relevance_list[0])
+
+        fairness_df       = df[[self.model_training.project_config.item_column.name, "action", "rewards", "rhat_scores", *self.fairness_columns]]
+        fairness_metrics  = calculate_fairness_metrics(fairness_df, self.fairness_columns,
+                                                      self.model_training.project_config.item_column.name, "action")
+
+        return fairness_df, fairness_metrics
 
     def fill_ps(self, df: pd.DataFrame, pool: Pool):
         dataset = self.policy_estimator.project_config.dataset_class(df, None, self.policy_estimator.project_config)
@@ -230,10 +355,7 @@ def _get_ps_from_probas(item_idx: int, probas: np.ndarray, available_item_indice
 
 
 def _create_relevance_list(sorted_actions: List[int], expected_action: int, reward: int) -> List[int]:
-    if reward == 1:
-        return [1 if action == expected_action else 0 for action in sorted_actions]
-    else:
-        return [0 for _ in sorted_actions]
+    return [1 if action == expected_action else 0 for action in sorted_actions]
 
 
 def _ps_policy_eval(relevance_list: List[int], prob_actions: List[float]) -> List[float]:

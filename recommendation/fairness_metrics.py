@@ -58,7 +58,7 @@ def calculate_fairness_metrics(df: pd.DataFrame, sub_keys: List[str], ground_tru
             # Balanced Accuracy (BA)
             bacc =  (tpr+tnr)/2
 
-            print(classification_report(y_true,y_pred))
+            #print(classification_report(y_true,y_pred))
 
             rows.append({
                 "sub_key": sub_key,

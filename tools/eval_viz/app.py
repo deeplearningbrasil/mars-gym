@@ -75,6 +75,7 @@ def load_data_metrics():
 #@st.cache
 def load_fairness_metrics():
   df            = csv2df(fetch_results_path(), 'fairness_metrics.csv', 'path')
+
   df['sub']     = df['sub'].astype(int).astype(str)
   df['feature'] = df['sub_key'] + "." + df['sub']
 
@@ -297,20 +298,22 @@ def display_fairness_metrics():
     st.markdown('### Disparate Mistreatment')
 
     columns         = ['sub_key', 'sub', 'feature'] + [input_metrics]
+
     df_metrics      = filter_df(df_all_metrics, input_models_eval, columns, 'sub')
-    
+
     df_metrics      = df_metrics[df_metrics.sub_key.isin([input_features])]
+
     df_metrics      = df_metrics.sort_values("feature").set_index("feature")
+    
 
     plot_fairness_mistreatment(df_metrics, input_metrics, 
                       title="Disparate Mistreatment - Feature: "+input_features+" | "+input_metrics)
-
     #####################################################################
     st.sidebar.markdown("### Disparate Treatment and Impact")
 
     df_mean_action     = df_instances.groupby(["action", input_features]).agg({"rewards": "count", "rhat_scores": "mean"}).reset_index()
     input_items        = st.sidebar.multiselect("Items", sorted(df_mean_action['action'].unique()))
-    input_items_top    = st.sidebar.checkbox("Top 5 Items?")
+    input_items_top    = st.sidebar.checkbox("Only Top 5 Items")
 
     st.markdown('### Disparate Treatment')
 
@@ -322,7 +325,7 @@ def display_fairness_metrics():
     #input_features_1   = st.sidebar.selectbox("Features (Treatment)", sorted(df_all_metrics['sub_key'].unique()))
     df_mean_action     = df_instances.groupby(["action", input_features]).agg({"rewards": "count", "rhat_scores": "mean"}).reset_index()
 
-    #st.markdown('### Disparate Impact')
+    st.markdown('### Disparate Impact')
     #st.dataframe(df_mean_action)
     plot_fairness_impact(df_instances, input_features, input_items, top=input_items_top, 
                         title="Disparate Impact - Feature: "+input_features)

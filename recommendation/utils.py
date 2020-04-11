@@ -197,3 +197,16 @@ def save_trained_data(source_dir: str, target_dir: str):
         blob.upload_from_filename(source_dir+'/'+zip_filename)
     else:
         shutil.copy(source_dir+'/'+zip_filename, target_dir+'/'+zip_filename)
+
+
+import json
+class JsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return super(JsonEncoder, self).default(obj)

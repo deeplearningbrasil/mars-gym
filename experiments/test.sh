@@ -24,7 +24,7 @@ PYTHONPATH="." luigi  --module recommendation.task.model.trivago.trivago_logisti
 
 PYTHONPATH="." luigi --module recommendation.task.model.evaluation EvaluateTestSetPredictions --model-module recommendation.task.model.trivago.trivago_logistic_model --model-cls TrivagoLogisticModelInteraction --model-task-id TrivagoLogisticModelInteraction_selu____epsilon_greedy_58274b531d --fairness-columns "[\"platform_idx\"]" --local-scheduler
 
-PYTHONPATH="." luigi --module recommendation.task.model.evaluation EvaluateTestSetPredictions --model-module recommendation.task.model.trivago.trivago_logistic_model --model-cls TrivagoLogisticModelInteraction --model-task-id TrivagoLogisticModelInteraction_selu____fixed_6b9b1b73c3 --fairness-columns "[\"platform_idx\"]" --local-scheduler
+PYTHONPATH="." luigi --module recommendation.task.model.evaluation EvaluateTestSetPredictions --model-module recommendation.task.model.trivago.trivago_logistic_model --model-cls TrivagoLogisticModelInteraction --model-task-id TrivagoLogisticModelInteraction_selu____epsilon_greedy_58274b531d --fairness-columns "[\"platform_idx\", \"accessible hotel\", \"star\"]" --local-scheduler
 
 
 # PYTHONPATH="." luigi  --module recommendation.task.model.trivago.trivago_logistic_model TrivagoLogisticModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Rio de Janeiro, Brazil", "window_hist": 10}' --n-factors 50 --learning-rate=0.001 --optimizer adam --metrics '["loss"]' --epochs 250 --obs-batch-size 3000 --val-split-type random --full-refit --early-stopping-patience 5 --batch-size 200 --num-episodes 1 --bandit-policy softmax_explorer --bandit-policy-params '{"logit_multiplier": 5.0}' --test-size 0.2
