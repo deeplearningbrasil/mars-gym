@@ -60,13 +60,13 @@ def calculate_fairness_metrics(df: pd.DataFrame, sub_keys: List[str], ground_tru
             bacc =  (tpr+tnr)/2
 
             #print(classification_report(y_true,y_pred))
-            fpr, fpr_c = mean_confidence_interval(fpr)
-            fnr, fnr_c = mean_confidence_interval(fnr)
-            tpr, tpr_c = mean_confidence_interval(tpr)
-            tnr, tnr_c = mean_confidence_interval(tnr)
+            fpr, fpr_c  = mean_confidence_interval(fpr)
+            fnr, fnr_c  = mean_confidence_interval(fnr)
+            tpr, tpr_c  = mean_confidence_interval(tpr)
+            tnr, tnr_c  = mean_confidence_interval(tnr)
             pr,  pr_c   = mean_confidence_interval(pr)
             nr,  nr_c   = mean_confidence_interval(nr)
-            acc, acc_c = mean_confidence_interval(acc)
+            acc, acc_c  = mean_confidence_interval(acc)
             bacc, bacc_c  = mean_confidence_interval(bacc)
 
             rows.append({

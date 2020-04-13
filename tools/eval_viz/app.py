@@ -336,10 +336,8 @@ def display_fairness_metrics():
 
   st.sidebar.markdown("## Filter Options")
 
-  
-
   input_models_eval = st.sidebar.selectbox("Results", [""] + sorted(fetch_results_path().keys()), index=0)
-
+  st.write(input_models_eval)
   if input_models_eval and len(fetch_results_path().keys()) > 0:
     df_all_metrics    = load_fairness_metrics().loc[input_models_eval]
     df_instances      = load_fairness_df().loc[input_models_eval]
@@ -353,7 +351,7 @@ def display_fairness_metrics():
 
     st.markdown('### Disparate Mistreatment')
 
-    columns         = ['sub_key', 'sub', 'feature'] + [input_metrics] 
+    columns         = list(np.unique(['sub_key', 'sub', 'feature', 'total_class', 'total_individuals'] + [input_metrics]))
     if input_metrics+"_C" in df_all_metrics.columns:
       columns.append(input_metrics+"_C")
 
@@ -366,7 +364,18 @@ def display_fairness_metrics():
 
     plot_fairness_mistreatment(df_metrics, input_metrics, 
                       title="Disparate Mistreatment - Feature: "+input_features+" | "+input_metrics)
-    st.dataframe(df_all_metrics[['total_class', 'total_individuals']].sum())
+
+    df_total     = df_metrics[['total_class', 'total_individuals']]
+    df_total_sum = df_total.sum(numeric_only=True)
+    df_percent   = df_total/df_total_sum
+    df_total     = df_total.apply(lambda row: ["{} ({:.2f} %)".format(i, p*100) for i,p in zip(row, df_percent[row.name])])
+    df_total.loc['total'] = df_total_sum
+    
+    
+    #df_percent = df_total/x
+    
+
+    st.dataframe(df_total)
 
     #####################################################################
     st.sidebar.markdown("### Disparate Treatment and Impact")

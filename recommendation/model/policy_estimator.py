@@ -42,6 +42,10 @@ class PolicyEstimator(nn.Module):
         transformed_inputs: List[torch.Tensor] = []
         embeddings_idx = 0
         for input, input_column in zip(inputs, self.input_columns):
+            #from IPython import embed; embed()
+            if embeddings_idx == 0:
+                embeddings_idx += 1
+                continue
             if input_column.type == IOType.INDEX:
                 transformed_inputs.append(self.embeddings[embeddings_idx](input))
                 embeddings_idx += 1
@@ -52,6 +56,7 @@ class PolicyEstimator(nn.Module):
                 transformed_inputs.append(input.float())
             else:
                 transformed_inputs.append(input.view(-1, 1).float())
+            
         return torch.cat(transformed_inputs, dim=1)
 
     def forward(self, *inputs: torch.Tensor) -> torch.Tensor:

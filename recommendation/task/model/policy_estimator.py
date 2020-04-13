@@ -19,7 +19,7 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
     layers: List[int] = luigi.ListParameter(default=[512, 512])
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
 
-    embedding_dim: int = luigi.IntParameter(default=100)
+    embedding_dim: int = luigi.IntParameter(default=50)
     epochs = luigi.IntParameter(default=1000)
     early_stopping_patience: int = luigi.IntParameter(default=20)
     metrics = luigi.ListParameter(default=["loss", "acc"])

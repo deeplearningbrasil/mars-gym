@@ -214,9 +214,9 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         return fairness_df, fairness_metrics
 
     def fill_ps(self, df: pd.DataFrame, pool: Pool):
-        dataset = self.policy_estimator.project_config.dataset_class(df, None, self.policy_estimator.project_config)
+        dataset       = self.policy_estimator.project_config.dataset_class(df, None, self.policy_estimator.project_config)
         batch_sampler = FasterBatchSampler(dataset, self.policy_estimator.batch_size, shuffle=False)
-        data_loader = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
+        data_loader   = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
 
         trial = Trial(self.policy_estimator.get_trained_module(),
                       criterion=lambda *args: torch.zeros(1, device=self.policy_estimator.torch_device, requires_grad=True)) \
@@ -230,6 +230,8 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         params = zip(item_indices, probas, df[self.model_training.project_config.available_arms_column_name]) \
             if self.model_training.project_config.available_arms_column_name else zip(item_indices, probas)
+     
+        from IPython import embed; embed()
         df[self.model_training.project_config.propensity_score_column_name] = list(
             tqdm(pool.starmap(_get_ps_from_probas, params), total=len(df)))
 
@@ -264,6 +266,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
 
 def _get_ps_from_probas(item_idx: int, probas: np.ndarray, available_item_indices: List[int] = None) -> float:
+    
     if available_item_indices:
         probas /= np.sum(probas[available_item_indices])
     return probas[item_idx]
