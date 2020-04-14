@@ -77,7 +77,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         df: pd.DataFrame     = preprocess_interactions_data_frame(
             pd.read_csv(get_test_set_predictions_path(self.model_training.output().path)),
-            self.model_training.project_config)
+            self.model_training.project_config).sample(10000)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
         df["prob_actions"]   = parallel_literal_eval(df["prob_actions"])
@@ -176,18 +176,21 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         df["rewards"] = df[self.model_training.project_config.output_column.name]
 
         with Pool(self.num_processes) as p:
-            self.fill_rhat_rewards(df)
+            self.fill_item_rhat_rewards(df)            
+            self.fill_rhat_rewards(df, p)
             self.fill_ps(df, p)
-
+            
             print("Calculate ps policy eval...")
             df["ps_eval"] = list(tqdm(
                 p.starmap(_ps_policy_eval, zip(df["relevance_list"], df["prob_actions"])), total=len(df)))
 
-            rhat_rewards, rewards, ps_eval, ps = self._offpolicy_eval(df)
+            action_rhat_rewards, item_idx_rhat_rewards, \
+                rewards, ps_eval, ps = self._offpolicy_eval(df)
 
-            ips, c_ips     = eval_IPS(rewards, ps_eval, ps)
-            cips, c_cips   = eval_CIPS(rewards, ps_eval, ps)
-            snips, c_snips = eval_SNIPS(rewards, ps_eval, ps)
+            ips, c_ips       = eval_IPS(rewards, ps_eval, ps)
+            cips, c_cips     = eval_CIPS(rewards, ps_eval, ps)
+            snips, c_snips   = eval_SNIPS(rewards, ps_eval, ps)
+            doubly, c_doubly = eval_doubly_robust(action_rhat_rewards, item_idx_rhat_rewards, rewards, ps_eval, ps)
 
             metrics["IPS"]          = ips
             metrics["IPS_C"]        = c_ips
@@ -196,8 +199,9 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
             metrics["SNIPS"]        = snips
             metrics["SNIPS_C"]      = c_snips
 
-            metrics["DirectEstimator"] = np.mean(rhat_rewards)
-            metrics["DoublyRobust"]    = eval_doubly_robust(rhat_rewards, rewards, ps_eval, ps)
+            metrics["DirectEstimator"] = np.mean(action_rhat_rewards)
+            metrics["DoublyRobust"]    = doubly
+            metrics["DoublyRobust_C"]  = c_doubly
 
         return df, metrics
 
@@ -235,11 +239,33 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         df[self.model_training.project_config.propensity_score_column_name] = list(
             tqdm(pool.starmap(_get_ps_from_probas, params), total=len(df)))
 
-    def fill_rhat_rewards(self, df: pd.DataFrame):
-        dataset = self.direct_estimator.project_config.dataset_class(df, self.direct_estimator.embeddings_for_metadata,
+    def fill_rhat_rewards(self, df: pd.DataFrame, pool: Pool):
+        # Explode
+        df_exploded = df.reset_index().explode('sorted_actions')
+        df_exploded['item_idx'] = df_exploded['sorted_actions']
+        
+        # Predict
+        rewards     = self._direct_estimator_predict(df_exploded)
+        df_exploded["actions_rhat_rewards"] = rewards
+
+        # implode
+        df_implode = df_exploded.groupby('index').actions_rhat_rewards.apply(list)
+
+        df['actions_rhat_rewards'] = df_implode
+        df["action_rhat_rewards"] = list(tqdm(
+            pool.starmap(_get_rhat_rewards, zip(df["prob_actions"], df["actions_rhat_rewards"])), total=len(df)))
+
+
+    def fill_item_rhat_rewards(self, df: pd.DataFrame):
+        rewards = self._direct_estimator_predict(df)
+        
+        df["item_idx_rhat_rewards"] = rewards
+
+    def _direct_estimator_predict(self, df):
+        dataset       = self.direct_estimator.project_config.dataset_class(df, self.direct_estimator.embeddings_for_metadata,
                                                                      self.direct_estimator.project_config)
         batch_sampler = FasterBatchSampler(dataset, self.direct_estimator.batch_size, shuffle=False)
-        data_loader = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
+        data_loader   = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
 
         trial = Trial(self.direct_estimator.get_trained_module(),
                       criterion=lambda *args: torch.zeros(1, device=self.direct_estimator.torch_device, requires_grad=True)) \
@@ -247,22 +273,23 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         with torch.no_grad():
             rewards_tensor: torch.Tensor = trial.predict(verbose=0, data_key=torchbearer.VALIDATION_DATA)
-        rewards: np.ndarray = rewards_tensor[:, 0].cpu().numpy()
-
-        df["rhat_rewards"] = rewards
+        rewards: np.ndarray = rewards_tensor[:, 0].cpu().numpy()        
+        
+        return rewards
 
     def _offpolicy_eval(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         # Filter df used in offpolicy evaluation
-        ps_column    = self.model_training.project_config.propensity_score_column_name
-        e            = 0.01
-        df_offpolicy = df[df[ps_column] > e]
+        ps_column             = self.model_training.project_config.propensity_score_column_name
+        e                     = 0.001
+        df_offpolicy          = df[df[ps_column] > e]
 
-        rewards      = df_offpolicy["rewards"].values
-        rhat_rewards = df_offpolicy["rhat_rewards"].values
-        ps_eval      = df_offpolicy["ps_eval"].values
-        ps           = df_offpolicy[ps_column].values
+        rewards               = df_offpolicy["rewards"].values
+        ps_eval               = df_offpolicy["ps_eval"].values
+        ps                    = df_offpolicy[ps_column].values
+        action_rhat_rewards   = df_offpolicy["action_rhat_rewards"].values
+        item_idx_rhat_rewards = df_offpolicy["item_idx_rhat_rewards"].values
 
-        return rhat_rewards, rewards, ps_eval, ps
+        return action_rhat_rewards, item_idx_rhat_rewards, rewards, ps_eval, ps
 
 
 def _get_ps_from_probas(item_idx: int, probas: np.ndarray, available_item_indices: List[int] = None) -> float:
@@ -271,18 +298,14 @@ def _get_ps_from_probas(item_idx: int, probas: np.ndarray, available_item_indice
         probas /= np.sum(probas[available_item_indices])
     return probas[item_idx]
 
-
 def _create_relevance_list(sorted_actions: List[int], expected_action: int, reward: int) -> List[int]:
     return [1 if action == expected_action else 0 for action in sorted_actions]
-
 
 def _ps_policy_eval(relevance_list: List[int], prob_actions: List[float]) -> List[float]:
     return np.sum(np.array(relevance_list) * np.array(prob_actions[:len(relevance_list)])).tolist()
 
-
 def _get_rhat_scores(relevance_list: List[int], action_scores: List[float]) -> List[float]:
     return np.sum(np.array(relevance_list) * np.array(action_scores[:len(relevance_list)])).tolist()
 
-
-def _get_rhat_rewards(relevance_list: List[int]) -> float:
-    return relevance_list[0]
+def _get_rhat_rewards(prob_actions: List[int], action_scores: List[float]) -> float:
+    return np.sum(np.array(prob_actions) * np.array(action_scores))
