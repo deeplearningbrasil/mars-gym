@@ -231,7 +231,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         params = zip(item_indices, probas, df[self.model_training.project_config.available_arms_column_name]) \
             if self.model_training.project_config.available_arms_column_name else zip(item_indices, probas)
      
-        from IPython import embed; embed()
+        #from IPython import embed; embed()
         df[self.model_training.project_config.propensity_score_column_name] = list(
             tqdm(pool.starmap(_get_ps_from_probas, params), total=len(df)))
 

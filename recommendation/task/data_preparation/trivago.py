@@ -29,6 +29,7 @@ from pyspark.sql.window import Window
 import pyspark.sql.functions as func
 from pyspark.sql.functions import when
 from sklearn.preprocessing import MinMaxScaler
+from pyspark.ml.feature import QuantileDiscretizer
 
 BASE_DIR: str = os.path.join("output", "trivago")
 DATASET_DIR: str = os.path.join("output", "trivago", "dataset")
@@ -61,31 +62,6 @@ class FilterDataset(BasePySparkTask):
     def output(self):
       return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train__size=%d.csv" % (self.sample_size))),\
               luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "item_metadata__size=%d.csv" % (self.sample_size)))
-
-    # # https://github.com/carlosvar9103/RecSys2019S/blob/master/src/RecSys2019_Carlos.ipynb
-    # def clean_data(self, df):
-    #   # Remove sessions where reference=NA or the impressions list is empty for the clickout item:
-
-    #   #first: contruct dataframe with session_id and the reference at the last corresponding step (=LAST clickout)
-    #   last_ref = pd.DataFrame(df.groupby(['session_id']).reference.last(),columns=['reference'])
-    #   last_ref.reset_index(level=0, inplace=True) #convert index session_id to an actual column
-      
-    #   #second: same for impressions list: 
-    #   last_imp = pd.DataFrame(df.groupby(['session_id']).impressions.last(),columns=['impressions'])
-    #   last_imp.reset_index(level=0, inplace=True)
-      
-    #   #third: merge together => columns: sessions_id, reference, impressions
-    #   temp = pd.merge(last_ref, last_imp, left_on=["session_id"], right_on=["session_id"])
-      
-      
-    #   #fourth step: remove irrelevant sessions: 
-    #   temp2=temp[temp.reference.apply(lambda x: x.isnumeric())] #drop session if reference value is not a number
-    #   temp3= temp2.dropna(axis=0,subset=['impressions']) #drop session if impressions list is NaN
-
-    #   #fifth step: get back the original full dataset (=all columns)
-    #   out = pd.merge(df,pd.DataFrame(temp3["session_id"]),on=["session_id"])
-      
-    #   return out
 
     def main(self, sc: SparkContext, *args):
       os.makedirs(os.path.join(DATASET_DIR, clean_filename(self.filter_city)), exist_ok=True)
@@ -168,6 +144,7 @@ class TransformSessionDataset(luigi.Task):
       tf = CountVectorizer(tokenizer=lambda x: x.split("|"))
       tf_df = tf.fit_transform(df[column].fillna("")).todense()
       tf_df = pd.DataFrame(tf_df, columns = sorted(tf.vocabulary_.keys()))
+      tf_df.columns = [column+"_"+c.replace(" ", "_") for c in tf_df.columns]
       return tf_df
 
     def run(self):
@@ -182,6 +159,7 @@ class TransformSessionDataset(luigi.Task):
       df_current_filters = self.split_df_columns(df, 'current_filters')
       #df      = df.join(tf_current_filters).drop(['properties'], axis=1)#.shift(periods=1, fill_value=0)
       df['list_current_filters'] = df_current_filters.values.tolist()
+      df  = df.join(df_current_filters).drop(['current_filters'], axis=1)#.shift(periods=1, fill_value=0)
 
       # Transform reference in action_type
 
@@ -327,15 +305,17 @@ class CreateIndexDataset(BasePySparkTask):
 
       # Joint meta
       meta_df = meta_df.join(item_idx_df, "item_id")
-
+      current_filtes_name = [c for c in train_df.schema.names if "current_filters_" in c and c!="current_filters_"] #current_filters.air conditioning
+      
       # Save
-      df = train_df.select("timestamp","step", "user_idx", "session_idx", "action_type", "action_type_idx", 
-                          "reference_search_for_poi","reference_change_of_sort_order",
-                          "reference_search_for_destination","reference_filter_selection",
-                          "reference_interaction_item_image_idx","reference_interaction_item_rating_idx","reference_clickout_item_idx",
-                          "reference_interaction_item_deals_idx","reference_search_for_item_idx","reference_interaction_item_info_idx",
-                          "platform_idx", "city_idx", "device_idx", "list_current_filters", "current_filters", "impressions", "prices")\
-              .toPandas()
+      columns = ["timestamp","step", "user_idx", "session_idx", "action_type", "action_type_idx", 
+                  "reference_search_for_poi","reference_change_of_sort_order",
+                  "reference_search_for_destination","reference_filter_selection",
+                  "reference_interaction_item_image_idx","reference_interaction_item_rating_idx","reference_clickout_item_idx",
+                  "reference_interaction_item_deals_idx","reference_search_for_item_idx","reference_interaction_item_info_idx",
+                  "platform_idx", "city_idx", "device_idx", "list_current_filters", "impressions", "prices"]
+      columns.extend(current_filtes_name)     
+      df = train_df.select(columns).toPandas()
       
       df.to_csv(self.output()[0].path, index=False)
       meta_df.toPandas().to_csv(self.output()[1].path, index=False)
@@ -395,7 +375,6 @@ class CreateAggregateIndexDataset(BasePySparkTask):
                   withColumn("list_reference_search_for_item_idx",    to_array_udf(collect_list("reference_search_for_item_idx").over(win_over_session))).\
                   withColumn("list_reference_interaction_item_info_idx",    to_array_udf(collect_list("reference_interaction_item_info_idx").over(win_over_session))).\
                   withColumn("list_action_type_idx",                  to_array_udf(collect_list("action_type_idx").over(win_over_session))).\
-                  withColumn("list_current_filters_2",                  to_array_udf(collect_list("current_filters").over(win_over_session))).\
                   withColumn("action_type_item_idx",  
                                           when(train_df.action_type == "interaction item image", col("reference_interaction_item_image_idx")).\
                                           when(train_df.action_type == "interaction item rating", col("reference_interaction_item_rating_idx")).\
@@ -419,14 +398,16 @@ class CreateAggregateIndexDataset(BasePySparkTask):
       # Filter only action type - clickout item
       df_group = df_group.filter(df_group.action_type == "clickout item") # 3,clickout item
 
-      df_group = df_group.select('timestamp', 'timestamp_diff', 'step', 'user_idx', 'session_idx', 'sum_action_item_before', 'action_type_item_idx', 'action_type_idx',
-                                'list_action_type_idx', 'list_reference_search_for_poi', 'list_reference_change_of_sort_order',
-                                'list_reference_search_for_destination', 'list_reference_filter_selection', 'list_reference_interaction_item_image_idx',
-                                'list_reference_interaction_item_rating_idx', 'list_reference_clickout_item_idx', 'list_reference_interaction_item_deals_idx',
-                                'list_reference_search_for_item_idx', 'list_reference_interaction_item_info_idx', 
-                                'list_current_filters', 'platform_idx', 'device_idx', 'current_filters', 'impressions', 'prices', 'clicked')
-      
-      df_group.toPandas().to_csv(self.output().path, index=False)
+      columns  = ['timestamp', 'timestamp_diff', 'step', 'user_idx', 'session_idx', 'city_idx', 'sum_action_item_before', 'action_type_item_idx', 'action_type_idx',
+                  'list_action_type_idx', 'list_reference_search_for_poi', 'list_reference_change_of_sort_order',
+                  'list_reference_search_for_destination', 'list_reference_filter_selection', 'list_reference_interaction_item_image_idx',
+                  'list_reference_interaction_item_rating_idx', 'list_reference_clickout_item_idx', 'list_reference_interaction_item_deals_idx',
+                  'list_reference_search_for_item_idx', 'list_reference_interaction_item_info_idx', 
+                  'list_current_filters', 'platform_idx', 'device_idx', 'impressions', 'prices', 'clicked']
+                  
+      columns.extend([c for c in df_group.schema.names if "current_filters_" in c and c!="current_filters_"])     
+
+      df_group.select(columns).toPandas().to_csv(self.output().path, index=False)
 
 class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
@@ -475,6 +456,7 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
 
 
       df = df.withColumn("price", df["prices"].getItem(df.pos_item_idx)).\
+              withColumn("popularity", df["impressions_popularity"].getItem(df.pos_item_idx)).\
               withColumn("clicked", when(df.action_type_item_idx == df.item_idx, 1.0).otherwise(0.0)).\
               withColumn("view", lit(1.0)).orderBy('timestamp')  
 
@@ -483,6 +465,11 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       df = df.withColumn("popularity_item_idx", df["impressions_popularity"].getItem(lit(0)))
       df = df.withColumn("diff_price", df.price - df.list_mean_price)
 
+      # Quartile Discretize
+      columns = ["price", "popularity"]
+      for c in columns:
+        discretizer = QuantileDiscretizer(numBuckets=4, inputCol=c, outputCol=c+"_BIN")
+        df = discretizer.fit(df).transform(df)
 
       # add feature 'user_view', 'hist_views'
       win_user_item    = Window.partitionBy('user_idx', 'item_idx').orderBy('timestamp') \

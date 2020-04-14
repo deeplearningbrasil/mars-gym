@@ -16,7 +16,7 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
     monitor_metric = "loss"
     loss_function = "nll"
 
-    layers: List[int] = luigi.ListParameter(default=[512, 512])
+    layers: List[int] = luigi.ListParameter(default=[])
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
 
     embedding_dim: int = luigi.IntParameter(default=50)

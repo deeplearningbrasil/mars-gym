@@ -23,7 +23,7 @@ class PolicyEstimator(nn.Module):
                 input_dim if i == 0 else layers[i - 1],
                 layer_size
             ) for i, layer_size in enumerate(layers)])
-        self.output = nn.Linear(layers[-1], n_items)
+        self.output = nn.Linear(layers[-1] if len(layers) > 0 else input_dim, n_items)
 
         self.weight_init = weight_init
         self.apply(self.init_weights)
@@ -43,9 +43,9 @@ class PolicyEstimator(nn.Module):
         embeddings_idx = 0
         for input, input_column in zip(inputs, self.input_columns):
             #from IPython import embed; embed()
-            if embeddings_idx == 0:
-                embeddings_idx += 1
-                continue
+            #if embeddings_idx == 0:
+            #    embeddings_idx += 1
+            #    continue
             if input_column.type == IOType.INDEX:
                 transformed_inputs.append(self.embeddings[embeddings_idx](input))
                 embeddings_idx += 1
