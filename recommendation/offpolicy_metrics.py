@@ -11,6 +11,9 @@ from torch.utils.data.dataset import Dataset
 
 
 def _calc_sample_weigths(rewards, t_props, l_props):
+  # l_props: Coleta
+  # t_props: Avaliação
+  #
   # Compute the sample weights - propensity ratios
   p_ratio = t_props / l_props
 
@@ -99,7 +102,7 @@ def eval_SNIPS(rewards, t_props, l_props):
 
   return result
 
-def eval_doubly_robust(rhat_rewards, rewards, t_props, l_props, cap=None):
+def eval_doubly_robust(action_rhat_rewards, item_idx_rhat_rewards, rewards, t_props, l_props, cap=None):
   # Calculate Sample Weigths
   p_ratio, n_e, cv =  _calc_sample_weigths(rewards, t_props, l_props)
 
@@ -111,9 +114,14 @@ def eval_doubly_robust(rhat_rewards, rewards, t_props, l_props, cap=None):
   #################
   # Roubly Robust #
   #################
-  dr = rhat_rewards + (p_ratio*(rewards-rhat_rewards))
+  dr = action_rhat_rewards + (p_ratio*(rewards - item_idx_rhat_rewards))
 
-  return np.mean(dr)
+  confidence=0.95
+  n = len(dr)
+  m, se = np.mean(dr), scipy.stats.sem(dr)
+  h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+
+  return m, h
 
 
 def DirectEstimator(object):
