@@ -18,7 +18,7 @@ class EvaluateTrivagoTestSetPredictions(EvaluateTestSetPredictions):
         "per_item_given_pos",
         "per_logistic_regression_of_pos_item_idx_and_item",
         "per_logistic_regression_of_pos_item_idx_and_item_ps",
-    ], default="per_pos_item_idx")
+    ], default="per_logistic_regression_of_pos_item_idx_and_item_ps")
 
     def output(self):
         return luigi.LocalTarget(super().output().path + "_ps_" + self.fill_ps_strategy)

@@ -319,7 +319,6 @@ class SimpleCNNModel(nn.Module):
         out = torch.sigmoid(self.output(x))
         return out
 
-
 class SimpleRNNModel(nn.Module):
     def __init__(self, n_users: int, n_items: int, n_factors: int, 
                 window_hist_size: int, metadata_size: int,
@@ -452,7 +451,6 @@ class SimpleRNNModel(nn.Module):
         x   = self.dense(context_emb)
         out = torch.sigmoid(self.output(x))
         return out
-
 
 class SimpleCNNTransformerModel(nn.Module):
     def __init__(self, n_users: int, n_items: int, n_factors: int, 

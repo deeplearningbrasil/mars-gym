@@ -54,7 +54,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
     @property
     def direct_estimator(self):
         if not hasattr(self, "_direct_estimator"):
-            self._direct_estimator = self.get_direct_estimator({"loss_function": "bce"})
+            self._direct_estimator = self.get_direct_estimator({"loss_function": "bce", "loss_function_params": {}, "observation": ""})
         return self._direct_estimator
 
     @property
@@ -77,7 +77,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         df: pd.DataFrame     = preprocess_interactions_data_frame(
             pd.read_csv(get_test_set_predictions_path(self.model_training.output().path)),
-            self.model_training.project_config).sample(10000)
+            self.model_training.project_config)#.sample(10000)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
         df["prob_actions"]   = parallel_literal_eval(df["prob_actions"])

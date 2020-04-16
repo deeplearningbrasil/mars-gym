@@ -68,8 +68,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         if with_probs:
             prob_ranked_arms = []
             arm_probs = list(self._compute_prob(arm_scores))
-        #from IPython import embed; embed()
-        #  
+
         n = len(arm_indices) if limit is None else min(len(arm_indices), limit)
         for i in range(n):
             idx = self.select_idx(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores, pos=i)
@@ -226,17 +225,17 @@ class ExploreThenExploit(BanditPolicy):
         return action
 
 class EpsilonGreedy(BanditPolicy):
-    def __init__(self, reward_model: nn.Module, epsilon: float = 0.05, epsilon_decay: float = 1.0, seed: int = 42) -> None:
+    def __init__(self, reward_model: nn.Module, epsilon: float = 0.1, epsilon_decay: float = 1.0, seed: int = 42) -> None:
         super().__init__(reward_model)
         self._epsilon = epsilon
         self._rng = RandomState(seed)
         self._epsilon_decay = epsilon_decay
 
     def _compute_prob(self, arm_scores) -> List[float]:
-        n_arms = len(arm_scores)
+        n_arms     = len(arm_scores)
         arms_probs = self._epsilon * np.ones(n_arms) / n_arms
 
-        argmax = int(np.argmax(arm_scores))
+        argmax     = int(np.argmax(arm_scores))
 
         arms_probs[argmax] += (1 - self._epsilon)
 

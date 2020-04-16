@@ -36,7 +36,7 @@ from recommendation.data import preprocess_interactions_data_frame, preprocess_m
     literal_eval_array_columns
 from recommendation.files import get_params_path, get_weights_path, get_interaction_dir, get_params, get_history_path, \
     get_tensorboard_logdir, get_task_dir
-from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization
+from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization, FocalLoss
 from recommendation.plot import plot_history
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, ProjectConfig
@@ -49,7 +49,8 @@ logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=lo
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax,
                         radam=RAdam)
 TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss,
-                            implicit_feedback_bce=ImplicitFeedbackBCELoss, crm=CounterfactualRiskMinimization)
+                            implicit_feedback_bce=ImplicitFeedbackBCELoss, crm=CounterfactualRiskMinimization,
+                            focal_loss=FocalLoss)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)

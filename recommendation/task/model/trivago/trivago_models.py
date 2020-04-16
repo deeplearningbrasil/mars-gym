@@ -11,7 +11,7 @@ from torchbearer import Trial
 import torchbearer
 import numpy as np
 from recommendation.model.trivago.trivago_models import TestModel, SimpleCNNModel, SimpleRNNModel, SimpleLinearModel, SimpleCNNTransformerModel
-from recommendation.task.model.base import TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES
+from recommendation.task.model.base import TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES, TORCH_LOSS_FUNCTIONS
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 from recommendation.task.model.interaction import InteractionTraining
 from recommendation.task.model.base import BaseTorchModelTraining
@@ -19,7 +19,7 @@ from recommendation.rank_metrics import *
 
 
 class TrivagoModelTrainingMixin(object):
-  loss_function: str = luigi.ChoiceParameter(choices=["crm", "bce"], default="crm")
+  loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="crm")
   n_factors: int = luigi.IntParameter(default=128)
   weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
   dropout_prob: float = luigi.FloatParameter(default=0.1)

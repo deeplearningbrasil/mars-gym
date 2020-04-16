@@ -48,8 +48,14 @@ class BanditAgent(object):
 
     def act(self, arm_indices: List[int],
             arm_contexts: Tuple[np.ndarray, ...],
-            arm_scores: Optional[List[float]]) -> int:
-        return self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
+            arm_scores: Optional[List[float]], with_probs=True) -> int:
+        
+        if with_probs:
+            arm_idx = self.bandit.select_idx(arm_indices, arm_contexts, arm_scores)
+            prob    = self.bandit._compute_prob(arm_scores)
+            return arm_indices[arm_idx], prob[arm_idx]
+        else:
+            return self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
 
     def rank(self, arm_indices: List[int],
             arm_contexts: Tuple[np.ndarray, ...],
@@ -166,14 +172,15 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 .set_index([self.project_config.user_column.name, self.project_config.item_column.name])
         return self._hist_data_frame
 
-    def _accumulate_known_observations(self, ob: dict, action: int, reward: float):
-        user_column = self.project_config.user_column.name
-        item_column = self.project_config.item_column.name
-        output_column = self.project_config.output_column.name
-        hist_view_column = self.project_config.hist_view_column_name
-        hist_output_column = self.project_config.hist_output_column_name
+    def _accumulate_known_observations(self, ob: dict, action: int, prob: float, reward: float):
+        user_column         = self.project_config.user_column.name
+        item_column         = self.project_config.item_column.name
+        output_column       = self.project_config.output_column.name
+        hist_view_column    = self.project_config.hist_view_column_name
+        hist_output_column  = self.project_config.hist_output_column_name
+        ps_column           = self.project_config.propensity_score_column_name
 
-        new_row = {**ob, item_column: action, output_column: reward}
+        new_row = {**ob, item_column: action, output_column: reward, ps_column: self._calulate_propensity_score(ob, prob)}
         self._known_observations_data_frame = self.known_observations_data_frame.append(new_row, ignore_index=True)
 
         user_index = ob[user_column]
@@ -184,22 +191,44 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             self.hist_data_frame.loc[(user_index, action), hist_view_column] += 1
             self.hist_data_frame.loc[(user_index, action), hist_output_column] += int(reward)
 
+    def _calulate_propensity_score(self, ob: dict, prob: float) -> float:
+        df = self.known_observations_data_frame
+
+        n  = np.sum(ob[self.project_config.available_arms_column_name]) #Binary Array [0,0,1,0,0,1...]
+        ps = (1/n)/prob
+
+        return ps
+
     def _create_hist_columns(self):
         df = self.known_observations_data_frame
 
-        user_column = self.project_config.user_column.name
-        item_column = self.project_config.item_column.name
-        output_column = self.project_config.output_column.name
-        hist_view_column = self.project_config.hist_view_column_name
+        user_column        = self.project_config.user_column.name
+        item_column        = self.project_config.item_column.name
+        output_column      = self.project_config.output_column.name
+        hist_view_column   = self.project_config.hist_view_column_name
         hist_output_column = self.project_config.hist_output_column_name
-        ps_column = self.project_config.propensity_score_column_name
+        ps_column          = self.project_config.propensity_score_column_name
 
-        df[hist_view_column] = 1
-        user_views = df.groupby([user_column])[hist_view_column].transform("cumsum")
-        df[hist_view_column] = df.groupby([user_column, item_column])[hist_view_column].transform("cumsum")
-        df[hist_output_column] = df.groupby([user_column, item_column])[output_column].transform("cumsum")
+        # Method 1
+        # df[hist_view_column]   = 1
+        # user_views             = df.groupby([user_column])[hist_view_column].transform("cumsum")
+        # df[hist_view_column]   = df.groupby([user_column, item_column])[hist_view_column].transform("cumsum")
+        # df[hist_output_column] = df.groupby([user_column, item_column])[output_column].transform("cumsum")
+        # ps_value               = df[hist_view_column] / user_views
 
-        df[ps_column] = df[hist_view_column] / user_views
+        # Method 2
+        # ground_truth_df = df[df[self.project_config.output_column.name] == 1]
+        # ps_per_pos_item_idx: Dict[int, float] = {
+        #     pos_item_idx: np.sum(ground_truth_df["pos_item_idx"] == pos_item_idx) / len(ground_truth_df)
+        #     for pos_item_idx in df["pos_item_idx"].unique()
+        # }
+        # ps_value = df["pos_item_idx"].apply(lambda pos_item_idx: ps_per_pos_item_idx[pos_item_idx] + 0.01)
+        #from IPython import embed; embed()
+
+        # ----
+        df[ps_column] = ps_value
+
+    #def _calcule_propensity_score(self, df) -> None:
 
     def _save_result(self) -> None:
         print("Saving logs...")
@@ -378,22 +407,20 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return self._env_data_frame
 
     def _prepare_for_agent(self, ob) -> Tuple[np.ndarray, List[int], List[float]]:
-        arm_indices = self._get_arm_indices(ob)
-        ob_dataset = self._create_ob_dataset(ob, arm_indices)
+        arm_indices  = self._get_arm_indices(ob)
+        ob_dataset   = self._create_ob_dataset(ob, arm_indices)
         arm_contexts = ob_dataset[:len(ob_dataset)][0]
-        arm_scores = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else self.agent.bandit._calculate_scores(arm_contexts)
+        arm_scores   = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else self.agent.bandit._calculate_scores(arm_contexts)
         return arm_contexts, arm_indices, arm_scores
 
     def _act(self, ob: dict) -> int:
         arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
-        #from IPython import embed; embed()
 
         return self.agent.act(arm_indices, arm_contexts, arm_scores)
 
     def _rank(self, ob: dict) -> Tuple[List[int], List[float], List[float]]:
         arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
         sorted_actions, proba_actions = self.agent.rank(arm_indices, arm_contexts, arm_scores)
-        #from IPython import embed; embed()
         
         return sorted_actions, proba_actions, arm_scores
 
@@ -423,11 +450,11 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             while True:
                 interactions += 1
 
-                action = self._act(ob)
+                action, prob = self._act(ob)
 
                 new_ob, reward, done, info = self.env.step(action)
                 rewards.append(reward)
-                self._accumulate_known_observations(ob, action, reward)
+                self._accumulate_known_observations(ob, action, prob, reward)
 
                 if done:
                     break
@@ -435,7 +462,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 ob = new_ob
 
                 if interactions % self.obs_batch_size == 0:
-                    self._create_hist_columns()
+                    #self._create_hist_columns()
                     self._reset_dataset()
 
                     if self.agent.bandit.reward_model:
@@ -451,8 +478,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                                    self.get_val_generator(),
                                    self.epochs)
                     self._save_trial_log(interactions, trial)
-
-
 
                     print("\n", k, ": Interaction Stats")
                     print(
