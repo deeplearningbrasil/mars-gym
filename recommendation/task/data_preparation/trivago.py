@@ -4,7 +4,6 @@ from collections import Counter
 from pyspark.sql.functions import posexplode, explode#, arrays_zip
 import re
 from scipy.sparse.csr import csr_matrix
-
 import luigi
 import math
 import numpy as np
@@ -31,6 +30,12 @@ from pyspark.sql.functions import when
 from sklearn.preprocessing import MinMaxScaler
 from pyspark.ml.feature import QuantileDiscretizer
 
+import random
+import pandas as pd
+import numpy as np
+from multiprocessing import  Pool
+import os
+
 BASE_DIR: str = os.path.join("output", "trivago")
 DATASET_DIR: str = os.path.join("output", "trivago", "dataset")
 FILES_DIR: str = os.path.join("files")
@@ -42,6 +47,14 @@ def to_array(xs):
 to_array_int_udf   = udf(lambda x: to_array(x), ArrayType(IntegerType()))
 to_array_float_udf = udf(lambda x: to_array(x), ArrayType(FloatType()))
 array_mean         = udf(lambda x: float(np.mean(x)), FloatType())
+
+def parallelize_dataframe(df, func, n_cores=os.cpu_count()):
+    df_split = np.array_split(df, n_cores)
+    pool = Pool(n_cores)
+    df = pd.concat(pool.map(func, df_split))
+    pool.close()
+    pool.join()
+    return df
 
 class CheckDataset(luigi.Task):
     def output(self):
@@ -115,7 +128,7 @@ class TransformMetaDataset(luigi.Task):
       df_meta = pd.read_csv(self.input()[1].path)  
 
       tf_prop_meta = self.split_df_columns(df_meta, 'properties')
-      df_meta      = df_meta.join(tf_prop_meta).drop(['properties'], axis=1)#.shift(periods=1, fill_value=0)
+      df_meta      = df_meta.join(tf_prop_meta).drop(['properties'], axis=1)
       df_meta      = df_meta.append({'item_id': 0}, ignore_index=True).fillna(0) # Unknown
       df_meta      = df_meta.astype(int)
       
@@ -123,6 +136,26 @@ class TransformMetaDataset(luigi.Task):
       df_meta['list_metadata'] = df_meta.drop('item_id', 1).values.tolist()
 
       df_meta.sort_values('item_id').to_csv(self.output().path, index=False)
+
+# Transform impressions, prices
+def transform_impressions_and_prices(df):
+  df['impressions'] = df['impressions'].fillna("").apply(lambda x: [] if x == "" else [int(i) for i in x.split("|")] )
+  df['prices']      = df['prices'].fillna("").apply(lambda x: [] if x == "" else [float(p) for p in x.split("|")])
+  return df
+
+def apply_reference_action_type(df):
+  df['reference_'+clean_filename("interaction item image")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item image" else "<none>", axis=1)
+  df['reference_'+clean_filename("search for poi")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for poi" else "<none>", axis=1)
+  df['reference_'+clean_filename("interaction item rating")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item rating" else "<none>", axis=1)
+  df['reference_'+clean_filename("clickout item")] = df.apply(lambda row: row['reference'] if row['action_type'] == "clickout item" else "<none>", axis=1)
+  df['reference_'+clean_filename("interaction item deals")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item deals" else "<none>", axis=1)
+  df['reference_'+clean_filename("change of sort order")] = df.apply(lambda row: row['reference'] if row['action_type'] == "change of sort order" else "<none>", axis=1)
+  df['reference_'+clean_filename("search for item")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for item" else "<none>", axis=1)
+  df['reference_'+clean_filename("search for destination")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for destination" else "<none>", axis=1)
+  df['reference_'+clean_filename("filter selection")] = df.apply(lambda row: row['reference'] if row['action_type'] == "filter selection" else "<none>", axis=1)
+  df['reference_'+clean_filename("interaction item info")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item info" else "<none>", axis=1)
+
+  return df
 
 class TransformSessionDataset(luigi.Task):
     sample_size: int = luigi.IntParameter(default=-1)
@@ -150,44 +183,43 @@ class TransformSessionDataset(luigi.Task):
     def run(self):
       df                = pd.read_csv(self.input()[0].path)  
 
-      # Transform impressions, prices
-      df['impressions'] = df['impressions'].fillna("").apply(lambda x: [] if x == "" else [int(i) for i in x.split("|")] )
-      df['prices']      = df['prices'].fillna("").apply(lambda x: [] if x == "" else [float(p) for p in x.split("|")])
+
+      df = parallelize_dataframe(df, transform_impressions_and_prices)
 
       # Transform current_filters
 
       df_current_filters = self.split_df_columns(df, 'current_filters')
-      #df      = df.join(tf_current_filters).drop(['properties'], axis=1)#.shift(periods=1, fill_value=0)
       df['list_current_filters'] = df_current_filters.values.tolist()
       #from IPython import embed; embed()
-      df  = df.join(df_current_filters).drop(['current_filters'], axis=1)#.shift(periods=1, fill_value=0)
+      df  = df.join(df_current_filters).drop(['current_filters'], axis=1)
 
       # Transform reference in action_type
 
-      for ref in ["interaction item image", "search for poi", "interaction item rating", "clickout item", 
-                  "interaction item deals", "change of sort order", "search for item", "search for destination", 
-                    "filter selection", "interaction item info"]:
-        # clickout item: user makes a click-out on the item and gets forwarded to a partner website. The reference value for this action is the item_id. Other items that were displayed to the user and their associated prices are listed under the ‘impressions’ and ‘prices’ column for this action.
-        # interaction item rating: user interacts with a rating or review of an item.
-        #   The reference value for this action is the item id.
-        # interaction item info: user interacts with item information.
-        #   The reference value for this action is the item id.
-        # interaction item image: user interacts with an image of an item.
-        #   The reference value for this action is the item id.
-        # interaction item deals: user clicks on the view more deals button.
-        #   The reference value for this action is the item id.
-        # change of sort order: user changes the sort order.
-        #   The reference value for this action is the sort order description.
-        # filter selection: user selects a filter.
-        #   The reference value for this action is the filter description.
-        # search for item: user searches for an accommodation.
-        #   The reference value for this action is the item id.
-        # search for destination: user searches for a destination.
-        #   The reference value for this action is the name of the destination.
-        # search for poi: user searches for a point of interest (POI).
-        #   The reference value for this action is the name of the POI.     
-        df['reference_'+clean_filename(ref)] = df.apply(lambda row: row['reference'] if row['action_type'] == ref else "<none>", axis=1)
-
+      # for ref in ["interaction item image", "search for poi", "interaction item rating", "clickout item", 
+      #             "interaction item deals", "change of sort order", "search for item", "search for destination", 
+      #               "filter selection", "interaction item info"]:
+      #   # clickout item: user makes a click-out on the item and gets forwarded to a partner website. The reference value for this action is the item_id. Other items that were displayed to the user and their associated prices are listed under the ‘impressions’ and ‘prices’ column for this action.
+      #   # interaction item rating: user interacts with a rating or review of an item.
+      #   #   The reference value for this action is the item id.
+      #   # interaction item info: user interacts with item information.
+      #   #   The reference value for this action is the item id.
+      #   # interaction item image: user interacts with an image of an item.
+      #   #   The reference value for this action is the item id.
+      #   # interaction item deals: user clicks on the view more deals button.
+      #   #   The reference value for this action is the item id.
+      #   # change of sort order: user changes the sort order.
+      #   #   The reference value for this action is the sort order description.
+      #   # filter selection: user selects a filter.
+      #   #   The reference value for this action is the filter description.
+      #   # search for item: user searches for an accommodation.
+      #   #   The reference value for this action is the item id.
+      #   # search for destination: user searches for a destination.
+      #   #   The reference value for this action is the name of the destination.
+      #   # search for poi: user searches for a point of interest (POI).
+      #   #   The reference value for this action is the name of the POI.     
+      #   df['reference_'+clean_filename(ref)] = df.apply(lambda row: row['reference'] if row['action_type'] == ref else "<none>", axis=1)
+  
+      df = parallelize_dataframe(df, apply_reference_action_type)
 
       # Transform columns with text
       columns_with_string = ["reference_search_for_poi","reference_change_of_sort_order",
