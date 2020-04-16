@@ -109,7 +109,7 @@ class TransformMetaDataset(luigi.Task):
       tf = CountVectorizer(tokenizer=lambda x: x.split("|"))
       tf_df = tf.fit_transform(df[column]).todense()
       tf_df = pd.DataFrame(tf_df, columns = sorted(tf.vocabulary_.keys()))
-      return tf_df
+      return tf_df.astype("uint8")
       
     def run(self):
       df_meta = pd.read_csv(self.input()[1].path)  
@@ -145,10 +145,10 @@ class TransformSessionDataset(luigi.Task):
       tf_df = tf.fit_transform(df[column].fillna("")).todense()
       tf_df = pd.DataFrame(tf_df, columns = sorted(tf.vocabulary_.keys()))
       tf_df.columns = [column+"_"+c.replace(" ", "_") for c in tf_df.columns]
-      return tf_df
+      return tf_df.astype("uint8")
 
     def run(self):
-      df        = pd.read_csv(self.input()[0].path)  
+      df                = pd.read_csv(self.input()[0].path)  
 
       # Transform impressions, prices
       df['impressions'] = df['impressions'].fillna("").apply(lambda x: [] if x == "" else [int(i) for i in x.split("|")] )
@@ -159,6 +159,7 @@ class TransformSessionDataset(luigi.Task):
       df_current_filters = self.split_df_columns(df, 'current_filters')
       #df      = df.join(tf_current_filters).drop(['properties'], axis=1)#.shift(periods=1, fill_value=0)
       df['list_current_filters'] = df_current_filters.values.tolist()
+      #from IPython import embed; embed()
       df  = df.join(df_current_filters).drop(['current_filters'], axis=1)#.shift(periods=1, fill_value=0)
 
       # Transform reference in action_type
