@@ -21,6 +21,7 @@ from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncod
 from unidecode import unidecode
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from pyspark.sql.types import ArrayType, FloatType
+from pyspark.sql.functions import udf, struct
 
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
 from recommendation.utils import parallel_literal_eval, datetime_to_shift, date_to_day_of_week, date_to_day_of_month, clean_filename, literal_eval_if_str
@@ -29,7 +30,6 @@ import pyspark.sql.functions as func
 from pyspark.sql.functions import when
 from sklearn.preprocessing import MinMaxScaler
 from pyspark.ml.feature import QuantileDiscretizer
-
 import random
 import pandas as pd
 import numpy as np
@@ -56,6 +56,24 @@ def parallelize_dataframe(df, func, n_cores=os.cpu_count()):
     pool.join()
     return df
 
+def _map_to_pandas(rdds):
+    """ Needs to be here due to pickling issues """
+    return [pd.DataFrame(list(rdds))]
+
+def toPandas(df, n_partitions=None):
+    """
+    Returns the contents of `df` as a local `pandas.DataFrame` in a speedy fashion. The DataFrame is
+    repartitioned if `n_partitions` is passed.
+    :param df:              pyspark.sql.DataFrame
+    :param n_partitions:    int or None
+    :return:                pandas.DataFrame
+    """
+    if n_partitions is not None: df = df.repartition(n_partitions)
+    df_pand = df.rdd.mapPartitions(_map_to_pandas).collect()
+    df_pand = pd.concat(df_pand)
+    df_pand.columns = df.columns
+    return df_pand
+    
 class CheckDataset(luigi.Task):
     def output(self):
         return luigi.LocalTarget(os.path.join(BASE_DIR, "trivagoRecSysChallengeData2019_v2", "train.csv")), \
@@ -102,9 +120,31 @@ class FilterDataset(BasePySparkTask):
         train_df = train_df.sort("timestamp", ascending=False).limit(self.sample_size)
 
       # Save
-      train_df.toPandas().to_csv(self.output()[0].path, index=False)
-      meta_df.toPandas().to_csv(self.output()[1].path, index=False)
+      toPandas(train_df).to_csv(self.output()[0].path, index=False)
+      toPandas(meta_df).to_csv(self.output()[1].path, index=False)
 
+
+
+# Transform impressions, prices
+def transform_impressions_and_prices(df):
+  df['impressions'] = df['impressions'].fillna("").apply(lambda x: [] if x == "" else [int(i) for i in x.split("|")] )
+  df['prices']      = df['prices'].fillna("").apply(lambda x: [] if x == "" else [float(p) for p in x.split("|")])
+  return df
+
+def apply_reference_action_type(df):
+  df['reference_'+clean_filename("interaction item image")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item image" else "<none>", axis=1)
+  df['reference_'+clean_filename("search for poi")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for poi" else "<none>", axis=1)
+  df['reference_'+clean_filename("interaction item rating")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item rating" else "<none>", axis=1)
+  df['reference_'+clean_filename("clickout item")] = df.apply(lambda row: row['reference'] if row['action_type'] == "clickout item" else "<none>", axis=1)
+  df['reference_'+clean_filename("interaction item deals")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item deals" else "<none>", axis=1)
+  df['reference_'+clean_filename("change of sort order")] = df.apply(lambda row: row['reference'] if row['action_type'] == "change of sort order" else "<none>", axis=1)
+  df['reference_'+clean_filename("search for item")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for item" else "<none>", axis=1)
+  df['reference_'+clean_filename("search for destination")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for destination" else "<none>", axis=1)
+  df['reference_'+clean_filename("filter selection")] = df.apply(lambda row: row['reference'] if row['action_type'] == "filter selection" else "<none>", axis=1)
+  df['reference_'+clean_filename("interaction item info")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item info" else "<none>", axis=1)
+
+  return df
+  
 class TransformMetaDataset(luigi.Task):
     sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
@@ -137,25 +177,102 @@ class TransformMetaDataset(luigi.Task):
 
       df_meta.sort_values('item_id').to_csv(self.output().path, index=False)
 
-# Transform impressions, prices
-def transform_impressions_and_prices(df):
-  df['impressions'] = df['impressions'].fillna("").apply(lambda x: [] if x == "" else [int(i) for i in x.split("|")] )
-  df['prices']      = df['prices'].fillna("").apply(lambda x: [] if x == "" else [float(p) for p in x.split("|")])
-  return df
 
-def apply_reference_action_type(df):
-  df['reference_'+clean_filename("interaction item image")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item image" else "<none>", axis=1)
-  df['reference_'+clean_filename("search for poi")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for poi" else "<none>", axis=1)
-  df['reference_'+clean_filename("interaction item rating")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item rating" else "<none>", axis=1)
-  df['reference_'+clean_filename("clickout item")] = df.apply(lambda row: row['reference'] if row['action_type'] == "clickout item" else "<none>", axis=1)
-  df['reference_'+clean_filename("interaction item deals")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item deals" else "<none>", axis=1)
-  df['reference_'+clean_filename("change of sort order")] = df.apply(lambda row: row['reference'] if row['action_type'] == "change of sort order" else "<none>", axis=1)
-  df['reference_'+clean_filename("search for item")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for item" else "<none>", axis=1)
-  df['reference_'+clean_filename("search for destination")] = df.apply(lambda row: row['reference'] if row['action_type'] == "search for destination" else "<none>", axis=1)
-  df['reference_'+clean_filename("filter selection")] = df.apply(lambda row: row['reference'] if row['action_type'] == "filter selection" else "<none>", axis=1)
-  df['reference_'+clean_filename("interaction item info")] = df.apply(lambda row: row['reference'] if row['action_type'] == "interaction item info" else "<none>", axis=1)
+class TransformSessionDataset2(BasePySparkTask):
+    sample_size: int = luigi.IntParameter(default=-1)
+    filter_city: str = luigi.Parameter(default='all')
 
-  return df
+    def requires(self):
+      return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city)
+
+    def output(self):
+      return luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "train_transform__size=%d.csv" % (self.sample_size))),\
+              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "text_vocabulary__size=%d.csv" % (self.sample_size))),\
+              luigi.LocalTarget(os.path.join(DATASET_DIR, clean_filename(self.filter_city), "filter_session_size=%d.csv" % (self.sample_size)))
+
+    # 'a|b|c' -> ['a', 'b', 'c']
+    #
+    # 
+    def split_df_columns(self, df, column):
+      tf    = CountVectorizer(tokenizer=lambda x: x.split("|"), max_features=50)
+      tf_df = tf.fit_transform(df[column].fillna("")).todense().astype("uint8")
+      tf_df = pd.DataFrame(tf_df, columns = sorted(tf.vocabulary_.keys()))
+      tf_df.columns = [column+"_"+c.replace(" ", "_") for c in tf_df.columns]
+      return tf_df.astype("uint8")
+
+
+    def main(self, sc: SparkContext, *args):
+      os.makedirs(DATASET_DIR, exist_ok=True)
+
+      spark = SparkSession(sc)
+
+      # Load
+      df  = spark.read.csv(self.input()[0].path, header=True, inferSchema=True).limit(5000000)
+
+      def to_int_array(x):
+        return [] if x == "" or x == None else [int(i) or 0 for i in x.split("|")]
+      to_int_array_udf = udf(lambda x: to_int_array(x), ArrayType(IntegerType()))
+
+      def to_float_array(x):
+        return [] if x == "" or x == None else [float(i) or 0 for i in x.split("|")]
+      to_float_array_udf = udf(lambda x: to_float_array(x), ArrayType(FloatType()))
+
+      df = df.\
+              withColumn("impressions", to_int_array_udf(col('impressions'))).\
+              withColumn("prices", to_float_array_udf(col('prices')))
+
+      def to_reference_action(action_type, text, reference):
+        return reference if action_type == text else "<none>"
+      to_reference_action_udf = udf(lambda a,b,c: to_reference_action(a,b,c), StringType())
+          
+      for ref in ["interaction item image", "search for poi", "interaction item rating", "clickout item", 
+                  "interaction item deals", "change of sort order", "search for item", "search for destination", 
+                    "filter selection", "interaction item info"]:          
+        df = df.\
+            withColumn('reference_'+clean_filename(ref), to_reference_action_udf(col('action_type'), lit(ref), col('reference')))
+
+      df_filters = df.select("current_filters").toPandas()
+      df_filters = self.split_df_columns(df_filters, 'current_filters')
+      print(df_filters.head())
+
+      #TODO
+      #df = df.toPandas()
+      #df['list_current_filters'] = df_filters.values.tolist()
+     # df  = df.join(df_filters).drop(['current_filters'], axis=1)
+      
+      # Transform columns with text
+      columns_with_string = ["reference_search_for_poi",
+                            "reference_change_of_sort_order", 
+                            "reference_search_for_destination",
+                            "reference_filter_selection"]
+
+      df_text = df.select(columns_with_string).toPandas()
+
+      # vocabulario
+      vocab = ["<none>"]
+      for c in columns_with_string:
+        df_text[c]  = df_text[c].fillna("<none>")
+        vocab      += df_text[c].tolist()
+
+      # Tokenizer
+      tokenizer     = StaticTokenizerEncoder(vocab, tokenize=lambda x: re.split('\W+', x), min_occurrences=10, reserved_tokens=[])
+      df_vocabulary = pd.DataFrame(tokenizer.vocab, columns=['vocabulary'])
+      print(df_vocabulary)
+      print(df_text.head())
+
+      #Apply tokenizer
+      for text_column in columns_with_string:
+        df_text[text_column] = tokenizer.batch_encode(df_text[text_column])[0].cpu().detach().numpy().tolist()
+        df_text[text_column + '_max_words'] = len(df_text[text_column][0])
+        break
+
+      print(df_text.head())
+      return 
+      # Save
+      df.to_csv(self.output()[0].path, index=False)
+      df_vocabulary.to_csv(self.output()[1].path)
+      df_filters.to_csv(self.output()[2].path)
+      return
 
 class TransformSessionDataset(luigi.Task):
     sample_size: int = luigi.IntParameter(default=-1)
@@ -241,6 +358,7 @@ class TransformSessionDataset(luigi.Task):
       df.to_csv(self.output()[0].path, index=False)
       pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
       df_current_filters.to_csv(self.output()[2].path)
+      
       
 class GenerateIndicesDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)

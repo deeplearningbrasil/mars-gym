@@ -194,9 +194,9 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     def _calulate_propensity_score(self, ob: dict, prob: float) -> float:
         df = self.known_observations_data_frame
 
-        n  = np.sum(ob[self.project_config.available_arms_column_name]) #Binary Array [0,0,1,0,0,1...]
-        ps = (1/n)/prob
-
+        n    = np.sum(ob[self.project_config.available_arms_column_name]) #Binary Array [0,0,1,0,0,1...]
+        prob += 0.001 #error
+        ps   = (1/n)/prob
         return ps
 
     def _create_hist_columns(self):

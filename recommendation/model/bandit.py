@@ -145,9 +145,9 @@ class ModelPolicy(BanditPolicy):
         self._rng = RandomState(seed)
 
     def _compute_prob(self, arm_scores) -> List[float]:
-        n_arms = len(arm_scores)
-        arms_probs = np.zeros(n_arms)
-        argmax = int(np.argmax(arm_scores))
+        n_arms      = len(arm_scores)
+        arms_probs  = np.zeros(n_arms)
+        argmax      = int(np.argmax(arm_scores))
         arms_probs[argmax] = 1.0
         return arms_probs.tolist()
 
@@ -420,9 +420,9 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
     def _compute_prob(self, arm_scores) -> List[float]:
         #In this case, we expected arm_scores to be arms_scores_with_cb
-        n_arms = len(arm_scores)
-        arms_probs = np.zeros(n_arms)
-        argmax = int(np.argmax(arm_scores))
+        n_arms             = len(arm_scores)
+        arms_probs         = np.zeros(n_arms)
+        argmax             = int(np.argmax(arm_scores))
         arms_probs[argmax] = 1.0
         return arms_probs.tolist()
 
@@ -504,9 +504,6 @@ class LinThompsonSampling(_LinBanditPolicy):
         super().__init__(None, arm_index)
         self._v_sq = v_sq
 
-    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
-        return None
-
     def _calculate_score(self, original_score: float, x: np.ndarray, arm: int) -> float:
         Ainv = self._Ainv_per_arm.get(arm)
         b = self._b_per_arm.get(arm)
@@ -518,6 +515,16 @@ class LinThompsonSampling(_LinBanditPolicy):
         mu = (Ainv.dot(b)).reshape(-1)
         mu = np.random.multivariate_normal(mu, self._v_sq * Ainv)
         return x.dot(mu)
+
+    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+        X, arms = self._flatten_input_and_extract_arms(arm_contexts)
+        scores: List[float] = []
+
+        for x, arm in zip(X, arms):
+            score = self._calculate_score(None, x, arm)
+            scores.append(score)
+
+        return scores        
 
 class SoftmaxExplorer(BanditPolicy):
     def __init__(self, reward_model: nn.Module, logit_multiplier: float = 1.0, reverse_sigmoid: bool = True, seed: int = 42) -> None:
