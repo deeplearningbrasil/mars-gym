@@ -123,9 +123,10 @@ class FixedPolicy(BanditPolicy):
         return arm_scores
 
     def _compute_prob(self, arm_scores) -> List[float]:
-        n_arms     = len(arm_scores)
-        arms_probs = np.zeros(n_arms)
-        arms_probs[self._arg] = 1.0
+        n_arms      = len(arm_scores)
+        arms_probs  = np.zeros(n_arms)
+        argmax      = int(np.argmax(arm_scores))
+        arms_probs[argmax] = 1.0
         return arms_probs.tolist()
 
     def _flatten_input_and_extract_arms(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
