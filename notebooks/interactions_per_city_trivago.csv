@@ -1,4 +1,4 @@
-city,iteractions_count,clickout_sum,user_id_unique,session_id_unique,item_id_unique,step_median,impressions,item_per_session
+city,iteractions_count,clickout_sum,user_id_unique,session_id_unique,item_id_unique,step_median,item_id_unique_all,item_per_session
 "London, United Kingdom",326255,28492.0,13120,15378,2454,32.0,4879.0,0.15957861880608662
 "Tokyo, Japan",141557,23535.0,9088,11371,1388,15.0,1995.0,0.12206490194354058
 "Paris, France",262060,19596.0,8876,10428,2480,44.0,4148.0,0.23782125047947833
