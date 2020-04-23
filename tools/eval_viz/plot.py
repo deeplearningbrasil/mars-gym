@@ -15,8 +15,9 @@ TEMPLATE = 'plotly_white' #simple_white
 #sns.color_palette("colorblind", n_colors=15).as_hex()
 def get_colors(models, color=px.colors.qualitative.Plotly):
   line_dict = {}
+  #dash = ['dash', 'dot',  'dashdot']
   for i, model in enumerate(models):
-    line_dict[model] = dict(color=color[int(i%10)])
+    line_dict[model] = dict(width=2, color=color[int(i%10)])
   return line_dict
 
 
@@ -88,12 +89,17 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
     if roll:
       values = rows[metric].rolling(window = window, min_periods=1).mean()
 
+
+    x      = x[10:-1]
+    values = values[10:-1]
+
     ymax   = np.max([np.max(values), ymax])
 
     try:
       first_len = rows.iloc[0][legend[0]]#.astype(str)
       v      = list(rows.iloc[0][legend[1:]].astype(str))
-      name   = "<b>"+first_len+"</b> ("+", ".join(["{}".format(v) for k, v in zip(legend[1:], v)])+")"
+      f      = "("+", ".join(["{}".format(v) for k, v in zip(legend[1:], v)])+")" if ", ".join(["{}".format(v) for k, v in zip(legend[1:], v)]) != "" else ""
+      name   = "<b>"+first_len+"</b>" + f 
     except:
       name   = group
     
@@ -101,7 +107,7 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
 
   fig = go.Figure(data=data)
   # Change the bar mode
-  fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(y=-0.2), title="Comparison of Online Contextual Bandit Policies",
+  fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(y=-0.2), title="Comparison of Contextual Bandit Policies",
                     xaxis_title="Iteractions", yaxis_title=title, showlegend=True)
   if yrange is not None:
     fig.update_yaxes(range=[yrange[0], ymax+(ymax*0.1)])

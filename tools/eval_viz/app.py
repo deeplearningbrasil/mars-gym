@@ -12,7 +12,7 @@ import random
 pd.set_option('display.max_colwidth', -1)
 
 PATH_EVALUATION = 'output/evaluation/'
-PATH_EVAL_REINFORCEMENT = 'output/interaction/'
+PATH_EVAL_REINFORCEMENT = 'output/interaction_chicago/'
 PATH_TRAIN      = 'output/models/'
 
 
@@ -99,7 +99,7 @@ def fetch_results_path():
 def fetch_iteraction_results_path():
     paths  = []
     models = []
-    for root, dirs, files in os.walk(PATH_EVAL_REINFORCEMENT):
+    for root, dirs, files in os.walk(PATH_EVAL_REINFORCEMENT, followlinks=True):
       if '/results' in root and 'Interaction' in root:
         for d in dirs:
           paths.append(os.path.join(root, d))
