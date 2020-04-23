@@ -44,6 +44,18 @@ BASE_DIR: str = os.path.join("output", "trivago")
 DATASET_DIR: str = os.path.join("output", "trivago", "dataset")
 FILES_DIR: str = os.path.join("files")
 
+RECSYS_CITIES = ["Lausanne, Switzerland",
+                  "New York, USA",
+                  "Barcelona, Spain",
+                  "Chicago, USA",
+                  "Dublin, Ireland",
+                  "Hong Kong, Hong Kong",
+                  "Vienna, Austria",
+                  "Boston, USA",
+                  "Como, Italy",
+                  "Vancouver, Canada",
+                  "Copenhagen, Denmark",
+                  "Rio de Janeiro, Brazil"]
 
 def to_array(xs):
     return [literal_eval_if_str(c) if isinstance(literal_eval_if_str(c), int) or isinstance(literal_eval_if_str(c), float) else literal_eval_if_str(c)[0] 
@@ -89,7 +101,7 @@ class CheckDataset(luigi.Task):
 
 class FilterDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
 
     def requires(self):
       return CheckDataset()
@@ -109,7 +121,10 @@ class FilterDataset(BasePySparkTask):
 
       # Filter dataset
       if self.filter_city != 'all':
-        train_df     = train_df.filter(train_df.city==self.filter_city)
+        if self.filter_city == 'recsys':
+          train_df     = train_df.filter(train_df.city.isin(RECSYS_CITIES))
+        else:
+          train_df     = train_df.filter(train_df.city==self.filter_city)
         
         # Filter reference
         reference_df = train_df.select("reference").distinct()
@@ -120,6 +135,8 @@ class FilterDataset(BasePySparkTask):
         item_id_df   = item_id_df.union(reference_df).select("reference").distinct()
 
         meta_df      = meta_df.join(item_id_df, meta_df.item_id == item_id_df.reference).select("item_id","properties")
+
+
       if self.sample_size > 0:
         train_df = train_df.sort("timestamp", ascending=False).limit(self.sample_size)
 
@@ -151,7 +168,7 @@ def apply_reference_action_type(df):
   
 class TransformMetaDataset(luigi.Task):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
 
     def requires(self):
       return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city)
@@ -183,7 +200,7 @@ class TransformMetaDataset(luigi.Task):
 
 class TransformSessionDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
 
     def requires(self):
       return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city)
@@ -297,7 +314,7 @@ class TransformSessionDataset(BasePySparkTask):
 
 class TransformSessionDataset2(luigi.Task):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
 
     def requires(self):
       return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city)
@@ -382,7 +399,7 @@ class TransformSessionDataset2(luigi.Task):
       
 class GenerateIndicesDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
 
     def requires(self):
       return FilterDataset(sample_size=self.sample_size, filter_city=self.filter_city),\
@@ -427,7 +444,7 @@ class GenerateIndicesDataset(BasePySparkTask):
 
 class CreateIndexDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
 
     def requires(self):
       return  TransformSessionDataset(sample_size=self.sample_size, filter_city=self.filter_city),\
@@ -493,7 +510,7 @@ class CreateIndexDataset(BasePySparkTask):
 
 class CreateAggregateIndexDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
     window_hist: int = luigi.IntParameter(default=5)
 
     def requires(self):
@@ -582,7 +599,7 @@ class CreateAggregateIndexDataset(BasePySparkTask):
 
 class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
     window_hist: int = luigi.IntParameter(default=5)
 
     def requires(self):
@@ -664,7 +681,7 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
 
 class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
     sample_size: int = luigi.IntParameter(default=-1)
-    filter_city: str = luigi.Parameter(default='all')
+    filter_city: str = luigi.Parameter(default='recsys')
     window_hist: int = luigi.IntParameter(default=5)
 
     def requires(self):
