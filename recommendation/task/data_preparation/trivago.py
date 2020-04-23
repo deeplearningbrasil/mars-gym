@@ -22,7 +22,11 @@ from unidecode import unidecode
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from pyspark.sql.types import ArrayType, FloatType
 from pyspark.sql.functions import udf, struct
-
+from pyspark.ml.linalg import DenseVector
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.feature import RegexTokenizer
+from pyspark.ml.feature import CountVectorizer as CountVectorizerSpark
+from pyspark.ml.linalg import Vectors
 from recommendation.task.data_preparation.base import BasePySparkTask, BasePrepareDataFrames
 from recommendation.utils import parallel_literal_eval, datetime_to_shift, date_to_day_of_week, date_to_day_of_month, clean_filename, literal_eval_if_str
 from pyspark.sql.window import Window
@@ -35,7 +39,7 @@ import pandas as pd
 import numpy as np
 from multiprocessing import  Pool
 import os
-
+import gc
 BASE_DIR: str = os.path.join("output", "trivago")
 DATASET_DIR: str = os.path.join("output", "trivago", "dataset")
 FILES_DIR: str = os.path.join("files")
@@ -177,8 +181,7 @@ class TransformMetaDataset(luigi.Task):
 
       df_meta.sort_values('item_id').to_csv(self.output().path, index=False)
 
-
-class TransformSessionDataset2(BasePySparkTask):
+class TransformSessionDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
 
@@ -193,21 +196,45 @@ class TransformSessionDataset2(BasePySparkTask):
     # 'a|b|c' -> ['a', 'b', 'c']
     #
     # 
-    def split_df_columns(self, df, column):
-      tf    = CountVectorizer(tokenizer=lambda x: x.split("|"), max_features=50)
-      tf_df = tf.fit_transform(df[column].fillna("")).todense().astype("uint8")
-      tf_df = pd.DataFrame(tf_df, columns = sorted(tf.vocabulary_.keys()))
-      tf_df.columns = [column+"_"+c.replace(" ", "_") for c in tf_df.columns]
-      return tf_df.astype("uint8")
+    def split_columns_filter(self, df):
+      # Tokenize
+      tokenizer    = RegexTokenizer(inputCol="current_filters", outputCol="current_filters_tokens", pattern="\|")
+      df_tokenized = tokenizer.transform(df.fillna({'current_filters': ''}))
 
+      # Count Vectorizer
+      cv = CountVectorizerSpark(inputCol="current_filters_tokens", outputCol="list_current_filters", vocabSize=50)
+      cv_model = cv.fit(df_tokenized)
+      df_cv    = cv_model.transform(df_tokenized)
+
+      # Vocabulary Columns
+      def extract(row):
+          return (row.idx, ) + tuple(row.list_current_filters.toArray().tolist())
+
+      vocabulary_columns = ["current_filters_"+c.replace(" ", "_") for c in cv_model.vocabulary]
+
+      df_cv_vocab = df_cv.rdd.map(extract).toDF(["idx"] + vocabulary_columns)  # Vector values will be named _2, _3, ...
+      df = df_cv.join(df_cv_vocab, ['idx'])
+
+      def sparse_to_array(v):
+          v = DenseVector(v)
+          new_array = list([int(x) for x in v])
+          return new_array
+      sparse_to_array_udf = udf(sparse_to_array, ArrayType(IntegerType()))
+      df = df.withColumn('list_current_filters', sparse_to_array_udf('list_current_filters')).cache()
+
+      return df, df_cv_vocab
 
     def main(self, sc: SparkContext, *args):
       os.makedirs(DATASET_DIR, exist_ok=True)
 
       spark = SparkSession(sc)
+      print("Load Data...")
 
       # Load
-      df  = spark.read.csv(self.input()[0].path, header=True, inferSchema=True).limit(5000000)
+      df  = spark.read.csv(self.input()[0].path, header=True, inferSchema=True)#.limit(500000)
+      df  = df.withColumn("idx", F.monotonically_increasing_id())
+
+      print("Transform Interactions data...")
 
       def to_int_array(x):
         return [] if x == "" or x == None else [int(i) or 0 for i in x.split("|")]
@@ -231,22 +258,18 @@ class TransformSessionDataset2(BasePySparkTask):
         df = df.\
             withColumn('reference_'+clean_filename(ref), to_reference_action_udf(col('action_type'), lit(ref), col('reference')))
 
-      df_filters = df.select("current_filters").toPandas()
-      df_filters = self.split_df_columns(df_filters, 'current_filters')
-      print(df_filters.head())
+      print("Split filter session data...")
+      df, df_filters = self.split_columns_filter(df)
 
-      #TODO
-      #df = df.toPandas()
-      #df['list_current_filters'] = df_filters.values.tolist()
-     # df  = df.join(df_filters).drop(['current_filters'], axis=1)
-      
+      print(df.columns)
+      print("Tokenizer reference search...")
       # Transform columns with text
       columns_with_string = ["reference_search_for_poi",
                             "reference_change_of_sort_order", 
                             "reference_search_for_destination",
                             "reference_filter_selection"]
 
-      df_text = df.select(columns_with_string).toPandas()
+      df_text = df.select(["idx"] + columns_with_string).toPandas()
 
       # vocabulario
       vocab = ["<none>"]
@@ -257,24 +280,22 @@ class TransformSessionDataset2(BasePySparkTask):
       # Tokenizer
       tokenizer     = StaticTokenizerEncoder(vocab, tokenize=lambda x: re.split('\W+', x), min_occurrences=10, reserved_tokens=[])
       df_vocabulary = pd.DataFrame(tokenizer.vocab, columns=['vocabulary'])
-      print(df_vocabulary)
-      print(df_text.head())
 
       #Apply tokenizer
       for text_column in columns_with_string:
         df_text[text_column] = tokenizer.batch_encode(df_text[text_column])[0].cpu().detach().numpy().tolist()
         df_text[text_column + '_max_words'] = len(df_text[text_column][0])
-        break
+      
+      df_text = spark.createDataFrame(df_text) 
+      df = df.drop(*columns_with_string).join(df_text, ['idx'])
 
-      print(df_text.head())
-      return 
       # Save
-      df.to_csv(self.output()[0].path, index=False)
+      df.toPandas().to_csv(self.output()[0].path, index=False)
       df_vocabulary.to_csv(self.output()[1].path)
-      df_filters.to_csv(self.output()[2].path)
+      df_filters.toPandas().to_csv(self.output()[2].path)
       return
 
-class TransformSessionDataset(luigi.Task):
+class TransformSessionDataset2(luigi.Task):
     sample_size: int = luigi.IntParameter(default=-1)
     filter_city: str = luigi.Parameter(default='all')
 
@@ -358,7 +379,6 @@ class TransformSessionDataset(luigi.Task):
       df.to_csv(self.output()[0].path, index=False)
       pd.DataFrame(tokenizer.vocab, columns=['vocabulary']).to_csv(self.output()[1].path)
       df_current_filters.to_csv(self.output()[2].path)
-      
       
 class GenerateIndicesDataset(BasePySparkTask):
     sample_size: int = luigi.IntParameter(default=-1)
