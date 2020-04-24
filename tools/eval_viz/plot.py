@@ -108,7 +108,7 @@ def plot_line_iteraction(df, metric, legend=['iteraction'],  window=20,
   fig = go.Figure(data=data)
   # Change the bar mode
   fig.update_layout(template=TEMPLATE, legend_orientation="h", legend=dict(y=-0.2), title="Comparison of Contextual Bandit Policies",
-                    xaxis_title="Iteractions", yaxis_title=title, showlegend=True)
+                    xaxis_title="Interactions", yaxis_title=title, showlegend=True)
   if yrange is not None:
     fig.update_yaxes(range=[yrange[0], ymax+(ymax*0.1)])
 
