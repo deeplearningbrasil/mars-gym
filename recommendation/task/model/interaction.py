@@ -236,8 +236,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         self._save_params()
         self._save_log()
         self._save_metrics()
-        self._save_bandit_model()
-        #df_metrics_reward = metrics.groupby("iteraction").agg({'reward': ['mean', 'sum']}).reset_index().sort_values([('reward', 'sum')], ascending=False)
+        #self._save_bandit_model()
 
         if self.test_size > 0:
             self._save_test_set_predictions()
