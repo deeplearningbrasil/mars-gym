@@ -327,6 +327,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
             if action_scores:
                 action_scores_list.append(list(reversed(sorted(action_scores))))
+            
+            del ob
 
         self.test_data_frame["sorted_actions"] = sorted_actions_list
         self.test_data_frame["prob_actions"]   = prob_actions_list

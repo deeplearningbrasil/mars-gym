@@ -77,7 +77,7 @@ class CounterfactualRiskMinimization(_Loss):
 
     def forward(self, prob, target, ps):
         if self.clip is not None:
-            ps = np.clip(ps, a_min=None, a_max=self.clip)
+            ps = torch.clamp(ps, max=self.clip)
 
         loss     = F.binary_cross_entropy(prob.view(-1), target, weight=ps, reduction='none')
 
