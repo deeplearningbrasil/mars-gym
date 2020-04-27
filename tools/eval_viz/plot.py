@@ -33,6 +33,7 @@ def plot_bar(df, confidence=None, title=""):
                     xaxis_title="Metric", yaxis_title="Value",
                     legend=dict(y=-0.2), title=title)
   st.plotly_chart(fig)
+  return fig
 
 def plot_line(df, confidence=None, title="", yrange=[0, 1], cum=False):
   data = []

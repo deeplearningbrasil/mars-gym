@@ -14,7 +14,7 @@ import torch
 import torchbearer
 from torchbearer import Trial
 from tqdm import tqdm
-
+import gc
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.fairness_metrics import calculate_fairness_metrics
 from recommendation.files import get_test_set_predictions_path
@@ -99,17 +99,27 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         # Ground Truth
         ground_truth_df = df[df[self.model_training.project_config.output_column.name] == 1]
 
-        df_rank, dict_rank               = self.rank_metrics(ground_truth_df)
-        df_offpolicy, dict_offpolice     = self.offpolice_metrics(df)
-        df_fairness, df_fairness_metrics = self.fairness_metrics(ground_truth_df)
         
+        print("Rank Metrics...")
+        df_rank, dict_rank               = self.rank_metrics(ground_truth_df)
+        gc.collect()
+
+        print("Fairness Metrics")
+        df_fairness, df_fairness_metrics = self.fairness_metrics(ground_truth_df)
+        gc.collect()
+
+        print("Offpolice Metrics")
+        df_offpolicy, dict_offpolice     = self.offpolice_metrics(df)
+        gc.collect()
+
+        #dict_offpolice = {}
         # Save Logs
         metrics = {**dict_rank, **dict_offpolice}
         pprint.pprint(metrics)
         with open(os.path.join(self.output().path, "metrics.json"), "w") as metrics_file:
             json.dump(metrics, metrics_file, cls=JsonEncoder, indent=4)
                  
-        df_offpolicy.to_csv(os.path.join(self.output().path, "df_offpolicy.csv"), index=False)
+        #df_offpolicy.to_csv(os.path.join(self.output().path, "df_offpolicy.csv"), index=False)
 
         df_fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
         df_fairness.to_csv(os.path.join(self.output().path, "fairness_df.csv"), index=False)
@@ -176,9 +186,9 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         df["rewards"] = df[self.model_training.project_config.output_column.name]
 
         with Pool(self.num_processes) as p:
-            self.fill_item_rhat_rewards(df)            
             self.fill_rhat_rewards(df, p)
             self.fill_ps(df, p)
+            self.fill_item_rhat_rewards(df)      
             
             print("Calculate ps policy eval...")
             df["ps_eval"] = list(tqdm(
@@ -240,22 +250,36 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
             tqdm(pool.starmap(_get_ps_from_probas, params), total=len(df)))
 
     def fill_rhat_rewards(self, df: pd.DataFrame, pool: Pool):
-        # Explode
-        df_exploded = df.reset_index().explode('sorted_actions')
-        df_exploded['item_idx'] = df_exploded['sorted_actions']
+        #from IPython import embed; embed()
         
-        # Predict
-        rewards     = self._direct_estimator_predict(df_exploded)
-        df_exploded["actions_rhat_rewards"] = rewards
+        # df['item_idx_action'] item_idx_action
 
-        # implode
-        df_implode = df_exploded.groupby('index').actions_rhat_rewards.apply(list)
+        # #TODO
+        # # Explode
+        # df_exploded = df.reset_index().explode('sorted_actions')
+        # df_exploded['item_idx'] = df_exploded['sorted_actions']
+        
+        # # Predict
+        # rewards     = self._direct_estimator_predict(df_exploded)
+        # df_exploded["actions_rhat_rewards"] = rewards
 
-        df['actions_rhat_rewards'] = df_implode
-        df["action_rhat_rewards"] = list(tqdm(
-            pool.starmap(_get_rhat_rewards, zip(df["prob_actions"], df["actions_rhat_rewards"])), total=len(df)))
+        # # implode
+        # df_implode = df_exploded.groupby('index').actions_rhat_rewards.apply(list)
 
+        # df['actions_rhat_rewards'] = df_implode
+        # df["action_rhat_rewards"]  = list(tqdm(
+        #     pool.starmap(_get_rhat_rewards, zip(df["prob_actions"], df["actions_rhat_rewards"])), total=len(df)))
 
+        df_action = df.copy()
+        # set item_idx for direct_estimator
+        df_action['item_idx'] = df['item_idx_action']
+
+        rewards = self._direct_estimator_predict(df_action)
+        del df_action
+        
+        df["action_rhat_rewards"] = rewards
+
+        
     def fill_item_rhat_rewards(self, df: pd.DataFrame):
         rewards = self._direct_estimator_predict(df)
         

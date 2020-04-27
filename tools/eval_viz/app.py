@@ -115,7 +115,7 @@ def load_data_metrics():
 def load_fairness_metrics():
   df            = csv2df(fetch_results_path(), 'fairness_metrics.csv', 'path')
 
-  df['sub']     = df['sub'].astype(int).astype(str)
+  df['sub']     = df['sub'].astype(str)
   df['feature'] = df['sub_key'] + "." + df['sub']
 
   return df
