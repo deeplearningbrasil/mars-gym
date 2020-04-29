@@ -12,7 +12,7 @@ import random
 pd.set_option('display.max_colwidth', -1)
 
 PATH_EVALUATION = 'output/evaluation/'
-PATH_EVAL_REINFORCEMENT = 'output/interaction/'
+PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/results-copenhagen-denmark-crm/results-copenhagen-denmark-crm/output/interaction'
 PATH_TRAIN      = 'output/models/'
 
 
