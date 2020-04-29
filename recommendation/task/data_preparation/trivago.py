@@ -219,7 +219,7 @@ class TransformSessionDataset(BasePySparkTask):
       df_tokenized = tokenizer.transform(df.fillna({'current_filters': ''}))
 
       # Count Vectorizer
-      cv = CountVectorizerSpark(inputCol="current_filters_tokens", outputCol="list_current_filters", vocabSize=50)
+      cv = CountVectorizerSpark(inputCol="current_filters_tokens", outputCol="list_current_filters", vocabSize=100)
       cv_model = cv.fit(df_tokenized)
       df_cv    = cv_model.transform(df_tokenized)
 
@@ -656,7 +656,7 @@ class CreateExplodeWithNoClickIndexDataset(BasePySparkTask):
       # Quartile Discretize
       columns = ["price", "popularity"]
       for c in columns:
-        discretizer = QuantileDiscretizer(numBuckets=4, inputCol=c, outputCol=c+"_BIN")
+        discretizer = QuantileDiscretizer(numBuckets=10, inputCol=c, outputCol=c+"_BIN")
         df = discretizer.fit(df).transform(df)
 
       # add feature 'user_view', 'hist_views'
