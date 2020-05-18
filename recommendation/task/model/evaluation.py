@@ -49,12 +49,13 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         params = {key: value for key, value in self.model_training.param_kwargs.items()
                   if key in attribute_names}
+        
         return estimator_class(**{**params, **extra_params})
 
     @property
     def direct_estimator(self):
         if not hasattr(self, "_direct_estimator"):
-            self._direct_estimator = self.get_direct_estimator({"loss_function": "bce", "loss_function_params": {}, "observation": ""})
+            self._direct_estimator = self.get_direct_estimator({"project": "trivago_contextual_bandit", "loss_function": "bce", "loss_function_params": {}, "observation": ""})
         return self._direct_estimator
 
     @property

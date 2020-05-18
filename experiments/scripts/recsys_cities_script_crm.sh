@@ -22,7 +22,7 @@ bucket='gs://result-recsys-cities-crm'
 # # Popular Item
 # PYTHONPATH="." luigi --module recommendation.task.model.trivago.trivago_logistic_model TrivagoLogisticModelInteraction --project test_fixed_trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "recsys", "window_hist":10}'  --n-factors $n_factors --learning-rate $learning_rate --optimizer $optimizer --loss-function-params '{"clip": 1}' --metrics '["loss"]' --epochs $epochs --obs-batch-size $obs_batch_size --early-stopping-patience $early_stopping_patience --batch-size $batch_size --num-episodes $num_episodes --val-split-type $val_split_type --full-refit --bandit-policy fixed --bandit-policy-params '{"arg": 2}' --observation "Popular Item"  --output-model-dir $bucket
 
-for i in $(seq 1 10) 
+for i in $(seq 11 15) 
 do
 
 # Model
@@ -60,7 +60,7 @@ PYTHONPATH="." luigi --module recommendation.task.model.trivago.trivago_logistic
 done
 
 
-for i in $(seq 1 2) 
+for i in $(seq 5 7) 
 do
 
 # Lin_ts
