@@ -1,6 +1,7 @@
 import abc
 import collections
 from typing import List, Union, Tuple, Dict, Type, Optional
+import requests
 
 import math
 import numpy as np
@@ -10,9 +11,13 @@ from numpy.random.mtrand import RandomState
 from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
-
+import json
 from recommendation.utils import chunks
+from typing import NamedTuple, List, Union, Dict
 
+class InverseIndexMapping(NamedTuple):
+    user: Dict[int, str]
+    item: Dict[int, str]
 
 class BanditPolicy(object, metaclass=abc.ABCMeta):
     def __init__(self, reward_model: nn.Module) -> None:
@@ -43,7 +48,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
         assert arm_contexts is not None or arm_scores is not None
 
-        if not arm_scores:
+        if arm_scores is None:
             arm_scores = self._calculate_scores(arm_contexts)
         return self._select_idx(arm_indices, arm_contexts, arm_scores, pos)
 
@@ -56,7 +61,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
              limit: int = None) -> Union[List[int], Tuple[List[int], List[float]]]:
         assert arm_contexts is not None or arm_scores is not None
         
-        if not arm_scores:
+        if arm_scores is None:
             arm_scores = self._calculate_scores(arm_contexts)
         
         assert len(arm_indices) == len(arm_scores)
@@ -85,6 +90,120 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
             return ranked_arms, prob_ranked_arms
         else:
             return ranked_arms
+
+
+class RemotePolicy(BanditPolicy):
+    def __init__(self, reward_model: nn.Module, seed: int = 42, index_data = None, endpoints=[]) -> None:
+        super().__init__(None)
+        self._rng = RandomState(seed)
+        self._endpoints      = endpoints
+        self._arms_selected  = [] 
+        self._arms_rewards   = {}
+        self.index_mapping   = index_data
+        self.init_arms()
+    
+    def init_arms(self):
+        if len(self._endpoints) == 0:
+            raise(Exception("endpoints empty"))
+
+        for arm, endpoint in enumerate(self._endpoints):
+            self._arms_rewards[arm] = []
+
+    def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
+        i        = len(dataset)-1
+        row      = dataset[i]
+        
+        #for i, row in enumerate(dataset):
+        input_   = row[0]
+        output_  = row[1]
+        reward   = output_[0] if isinstance(output_, tuple) else output_
+
+        self._arms_rewards[self._arms_selected[i]].append(reward)
+
+    @property
+    def inverse_index_mapping(self) -> InverseIndexMapping:
+        if not hasattr(self, "_inverse_index_mapping"):
+            self._inverse_index_mapping = InverseIndexMapping(
+                user=dict((v, k) for k, v in self.index_mapping.user.items()),
+                item=dict((v, k) for k, v in self.index_mapping.item.items()),
+            )
+        return self._inverse_index_mapping
+
+    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+        return self._compute_prob(arm_contexts[0])
+
+    def _compute_prob(self, arm_scores) -> List[float]:
+        return np.ones(len(arm_scores))
+
+    def _reduction_rewards(self, func= np.mean):
+        return np.array([func(self._arms_rewards[i]) for i in range(len(self._endpoints))])
+
+    def _select_best_endpoint(self):
+        return 0
+
+    def _request(self, endpoint: str, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None):
+
+        items_idx = arm_indices
+        user_idx  = arm_contexts[0][0]
+        
+        #{"user": "anything", "items": ["a6aa3afc-30c4-4e64-aad5-b1a6db104245", "fb42869a-088d-4b98-941f-aa15ca464128", "6a462430-96cc-424d-9f03-7c85bbdb9b1d"]}
+        payload   = {"user": self.index_mapping.user[user_idx], "items": [self.index_mapping.item[i] for i in items_idx]}
+        
+        r = requests.post(endpoint, data = json.dumps(payload), 
+                        headers={"Content-Type": "application/json"} )
+        
+        r = json.loads(r.text)
+
+        return self.inverse_index_mapping.item[r['items'][0]]
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+
+        # Select best endpoint
+        arm_idx   = self._select_best_endpoint()
+
+        # Request
+        action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
+        
+        # Save arm
+        self._arms_selected.append(arm_idx)
+
+        return list(arm_indices).index(action)
+
+
+class RemoteEpsilonGreedy(RemotePolicy):
+    def __init__(self, reward_model: nn.Module, epsilon: float = 0.1, index_data = None, endpoints=[], seed: int = 42) -> None:
+        super().__init__(reward_model, seed, index_data, endpoints)
+        self._epsilon = epsilon
+        self._rng = RandomState(seed)
+
+    def _select_best_endpoint(self):
+        return np.argmax(self._reduction_rewards())
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+
+        # Select best endpoint
+        if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
+            arm_idx = self._rng.choice(len(self._endpoints))
+        else:
+            arm_idx = self._select_best_endpoint()
+
+        # Request
+        action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
+
+        # Save arm
+        self._arms_selected.append(arm_idx)
+
+        return list(arm_indices).index(action)
+
+
+
+
+
+
+
+
 
 class RandomPolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
@@ -561,4 +680,4 @@ BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, custom_lin_ucb=CustomRewardModelLinUCB,
     lin_ts=LinThompsonSampling, random=RandomPolicy, percentile_adaptive=PercentileAdaptiveGreedy,
     adaptive=AdaptiveGreedy, model=ModelPolicy, softmax_explorer = SoftmaxExplorer,
-    explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None)
+    explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None, remote=RemotePolicy, remote_epsilon_greedy=RemoteEpsilonGreedy)

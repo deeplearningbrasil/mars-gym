@@ -193,11 +193,12 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _calulate_propensity_score(self, ob: dict, prob: float) -> float:
         df = self.known_observations_data_frame
-
-        n    = np.sum(ob[self.project_config.available_arms_column_name]) #Binary Array [0,0,1,0,0,1...]
-        prob += 0.001 #error
-        ps   = (1/n)/prob
-        return ps
+        #TODO
+        return 1
+        #n    = np.sum(ob[self.project_config.available_arms_column_name]) #Binary Array [0,0,1,0,0,1...]
+        #prob += 0.001 #error
+        #ps   = (1/n)/prob
+        #return ps
 
     def _create_hist_columns(self):
         df = self.known_observations_data_frame
@@ -236,7 +237,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         self._save_params()
         self._save_log()
         self._save_metrics()
-        #self._save_bandit_model()
+        self._save_bandit_model()
 
         if self.test_size > 0:
             self._save_test_set_predictions()
@@ -325,7 +326,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             sorted_actions_list.append(sorted_actions)
             prob_actions_list.append(prob_actions)
 
-            if action_scores:
+            if action_scores is not None:
                 action_scores_list.append(list(reversed(sorted(action_scores))))
             
             del ob
@@ -461,7 +462,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                     break
 
                 ob = new_ob
-
                 if interactions % self.obs_batch_size == 0:
                     #self._create_hist_columns()
                     self._reset_dataset()
@@ -485,18 +485,18 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                         self.known_observations_data_frame[
                             [self.project_config.output_column.name]].describe().transpose(),
                         "\n")
-                    if hasattr(self, "train_data_frame"):
-                        print(
-                            self._train_data_frame[[self.project_config.output_column.name]].describe().transpose(),
-                            "\n")
-                    if hasattr(self, "val_data_frame"):
-                        print(
-                            self._val_data_frame[[self.project_config.output_column.name]].describe().transpose(),
-                            "\n")
+                    # if hasattr(self, "train_data_frame"):
+                    #     print(
+                    #         self._train_data_frame[[self.project_config.output_column.name]].describe().transpose(),
+                    #         "\n")
+                    # if hasattr(self, "val_data_frame"):
+                    #     print(
+                    #         self._val_data_frame[[self.project_config.output_column.name]].describe().transpose(),
+                    #         "\n")
 
                     # print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
                     k += 1
-                    self._save_log()
+                    #self._save_log()
 
         self.env.close()
         self.end_time = time.time()
