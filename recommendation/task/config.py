@@ -1,23 +1,28 @@
 from recommendation.data import InteractionsDataset
-from recommendation.task.data_preparation import ifood, trivago
+from recommendation.task.data_preparation import ifood, trivago, new_ifood
 from recommendation.task.meta_config import *
 
 PROJECTS: Dict[str, ProjectConfig] = {
     "ifood_ensamble_mab": ProjectConfig(
         base_dir=ifood.BASE_DIR,
-        prepare_data_frames_task=ifood.PrepareIfoodSessionsDataFrames,
+        prepare_data_frames_task=new_ifood.PrepareNewIfoodInteractionsDataFrames,
         dataset_class=InteractionsDataset,
         user_column=Column("account_idx", IOType.INDEX),
         item_column=Column("merchant_idx", IOType.INDEX),
+        #,,weekday breakfast,weekday dawn,weekday dinner,weekday lunch,weekday snack,weekend dawn,weekend dinner,weekend lunch,,merchant_buys_cum,
+        # account_buys_cum,avg_merc_score,avg_delivery_fee,avg_distance
         other_input_columns=[
-            Column("shift_idx", IOType.INDEX), Column("hist_visits", IOType.NUMBER), Column("hist_buys", IOType.NUMBER),
+            Column("shift", IOType.INDEX), Column("weekday breakfast", IOType.NUMBER), Column("weekday dawn", IOType.NUMBER),
+            Column("weekday dinner", IOType.NUMBER), Column("weekday lunch", IOType.NUMBER), Column("weekday snack", IOType.NUMBER),
+            Column("weekend dawn", IOType.NUMBER), Column("weekend dinner", IOType.NUMBER), Column("weekend lunch", IOType.NUMBER),
+            Column("merchant_buys_cum", IOType.NUMBER), Column("account_buys_cum", IOType.NUMBER), Column("avg_merc_score", IOType.NUMBER),
+            Column("avg_delivery_fee", IOType.NUMBER), Column("avg_distance", IOType.NUMBER)
         ],
         metadata_columns=[
-            Column("trading_name", IOType.INT_ARRAY), Column("description", IOType.INT_ARRAY),
-            Column("category_names", IOType.INT_ARRAY), Column("restaurant_complete_info", IOType.FLOAT_ARRAY),
         ],
-        output_column=Column("buy", IOType.NUMBER),
-        timestamp_column_name="click_timestamp",
+        output_column=Column("buys", IOType.NUMBER),
+        timestamp_column_name="order_date_local",
+        available_arms_column_name="merc_list_idx",
         auxiliar_output_columns=[],
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),

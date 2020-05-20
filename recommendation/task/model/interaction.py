@@ -147,7 +147,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             if auxiliar_output_column.name not in ob_df.columns:
                 ob_df[auxiliar_output_column.name] = 0
 
-        dataset = self.project_config.dataset_class(ob_df, ob[ITEM_METADATA_KEY], self.project_config)
+        dataset = self.project_config.dataset_class(ob_df, None, self.project_config)
 
         return dataset
 
@@ -437,7 +437,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                                   available_items_column=self.project_config.available_arms_column_name,
                                   item_column=self.project_config.item_column.name,
                                   number_of_items=self.interactions_data_frame[
-                                                      self.project_config.item_column.name].max() + 1,
+                                                      self.project_config.item_column.name].max() + 2,
                                   item_metadata=self.embeddings_for_metadata)
         self.env.seed(42)
 
@@ -451,7 +451,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
             while True:
                 interactions += 1
-
+                #from IPython import embed; embed()
                 action, prob = self._act(ob)
 
                 new_ob, reward, done, info = self.env.step(action)

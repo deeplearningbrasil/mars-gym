@@ -14,7 +14,7 @@ from tqdm import tqdm
 import json
 from recommendation.utils import chunks
 from typing import NamedTuple, List, Union, Dict
-
+from scipy.special import softmax, expit
 class InverseIndexMapping(NamedTuple):
     user: Dict[int, str]
     item: Dict[int, str]
@@ -91,7 +91,6 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         else:
             return ranked_arms
 
-
 class RemotePolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42, index_data = None, endpoints=[]) -> None:
         super().__init__(None)
@@ -107,7 +106,7 @@ class RemotePolicy(BanditPolicy):
             raise(Exception("endpoints empty"))
 
         for arm, endpoint in enumerate(self._endpoints):
-            self._arms_rewards[arm] = []
+            self._arms_rewards[arm] = [1]
 
     def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
         i        = len(dataset)-1
@@ -116,8 +115,8 @@ class RemotePolicy(BanditPolicy):
         #for i, row in enumerate(dataset):
         input_   = row[0]
         output_  = row[1]
-        reward   = output_[0] if isinstance(output_, tuple) else output_
-
+        reward   = output_[0][0] if isinstance(output_, tuple) else output_
+        #from IPython import embed; embed()
         self._arms_rewards[self._arms_selected[i]].append(reward)
 
     @property
@@ -153,7 +152,7 @@ class RemotePolicy(BanditPolicy):
                         headers={"Content-Type": "application/json"} )
         
         r = json.loads(r.text)
-
+        
         return self.inverse_index_mapping.item[r['items'][0]]
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
@@ -164,12 +163,11 @@ class RemotePolicy(BanditPolicy):
 
         # Request
         action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
-        
+
         # Save arm
         self._arms_selected.append(arm_idx)
 
         return list(arm_indices).index(action)
-
 
 class RemoteEpsilonGreedy(RemotePolicy):
     def __init__(self, reward_model: nn.Module, epsilon: float = 0.1, index_data = None, endpoints=[], seed: int = 42) -> None:
@@ -189,6 +187,68 @@ class RemoteEpsilonGreedy(RemotePolicy):
         else:
             arm_idx = self._select_best_endpoint()
 
+
+        # Request
+        action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
+
+        # Save arm
+        self._arms_selected.append(arm_idx)
+
+        return list(arm_indices).index(action)
+
+class RemoteUCB(RemotePolicy):
+    def __init__(self, reward_model: nn.Module, c: float = 2, index_data = None, endpoints=[], seed: int = 42) -> None:
+        super().__init__(reward_model, seed, index_data, endpoints)
+        self._c            = c
+        self._times        = 1
+        self._action_times = np.zeros(len(endpoints))        
+        self._rng = RandomState(seed)
+
+    def _select_best_endpoint(self):
+        reward_mean      = self._reduction_rewards()
+
+        confidence_bound = reward_mean + \
+                            self._c * np.sqrt(\
+                                  np.log(self._times) / (self._action_times + 0.1))  # c=2
+        return np.argmax(confidence_bound)
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+
+        # Seçect Arm
+        arm_idx = self._select_best_endpoint()
+
+        # Request
+        action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
+
+        # Save arm
+        self._arms_selected.append(arm_idx)
+        self._times += 1
+        self._action_times[arm_idx] += 1
+
+        return list(arm_indices).index(action)
+
+class RemoteSoftmax(RemotePolicy):
+    def __init__(self, reward_model: nn.Module, logit_multiplier: float = 2.0, index_data = None, endpoints=[], seed: int = 42) -> None:
+        super().__init__(reward_model, seed, index_data, endpoints)
+        self._logit_multiplier = logit_multiplier   
+        self._rng = RandomState(seed)
+        self._total_arms = len(endpoints)
+
+    def _select_best_endpoint(self):
+        reward_mean  = self._reduction_rewards()
+        
+        reward_logit = expit(reward_mean)
+        arms_probs   = softmax(self._logit_multiplier * reward_logit)
+        return self._rng.choice(list(range(self._total_arms)), p = arms_probs)
+        
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+
+        # Seçect Arm
+        arm_idx   = self._select_best_endpoint()
+        
         # Request
         action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
 
@@ -205,6 +265,22 @@ class RemoteEpsilonGreedy(RemotePolicy):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# =========================================================================================================
+#
+#
 class RandomPolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
         super().__init__(None)
@@ -680,4 +756,5 @@ BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     epsilon_greedy=EpsilonGreedy, lin_ucb=LinUCB, custom_lin_ucb=CustomRewardModelLinUCB,
     lin_ts=LinThompsonSampling, random=RandomPolicy, percentile_adaptive=PercentileAdaptiveGreedy,
     adaptive=AdaptiveGreedy, model=ModelPolicy, softmax_explorer = SoftmaxExplorer,
-    explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None, remote=RemotePolicy, remote_epsilon_greedy=RemoteEpsilonGreedy)
+    explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None, remote=RemotePolicy, 
+    remote_epsilon_greedy=RemoteEpsilonGreedy, remote_ucb=RemoteUCB, remote_softmax=RemoteSoftmax)

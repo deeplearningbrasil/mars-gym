@@ -275,7 +275,7 @@ class BaseTorchModelTraining(BaseModelTraining):
     monitor_mode: str = luigi.Parameter(default="min")
     generator_workers: int = luigi.IntParameter(default=0)
     pin_memory: bool = luigi.BoolParameter(default=False)
-
+    obs: str = luigi.Parameter(default="")
     metrics = luigi.ListParameter(default=["loss"])
 
     @property

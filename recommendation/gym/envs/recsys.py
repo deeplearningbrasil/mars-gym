@@ -31,6 +31,7 @@ class RecSysEnv(gym.Env, utils.EzPickle):
                                 for i, available_items in enumerate(self._dataset[available_items_column])
                                 for available_item in available_items]
             i, j = zip(*non_zero_indices)
+            
             available_items[i, j] = 1
             self._dataset[available_items_column] = list(iter(available_items))
 
