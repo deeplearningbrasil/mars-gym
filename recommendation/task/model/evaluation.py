@@ -120,7 +120,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         with open(os.path.join(self.output().path, "metrics.json"), "w") as metrics_file:
             json.dump(metrics, metrics_file, cls=JsonEncoder, indent=4)
                  
-        #df_offpolicy.to_csv(os.path.join(self.output().path, "df_offpolicy.csv"), index=False)
+        df_offpolicy.to_csv(os.path.join(self.output().path, "df_offpolicy.csv"), index=False)
 
         df_fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
         df_fairness.to_csv(os.path.join(self.output().path, "fairness_df.csv"), index=False)

@@ -38,7 +38,8 @@ class EvaluateTrivagoTestSetPredictions(EvaluateTestSetPredictions):
     def _get_ground_truth(self, all_df: pd.DataFrame = None) -> pd.DataFrame:
         if all_df is None:
             all_df = self._get_all_df()
-        return all_df[all_df[self.model_training.project_config.output_column.name] == 1]
+        return all_df
+        #return all_df[all_df[self.model_training.project_config.output_column.name] == 1]
 
     def fill_ps_per_pos_item_idx(self, df: pd.DataFrame, pool: Pool):
         ground_truth_df = self._get_ground_truth()
