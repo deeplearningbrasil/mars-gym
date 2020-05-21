@@ -5,7 +5,10 @@ import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import explode, col, collect_set
-
+from pyspark.sql.functions import collect_set, collect_list, lit, sum, udf, concat_ws, col, count, abs, date_format, \
+    from_utc_timestamp, expr
+from pyspark.sql.functions import explode, posexplode
+from pyspark.sql.types import IntegerType, StringType, ArrayType
 from recommendation.task.data_preparation.base import BasePrepareDataFrames, BasePySparkTask
 
 BASE_DIR: str = os.path.join("output", "new_ifood")
@@ -70,24 +73,34 @@ class PrepareNewIfoodIndexedOrdersTestData(BasePySparkTask):
     def main(self, sc: SparkContext, *args):
         os.makedirs(BaseDir().dataset_processed_path, exist_ok=True)
 
-        spark = SparkSession(sc)
+        spark       = SparkSession(sc)
 
-        orders_df = spark.read.parquet(self.input()[1].path)
-        account_df = spark.read.csv(self.input()[3].path, header=True, inferSchema=True)
+        orders_df   = spark.read.parquet(self.input()[1].path)
+        account_df  = spark.read.csv(self.input()[3].path, header=True, inferSchema=True)
         merchant_df = spark.read.csv(self.input()[4].path, header=True, inferSchema=True)
 
-        orders_df = orders_df.select("order_id", "account_id", "merchant_id", "merc_list")\
-            .join(account_df, orders_df.account_id == account_df.account_id, how="inner")\
-            .join(merchant_df, orders_df.merchant_id == merchant_df.merchant_id, how="inner")\
-            .select("order_id", "account_idx", "merchant_idx", "merc_list")\
-            .withColumn("merchant_id_from_list", explode(orders_df.merc_list))\
-            .drop("merc_list")
+        orders_df = orders_df.select("session_id", "order_id", "account_id", "merchant_id", "merc_list")\
+                    .join(account_df, orders_df.account_id == account_df.account_id, how="inner")\
+                    .join(merchant_df, orders_df.merchant_id == merchant_df.merchant_id, how="inner")\
+                    .select("session_id", "order_id", "account_idx", "merchant_idx", "merc_list")\
+                    .withColumn("merchant_id_from_list", explode(orders_df.merc_list))\
+                    .drop("merc_list")
 
         merchant_for_list_df = merchant_df.select(col("merchant_id").alias("merchant_id_for_list"), col("merchant_idx").alias("merchant_idx_for_list"))
         orders_df = orders_df.join(merchant_for_list_df, orders_df.merchant_id_from_list == merchant_for_list_df.merchant_id_for_list, how="inner") \
-            .groupBy(["order_id", "account_idx", "merchant_idx"])\
+            .groupBy(["session_id", "order_id", "account_idx", "merchant_idx"])\
             .agg(collect_set("merchant_idx_for_list").alias("merchant_idx_list"))\
-            .select("order_id", "account_idx", "merchant_idx", "merchant_idx_list")
+            .select("session_id", "order_id", "account_idx", "merchant_idx", "merchant_idx_list")
+
+        def add_idx_in_list(merchant_idx, merchant_idx_list):
+            if merchant_idx in merchant_idx_list:
+                return merchant_idx_list
+            else:
+                merchant_idx_list.append(merchant_idx)
+                return merchant_idx_list
+        udf_add_idx_in_list = udf(add_idx_in_list, ArrayType(IntegerType()))
+
+        orders_df = orders_df.withColumn("merchant_idx_list", udf_add_idx_in_list(orders_df.merchant_idx, orders_df.merchant_idx_list))
 
         orders_df.write.parquet(self.output().path)
 
@@ -117,7 +130,7 @@ class ListAccountMerchantTuplesForNewIfoodIndexedOrdersTestData(BasePySparkTask)
 import numpy as np
 class IndexDataset(luigi.Task):
     def requires(self):
-        return CheckDataset()
+        return CheckDataset(), PrepareNewIfoodIndexedOrdersTestData()
 
     @property
     def dataset_dir(self) -> str:
@@ -127,20 +140,21 @@ class IndexDataset(luigi.Task):
         return luigi.LocalTarget(os.path.join(BaseDir().dataset_processed_path, "indexed_orders_valid_data.csv"))
 
     def add_merc_list_index(self, df, item_df):
-        item_dict = item_df.set_index("merchant_id").to_dict()
-        df['merc_list_idx'] = df['merc_list'].apply(lambda l:  [item_dict['merchant_idx'][i] for i in l if i in item_dict['merchant_idx']])
+        # item_dict = item_df.set_index("merchant_id").to_dict()
+        # df['merc_list_idx'] = df['merc_list'].apply(lambda l:  [item_dict['merchant_idx'][i] for i in l if i in item_dict['merchant_idx']])
 
-        df = df[df.merc_list_idx.apply(lambda x: len(x)) > 10]
-
+        # df = df[df.merc_list_idx.apply(lambda x: len(x)) > 10]
+        df['merc_list_idx'] = df['merchant_idx_list'].apply(list)
+        
         return df
 
     def index_shift(self, df):
 
-        order = {'weekday breakfast': 1,
-                'weekday dawn': 0,
-                'weekday dinner': 4,
+        order = {'weekday dawn': 0,
+                'weekday breakfast': 1,
                 'weekday lunch': 2,
                 'weekday snack': 3,
+                'weekday dinner': 4,
                 'weekend dawn': 5,
                 'weekend dinner': 7,
                 'weekend lunch': 6}
@@ -152,14 +166,19 @@ class IndexDataset(luigi.Task):
     def run(self):
         os.makedirs(self.dataset_dir, exist_ok=True)
 
-        df   = pd.read_parquet(self.input()[1].path)
-        user_df  = pd.read_csv(self.input()[3].path)
-        item_df  = pd.read_csv(self.input()[4].path)
+        df             = pd.read_parquet(self.input()[0][1].path)
+        df_test_data   = pd.read_parquet(self.input()[1].path)
+        
+        user_df  = pd.read_csv(self.input()[0][3].path)
+        item_df  = pd.read_csv(self.input()[0][4].path)
         #
         df   = df.merge(user_df, on="account_id").merge(item_df, on="merchant_id")
-
+        df   = df.merge(df_test_data[['session_id', 'order_id', 'account_idx', 'merchant_idx', 'merchant_idx_list']], 
+                        on=['session_id', 'order_id', 'account_idx', 'merchant_idx'])
         df   = self.add_merc_list_index(df, item_df)
         df   = self.index_shift(df)
+
+        df   = df.sort_values(['order_date_local', 'shift'])
         
         df['buys'] = 1
         df['merchant_buys_cum'] = df.groupby("merchant_idx")["buys"].transform("cumsum")
@@ -169,8 +188,7 @@ class IndexDataset(luigi.Task):
         df['avg_delivery_fee'] = df['delivery_fee'].apply(np.mean)
         df['avg_distance']     = df['distance'].apply(np.mean)
 
-        df = df.sort_values(['order_date_local', 'shift'])
-        
+        #from IPython import embed; embed()
         df.to_csv(self.output().path, index=False)
         
 class BasePrepareNewIfoodDataFrames(BasePrepareDataFrames):

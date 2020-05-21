@@ -11,12 +11,13 @@ PROJECTS: Dict[str, ProjectConfig] = {
         item_column=Column("merchant_idx", IOType.INDEX),
         #,,weekday breakfast,weekday dawn,weekday dinner,weekday lunch,weekday snack,weekend dawn,weekend dinner,weekend lunch,,merchant_buys_cum,
         # account_buys_cum,avg_merc_score,avg_delivery_fee,avg_distance
+        # ,
+        #     Column("avg_merc_score", IOType.NUMBER), Column("avg_delivery_fee", IOType.NUMBER), Column("avg_distance", IOType.NUMBER)
         other_input_columns=[
-            Column("shift", IOType.INDEX), Column("weekday breakfast", IOType.NUMBER), Column("weekday dawn", IOType.NUMBER),
+            Column("weekday breakfast", IOType.NUMBER), Column("weekday dawn", IOType.NUMBER),
             Column("weekday dinner", IOType.NUMBER), Column("weekday lunch", IOType.NUMBER), Column("weekday snack", IOType.NUMBER),
             Column("weekend dawn", IOType.NUMBER), Column("weekend dinner", IOType.NUMBER), Column("weekend lunch", IOType.NUMBER),
-            Column("merchant_buys_cum", IOType.NUMBER), Column("account_buys_cum", IOType.NUMBER), Column("avg_merc_score", IOType.NUMBER),
-            Column("avg_delivery_fee", IOType.NUMBER), Column("avg_distance", IOType.NUMBER)
+            Column("avg_merc_score", IOType.NUMBER), Column("avg_delivery_fee", IOType.NUMBER), Column("avg_distance", IOType.NUMBER)
         ],
         metadata_columns=[
         ],

@@ -17,7 +17,7 @@ from tqdm import tqdm
 import time
 import pickle
 from gym import spaces
-
+import gc
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
 from recommendation.task.meta_config import ProjectConfig, Column, IOType
@@ -311,7 +311,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         prob_actions_list   = []
         action_scores_list  = []
         obs = self.test_data_frame.to_dict('records')
-
+        self.clean()
+        #from IPython import embed; embed()    
         for ob in tqdm(obs, total=len(obs)):
 
             if self._embeddings_for_metadata is not None:
@@ -330,6 +331,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 action_scores_list.append(list(reversed(sorted(action_scores))))
             
             del ob
+            del items
 
         self.test_data_frame["sorted_actions"] = sorted_actions_list
         self.test_data_frame["prob_actions"]   = prob_actions_list
@@ -378,6 +380,24 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         if hasattr(self, "_val_dataset"):
             del self._val_dataset
+
+    def clean(self):
+        if hasattr(self, "_train_dataset"):
+            del self._train_dataset
+
+        if hasattr(self, "_test_dataset"):
+            del self._test_dataset
+
+        if hasattr(self, "_interactions_data_frame"):
+            del self._interactions_data_frame
+
+        if hasattr(self, "_known_observations_data_frame"):
+            del self._known_observations_data_frame
+
+        if hasattr(self, "_train_data_frame"):
+            del self._train_data_frame
+    
+        gc.collect()
 
     @property
     def n_users(self) -> int:

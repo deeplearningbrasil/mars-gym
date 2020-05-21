@@ -12,8 +12,15 @@ import random
 pd.set_option('display.max_colwidth', -1)
 
 PATH_EVALUATION = 'output/evaluation/'
-PATH_EVAL_REINFORCEMENT = 'output/interaction'
-#PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/results-copenhagen-denmark-crm/results-copenhagen-denmark-crm/output/interaction'
+PATH_EVAL_REINFORCEMENT = 'output/interaction/'
+#PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-chicago-usa-crm/result-chicago-usa-crm/output/interaction/'
+#PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-new-york-usa-crm/result-new-york-usa-crm/output/interaction/'
+#PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-recsys-cities-crm/result-recsys-cities-crm/output/interaction/'
+#PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-rio-brazil-crm/result-rio-brazil-crm/output/interaction/'
+#PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/results-copenhagen-denmark-crm/results-copenhagen-denmark-crm/output/interaction/'
+#PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-coma-italy-crm/result-coma-italy-crm/output/interaction/'
+
+
 PATH_TRAIN      = 'output/models/'
 
 
@@ -263,7 +270,9 @@ def display_compare_results():
     st.markdown('## Metrics')
     st.dataframe(df_metrics)
     st.dataframe(confidence_metrics)
-    
+    st.dataframe(df_metrics)
+    df_metrics.to_csv('df_metric.csv')
+    df_metrics.to_csv('confidence_metrics.csv')
 
     if df_train_params is not None:
       st.markdown('## Params (Train)')

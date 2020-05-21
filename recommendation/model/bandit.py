@@ -91,18 +91,21 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         else:
             return ranked_arms
 
+
 class RemotePolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42, index_data = None, endpoints=[]) -> None:
         super().__init__(None)
         self._rng = RandomState(seed)
         self._endpoints      = endpoints
+        self._total_arms     = len(endpoints)
         self._arms_selected  = [] 
         self._arms_rewards   = {}
         self.index_mapping   = index_data
+        
         self.init_arms()
     
     def init_arms(self):
-        if len(self._endpoints) == 0:
+        if self._total_arms == 0:
             raise(Exception("endpoints empty"))
 
         for arm, endpoint in enumerate(self._endpoints):
@@ -116,7 +119,7 @@ class RemotePolicy(BanditPolicy):
         input_   = row[0]
         output_  = row[1]
         reward   = output_[0][0] if isinstance(output_, tuple) else output_
-        #from IPython import embed; embed()
+        
         self._arms_rewards[self._arms_selected[i]].append(reward)
 
     @property
@@ -135,7 +138,7 @@ class RemotePolicy(BanditPolicy):
         return np.ones(len(arm_scores))
 
     def _reduction_rewards(self, func= np.mean):
-        return np.array([func(self._arms_rewards[i]) for i in range(len(self._endpoints))])
+        return np.array([func(self._arms_rewards[i]) for i in range(self._total_arms)])
 
     def _select_best_endpoint(self):
         return 0
@@ -183,10 +186,9 @@ class RemoteEpsilonGreedy(RemotePolicy):
 
         # Select best endpoint
         if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
-            arm_idx = self._rng.choice(len(self._endpoints))
+            arm_idx = self._rng.choice(self._total_arms)
         else:
             arm_idx = self._select_best_endpoint()
-
 
         # Request
         action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
@@ -257,9 +259,109 @@ class RemoteSoftmax(RemotePolicy):
 
         return list(arm_indices).index(action)
 
+from creme import compose
+from creme import linear_model
+from creme import metrics
+from creme import preprocessing
+from creme import optim
+from creme import sampling
+
+class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
+    def __init__(self, reward_model: nn.Module, epsilon: float = 0.1, index_data = None, endpoints=[], seed: int = 42) -> None:
+        super().__init__(reward_model, seed, index_data, endpoints)
+        self._epsilon = epsilon
+        self._rng     = RandomState(seed)
+        self._oracle  = self.build_oracle()
+        self._oracle_metric  = metrics.F1()
+        self._times        = 1
+
+    def build_oracle(self):
+        model = compose.Pipeline(
+            preprocessing.RobustScaler(),
+            sampling.RandomUnderSampler(
+                classifier=linear_model.LogisticRegression(loss=optim.losses.BinaryFocalLoss(2, 1)),
+                desired_dist={0: .5, 1: .5},
+                seed=42
+            )            
+            #linear_model.LogisticRegression(loss=optim.losses.BinaryFocalLoss(2, 1))
+        )
+
+        return model
+
+    def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
+        i        = len(dataset)-1
+        row      = dataset[i]
+        #dataset._data_frame
+        #for i, row in enumerate(dataset):
+        input_   = row[0]
+        output_  = row[1]
+        reward   = output_[0][0] if isinstance(output_, tuple) else output_
+        
+        #from IPython import embed; embed()
+
+        # build features
+        x = np.nan_to_num(np.reshape(input_, -1))
+        arms     = np.zeros(self._total_arms)
+        arms[self._arms_selected[i]] = 1
+        x = np.concatenate([x, arms])[2:-1] 
+        x = {i: e for i, e in enumerate(x)} 
+
+        # metric
+        y_pred = self._oracle.predict_one(x)
+        self._oracle_metric = self._oracle_metric.update(reward, y_pred)
+        print(self._oracle_metric)
+
+        # fit
+        self._oracle.fit_one(x, reward)
+
+        self._arms_rewards[self._arms_selected[i]].append(reward)
+        # dataset._data_frame[dataset._data_frame.buys == 1]
+        #if self._times % 500 == 0:
+        #    from IPython import embed; embed()
 
 
+    def _flatten_input(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
+        flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
+        return flattened_input
 
+    def _select_best_endpoint(self, arm_contexts):
+        scores = []
+        #from IPython import embed; embed()
+
+        input_ = self._flatten_input(arm_contexts)[0]
+
+        for i in range(self._total_arms):
+            arms    = np.zeros(self._total_arms)
+            arms[i] = 1
+            x = np.nan_to_num(np.reshape(input_, -1))
+            x = np.concatenate([x, arms])[2:-1] 
+            x = {i: e for i, e in enumerate(x)}         
+            
+            scores.append(self._oracle.predict_proba_one(x)[True])
+        print(scores)
+        #print(self._reduction_rewards())
+        #return np.argmax(self._reduction_rewards())
+
+        return np.argmax(scores)
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+
+        # Select best endpoint
+        if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
+            arm_idx = self._rng.choice(self._total_arms)
+        else:
+            arm_idx = self._select_best_endpoint(arm_contexts)
+
+        # Request
+        action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
+
+        # Save arm
+        self._arms_selected.append(arm_idx)
+        self._times += 1
+
+        return list(arm_indices).index(action)
+    
 
 
 
@@ -757,4 +859,5 @@ BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     lin_ts=LinThompsonSampling, random=RandomPolicy, percentile_adaptive=PercentileAdaptiveGreedy,
     adaptive=AdaptiveGreedy, model=ModelPolicy, softmax_explorer = SoftmaxExplorer,
     explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None, remote=RemotePolicy, 
-    remote_epsilon_greedy=RemoteEpsilonGreedy, remote_ucb=RemoteUCB, remote_softmax=RemoteSoftmax)
+    remote_epsilon_greedy=RemoteEpsilonGreedy, remote_ucb=RemoteUCB, remote_softmax=RemoteSoftmax,
+    remote_contextual_epsilon_greedy=RemoteContextualEpsilonGreedy)

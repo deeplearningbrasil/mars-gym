@@ -52,45 +52,45 @@ def export(args):
     fig.write_image(args.output+"/all_{}.png".format(input_metrics.replace(" ", ""))) #, width=1024, height=600, scale=2
 
   # PEr Parameter
-  for param in input_legend:
+  # for param in input_legend:
 
-    for group, rows in df.groupby(param, sort=False):
-      print("Extract... ", param, group)
-      df_group = df[df[param] == group]
+  #   for group, rows in df.groupby(param, sort=False):
+  #     print("Extract... ", param, group)
+  #     df_group = df[df[param] == group]
 
-      for input_metrics in ['Cumulative Reward', 'Cumulative Mean Reward', 'Cumulative Window Mean Reward']:
-        fig = plot_line_iteraction(df_group, 'reward', 
-                              title=input_metrics, 
-                              legend=input_legend,
-                              line_dict=get_colors(input_iteraction),
-                              yrange=[0,1], 
-                              window=args.window_size,
-                              cum=(input_metrics == 'Cumulative Reward'), 
-                              mean=(input_metrics == 'Cumulative Mean Reward'),
-                              roll=(input_metrics == 'Cumulative Window Mean Reward'))
-        fig.write_image(args.output+"/{}={}-{}.png".format(param, group, input_metrics.replace(" ", "")))
+  #     for input_metrics in ['Cumulative Reward', 'Cumulative Mean Reward', 'Cumulative Window Mean Reward']:
+  #       fig = plot_line_iteraction(df_group, 'reward', 
+  #                             title=input_metrics, 
+  #                             legend=input_legend,
+  #                             line_dict=get_colors(input_iteraction),
+  #                             yrange=[0,1], 
+  #                             window=args.window_size,
+  #                             cum=(input_metrics == 'Cumulative Reward'), 
+  #                             mean=(input_metrics == 'Cumulative Mean Reward'),
+  #                             roll=(input_metrics == 'Cumulative Window Mean Reward'))
+  #       fig.write_image(args.output+"/{}={}-{}.png".format(param, group, input_metrics.replace(" ", "")))
 
   # Per Model
-  for group, rows in df.groupby("iteraction", sort=False):
-    print("Extract... ", group)
-    df_group = df[df.iteraction == group]
+  # for group, rows in df.groupby("iteraction", sort=False):
+  #   print("Extract... ", group)
+  #   df_group = df[df.iteraction == group]
 
-    for input_metrics in ['Cumulative Reward', 'Cumulative Mean Reward', 'Cumulative Window Mean Reward']:
-      fig = plot_line_iteraction(df_group, 'reward', 
-                            title=input_metrics, 
-                            legend=input_legend,
-                            line_dict=get_colors(input_iteraction),
-                            yrange=[0,1], 
-                            window=args.window_size,
-                            cum=(input_metrics == 'Cumulative Reward'), 
-                            mean=(input_metrics == 'Cumulative Mean Reward'),
-                            roll=(input_metrics == 'Cumulative Window Mean Reward'))
+  #   for input_metrics in ['Cumulative Reward', 'Cumulative Mean Reward', 'Cumulative Window Mean Reward']:
+  #     fig = plot_line_iteraction(df_group, 'reward', 
+  #                           title=input_metrics, 
+  #                           legend=input_legend,
+  #                           line_dict=get_colors(input_iteraction),
+  #                           yrange=[0,1], 
+  #                           window=args.window_size,
+  #                           cum=(input_metrics == 'Cumulative Reward'), 
+  #                           mean=(input_metrics == 'Cumulative Mean Reward'),
+  #                           roll=(input_metrics == 'Cumulative Window Mean Reward'))
 
-      fig.write_image(args.output+"/{}_{}.png".format(group, input_metrics.replace(" ", "")))
+  #     fig.write_image(args.output+"/{}_{}.png".format(group, input_metrics.replace(" ", "")))
 
 
-    fig = plot_exploration_arm(df_group, title=group, window=args.window_size, roll=False, all_items = np.unique(df['item'].values))
-    fig.write_image(args.output+"/{}_explorer.png".format(group))
+  #   fig = plot_exploration_arm(df_group, title=group, window=args.window_size, roll=False, all_items = np.unique(df['item'].values))
+  #   fig.write_image(args.output+"/{}_explorer.png".format(group))
     
   metrics.to_csv(args.output+"/metrics.csv", index=False)
   params.to_csv(args.output+"/params.csv", index=False)
