@@ -17,6 +17,7 @@ PROJECTS: Dict[str, ProjectConfig] = {
             Column("weekday breakfast", IOType.NUMBER), Column("weekday dawn", IOType.NUMBER),
             Column("weekday dinner", IOType.NUMBER), Column("weekday lunch", IOType.NUMBER), Column("weekday snack", IOType.NUMBER),
             Column("weekend dawn", IOType.NUMBER), Column("weekend dinner", IOType.NUMBER), Column("weekend lunch", IOType.NUMBER),
+            Column("merchant_buys_cum", IOType.NUMBER), Column("account_buys_cum", IOType.NUMBER), 
             Column("avg_merc_score", IOType.NUMBER), Column("avg_delivery_fee", IOType.NUMBER), Column("avg_distance", IOType.NUMBER)
         ],
         metadata_columns=[

@@ -93,7 +93,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
 
 class RemotePolicy(BanditPolicy):
-    def __init__(self, reward_model: nn.Module, seed: int = 42, index_data = None, endpoints=[]) -> None:
+    def __init__(self, reward_model: nn.Module, seed: int = 42, index_data = None, endpoints=[], window_reward=500) -> None:
         super().__init__(None)
         self._rng = RandomState(seed)
         self._endpoints      = endpoints
@@ -101,7 +101,8 @@ class RemotePolicy(BanditPolicy):
         self._arms_selected  = [] 
         self._arms_rewards   = {}
         self.index_mapping   = index_data
-        
+        self._window_reward = window_reward
+
         self.init_arms()
     
     def init_arms(self):
@@ -138,7 +139,7 @@ class RemotePolicy(BanditPolicy):
         return np.ones(len(arm_scores))
 
     def _reduction_rewards(self, func= np.mean):
-        return np.array([func(self._arms_rewards[i]) for i in range(self._total_arms)])
+        return np.array([func(self._arms_rewards[i][-self._window_reward:-1]) for i in range(self._total_arms)])
 
     def _select_best_endpoint(self):
         return 0
@@ -173,8 +174,9 @@ class RemotePolicy(BanditPolicy):
         return list(arm_indices).index(action)
 
 class RemoteEpsilonGreedy(RemotePolicy):
-    def __init__(self, reward_model: nn.Module, epsilon: float = 0.1, index_data = None, endpoints=[], seed: int = 42) -> None:
-        super().__init__(reward_model, seed, index_data, endpoints)
+    def __init__(self, reward_model: nn.Module, epsilon: float = 0.1, 
+                index_data = None, endpoints=[], window_reward=500,seed: int = 42) -> None:
+        super().__init__(reward_model, seed, index_data, endpoints, window_reward)
         self._epsilon = epsilon
         self._rng = RandomState(seed)
 
@@ -260,7 +262,7 @@ class RemoteSoftmax(RemotePolicy):
         return list(arm_indices).index(action)
 
 from creme import compose
-from creme import linear_model
+from creme import linear_model, multiclass
 from creme import metrics
 from creme import preprocessing
 from creme import optim
@@ -272,21 +274,30 @@ class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
         self._epsilon = epsilon
         self._rng     = RandomState(seed)
         self._oracle  = self.build_oracle()
-        self._oracle_metric  = metrics.F1()
+        self._oracle_metric  = metrics.MacroF1()
         self._times        = 1
 
     def build_oracle(self):
         model = compose.Pipeline(
-            preprocessing.RobustScaler(),
-            sampling.RandomUnderSampler(
-                classifier=linear_model.LogisticRegression(loss=optim.losses.BinaryFocalLoss(2, 1)),
-                desired_dist={0: .5, 1: .5},
-                seed=42
-            )            
-            #linear_model.LogisticRegression(loss=optim.losses.BinaryFocalLoss(2, 1))
-        )
-
+            ('scale', preprocessing.StandardScaler()),
+            ('learn', multiclass.OneVsRestClassifier(
+                binary_classifier=linear_model.LogisticRegression())
+            )
+        )        
         return model
+
+    # def build_oracle(self):
+    #     model = compose.Pipeline(
+    #         preprocessing.RobustScaler(),
+    #         sampling.RandomUnderSampler(
+    #             classifier=linear_model.LogisticRegression(loss=optim.losses.BinaryFocalLoss(2, 1)),
+    #             desired_dist={0: .5, 1: .5},
+    #             seed=42
+    #         )            
+    #         #linear_model.LogisticRegression(loss=optim.losses.BinaryFocalLoss(2, 1))
+    #     )
+
+    #     return model
 
     def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
         i        = len(dataset)-1
@@ -301,22 +312,27 @@ class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
 
         # build features
         x = np.nan_to_num(np.reshape(input_, -1))
-        arms     = np.zeros(self._total_arms)
-        arms[self._arms_selected[i]] = 1
-        x = np.concatenate([x, arms])[2:-1] 
+        #arms     = np.zeros(self._total_arms)
+        #arms[self._arms_selected[i]] = 1
+        #x = np.concatenate([x, arms])[2:-1] 
         x = {i: e for i, e in enumerate(x)} 
+        #from IPython import embed; embed()
+        if reward:
+            # fit
+            self._oracle.fit_one(x, self._arms_selected[i])
 
-        # metric
-        y_pred = self._oracle.predict_one(x)
-        self._oracle_metric = self._oracle_metric.update(reward, y_pred)
-        print(self._oracle_metric)
+        
+        # # metric
+        # y_pred = self._oracle.predict_one(x)
+        # self._oracle_metric = self._oracle_metric.update(reward, y_pred)
+        # print(self._oracle_metric)
 
-        # fit
-        self._oracle.fit_one(x, reward)
+        # # fit
+        # self._oracle.fit_one(x, reward)
 
-        self._arms_rewards[self._arms_selected[i]].append(reward)
-        # dataset._data_frame[dataset._data_frame.buys == 1]
-        #if self._times % 500 == 0:
+        # self._arms_rewards[self._arms_selected[i]].append(reward)
+        # #dataset._data_frame[dataset._data_frame.buys == 1]
+        # if self._times % 500 == 0:
         #    from IPython import embed; embed()
 
 
@@ -329,20 +345,29 @@ class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
         #from IPython import embed; embed()
 
         input_ = self._flatten_input(arm_contexts)[0]
+        
+        x = np.nan_to_num(np.reshape(input_, -1))
+        x = {i: e for i, e in enumerate(x)} 
 
-        for i in range(self._total_arms):
-            arms    = np.zeros(self._total_arms)
-            arms[i] = 1
-            x = np.nan_to_num(np.reshape(input_, -1))
-            x = np.concatenate([x, arms])[2:-1] 
-            x = {i: e for i, e in enumerate(x)}         
+        #from IPython import embed; embed()
+        
+        arm = self._oracle.predict_one(x)
+        
+        return self._rng.choice(self._total_arms) if arm is None else arm
+        # for i in range(self._total_arms):
+        #     arms    = np.zeros(self._total_arms)
+        #     arms[i] = 1
+        #     x = np.nan_to_num(np.reshape(input_, -1))
+        #     x = np.concatenate([x, arms])[2:-1] 
+        #     x = {i: e for i, e in enumerate(x)}         
             
-            scores.append(self._oracle.predict_proba_one(x)[True])
-        print(scores)
+        #     scores.append(self._oracle.predict_proba_one(x)[True])
+        #scores = self._reduction_rewards()
+        #print(scores)
         #print(self._reduction_rewards())
         #return np.argmax(self._reduction_rewards())
 
-        return np.argmax(scores)
+        #return np.argmax(scores)
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
