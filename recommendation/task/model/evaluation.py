@@ -30,6 +30,7 @@ from recommendation.utils import parallel_literal_eval, JsonEncoder
 class EvaluateTestSetPredictions(BaseEvaluationTask):
     direct_estimator_module: str = luigi.Parameter(default=None)
     direct_estimator_cls: str = luigi.Parameter(default=None)
+    direct_estimator_negative_proportion: int = luigi.FloatParameter(0.8)
 
     policy_estimator_extra_params: dict = luigi.DictParameter(default={})
 
@@ -55,7 +56,10 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
     @property
     def direct_estimator(self):
         if not hasattr(self, "_direct_estimator"):
-            self._direct_estimator = self.get_direct_estimator({"project": "trivago_contextual_bandit", "loss_function": "bce", "loss_function_params": {}, "observation": ""})
+            self._direct_estimator = self.get_direct_estimator({
+                "project": "trivago_contextual_bandit_with_negative_indice_generation",
+                "loss_function": "bce", "loss_function_params": {}, "observation": "",
+                "negative_proportion": self.direct_estimator_negative_proportion})
         return self._direct_estimator
 
     @property

@@ -47,7 +47,7 @@ def preprocess_metadata_data_frame(metadata_data_frame: pd.DataFrame,
 class InteractionsDataset(Dataset):
     def __init__(self, data_frame: pd.DataFrame,
                  embeddings_for_metadata: Optional[Dict[str, np.ndarray]],
-                 project_config: ProjectConfig) -> None:
+                 project_config: ProjectConfig, *args, **kwargs) -> None:
         self._project_config = project_config
         self._input_columns: List[Column] = project_config.input_columns
         if project_config.item_is_input:
@@ -68,7 +68,7 @@ class InteractionsDataset(Dataset):
         if type == IOType.INDEX:
             return value.astype(np.int64)
         if type == IOType.NUMBER:
-            return value.astype(np.float64)            
+            return value.astype(np.float64)
         if type in (IOType.INT_ARRAY, IOType.INDEX_ARRAY):
             return np.array([np.array(v, dtype=np.int64) for v in value])
         if type == IOType.FLOAT_ARRAY:
@@ -88,8 +88,63 @@ class InteractionsDataset(Dataset):
                             for column in self._project_config.metadata_columns)
 
         output = self._convert_dtype(rows[self._project_config.output_column.name].values,
-                                      self._project_config.output_column.type)
+                                     self._project_config.output_column.type)
         if self._project_config.auxiliar_output_columns:
             output = tuple([output]) + tuple(self._convert_dtype(rows[column.name].values, column.type)
                                              for column in self._project_config.auxiliar_output_columns)
         return inputs, output
+
+
+class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
+    def __init__(self, data_frame: pd.DataFrame, embeddings_for_metadata: Optional[Dict[str, np.ndarray]],
+                 project_config: ProjectConfig, negative_proportion: float = 0.8, *args, **kwargs) -> None:
+        data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
+
+        super().__init__(data_frame, embeddings_for_metadata, project_config, *args, **kwargs)
+        self._negative_proportion = negative_proportion
+        self._max_item_idx = data_frame[project_config.item_column.name].max()
+
+    def __len__(self) -> int:
+        return super().__len__() + int((1 / (1 - self._negative_proportion) - 1) * super().__len__())
+
+    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...],
+                                                                   np.ndarray]:
+        if isinstance(indices, int):
+            indices = [indices]
+
+        n = super().__len__()
+
+        positive_indices = [index for index in indices if index < n]
+        num_of_negatives = len(indices) - len(positive_indices)
+        positive_input, positive_output = super().__getitem__(positive_indices)
+
+        if num_of_negatives > 0:
+            sample_positive_indices = list(np.random.randint(0, n, size=num_of_negatives))
+
+            negative_input, negative_output = super().__getitem__(sample_positive_indices)
+
+            negative_input = list(negative_input)
+            negative_input[self._item_input_index] = np.array([
+                _rand_int_except(0, self._max_item_idx + 1, exception=item_idx)
+                for item_idx in negative_input[self._item_input_index]])
+            negative_input = tuple(negative_input)
+
+            if positive_indices:
+                input_ = tuple(np.concatenate([positive_array, negative_array])
+                               for positive_array, negative_array in zip(positive_input, negative_input))
+                output = np.concatenate([positive_output, negative_output])
+            else:
+                input_ = negative_input
+                output = negative_output
+        else:
+            input_ = positive_input
+            output = positive_output
+
+        return input_, output
+
+
+def _rand_int_except(low: int, high: int, exception: int) -> int:
+    while True:
+        number = np.random.randint(low, high)
+        if number != exception:
+            return number

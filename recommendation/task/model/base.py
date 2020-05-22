@@ -85,6 +85,8 @@ class BaseModelTraining(luigi.Task):
     seed: int = luigi.IntParameter(default=SEED)
     observation: str = luigi.Parameter(default="")
 
+    negative_proportion: int = luigi.FloatParameter(0.0)
+
     @property
     def cache_attrs(self):
         return ['_test_dataset', '_val_dataset', '_train_dataset',
@@ -184,23 +186,24 @@ class BaseModelTraining(luigi.Task):
     def train_dataset(self) -> Dataset:
         if not hasattr(self, "_train_dataset"):
             self._train_dataset = self.project_config.dataset_class(
-                self.train_data_frame, self.embeddings_for_metadata,
-                self.project_config)
+                data_frame=self.train_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
+                project_config=self.project_config, negative_proportion=self.negative_proportion)
         return self._train_dataset
 
     @property
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
             self._val_dataset = self.project_config.dataset_class(
-                self.val_data_frame, self.embeddings_for_metadata,
-                self.project_config)
+                data_frame=self.train_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
+                project_config=self.project_config, negative_proportion=self.negative_proportion)
         return self._val_dataset
 
     @property
     def test_dataset(self) -> Dataset:
         if not hasattr(self, "_test_dataset"):
             self._test_dataset = self.project_config.dataset_class(
-                self.test_data_frame, self.embeddings_for_metadata, self.project_config)
+                data_frame=self.train_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
+                project_config=self.project_config, negative_proportion=0.0)
         return self._test_dataset
 
     @property
