@@ -121,7 +121,8 @@ class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
         if num_of_negatives > 0:
             sample_positive_indices = list(np.random.randint(0, n, size=num_of_negatives))
 
-            negative_input, negative_output = super().__getitem__(sample_positive_indices)
+            negative_input, _ = super().__getitem__(sample_positive_indices)
+            negative_output = self._convert_dtype(np.zeros(num_of_negatives), self._project_config.output_column.type)
 
             negative_input = list(negative_input)
             negative_input[self._item_input_index] = np.array([
