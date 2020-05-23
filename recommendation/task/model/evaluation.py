@@ -15,7 +15,7 @@ import torchbearer
 from torchbearer import Trial
 from tqdm import tqdm
 import gc
-from recommendation.data import preprocess_interactions_data_frame
+from recommendation.data import preprocess_interactions_data_frame, InteractionsDataset
 from recommendation.fairness_metrics import calculate_fairness_metrics
 from recommendation.files import get_test_set_predictions_path
 from recommendation.offpolicy_metrics import eval_IPS, eval_CIPS, eval_SNIPS, eval_doubly_robust
@@ -57,7 +57,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
     def direct_estimator(self):
         if not hasattr(self, "_direct_estimator"):
             self._direct_estimator = self.get_direct_estimator({
-                "project": "trivago_contextual_bandit_with_negative_indice_generation",
+                "project": "trivago_contextual_bandit_with_negative_item_generation",
                 "loss_function": "bce", "loss_function_params": {}, "observation": "",
                 "negative_proportion": self.direct_estimator_negative_proportion})
         return self._direct_estimator
@@ -291,7 +291,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         df["item_idx_rhat_rewards"] = rewards
 
     def _direct_estimator_predict(self, df):
-        dataset       = self.direct_estimator.project_config.dataset_class(df, self.direct_estimator.embeddings_for_metadata,
+        dataset       = InteractionsDataset(df, self.direct_estimator.embeddings_for_metadata,
                                                                      self.direct_estimator.project_config)
         batch_sampler = FasterBatchSampler(dataset, self.direct_estimator.batch_size, shuffle=False)
         data_loader   = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
