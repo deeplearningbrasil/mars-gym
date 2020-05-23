@@ -1,2 +1,1 @@
-path,ndcg_at_5,mean_average_precision,IPS,SNIPS,CIPS,precision_at_1
-TrivagoLogisticModelInteraction_selu____epsilon_greedy_6a1d38dd73_db37538537_ps_per_logistic_regression_of_pos_item_idx_and_item_ps,0.44741933399899075,0.42913287641840375,0.026222286515998273,0.3210144781581776,0.026222286515998273,0.328877435980029
+path,ndcg_at_5,mean_average_precision

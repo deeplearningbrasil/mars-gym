@@ -23,7 +23,7 @@ from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
 from recommendation.task.meta_config import ProjectConfig, Column, IOType
 from recommendation.task.model.base import BaseTorchModelTraining, TORCH_LOSS_FUNCTIONS
 from recommendation.plot import plot_history, plot_scores
-
+import random
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
 from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
@@ -104,6 +104,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             arm_indices = np.flatnonzero(ob[self.project_config.available_arms_column_name])
         else:
             arm_indices = self.unique_items
+
+        arm_indices = random.sample(list(arm_indices), len(arm_indices))
 
         return arm_indices
 

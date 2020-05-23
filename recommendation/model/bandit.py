@@ -286,55 +286,24 @@ class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
         )        
         return model
 
-    # def build_oracle(self):
-    #     model = compose.Pipeline(
-    #         preprocessing.RobustScaler(),
-    #         sampling.RandomUnderSampler(
-    #             classifier=linear_model.LogisticRegression(loss=optim.losses.BinaryFocalLoss(2, 1)),
-    #             desired_dist={0: .5, 1: .5},
-    #             seed=42
-    #         )            
-    #         #linear_model.LogisticRegression(loss=optim.losses.BinaryFocalLoss(2, 1))
-    #     )
-
-    #     return model
-
     def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
         i        = len(dataset)-1
         row      = dataset[i]
-        #dataset._data_frame
-        #for i, row in enumerate(dataset):
+
         input_   = row[0]
         output_  = row[1]
         reward   = output_[0][0] if isinstance(output_, tuple) else output_
         
-        #from IPython import embed; embed()
-
         # build features
         x = np.nan_to_num(np.reshape(input_, -1))
-        #arms     = np.zeros(self._total_arms)
-        #arms[self._arms_selected[i]] = 1
-        #x = np.concatenate([x, arms])[2:-1] 
         x = {i: e for i, e in enumerate(x)} 
-        #from IPython import embed; embed()
+
         if reward:
             # fit
             self._oracle.fit_one(x, self._arms_selected[i])
-
         
-        # # metric
-        # y_pred = self._oracle.predict_one(x)
-        # self._oracle_metric = self._oracle_metric.update(reward, y_pred)
-        # print(self._oracle_metric)
-
-        # # fit
-        # self._oracle.fit_one(x, reward)
-
-        # self._arms_rewards[self._arms_selected[i]].append(reward)
-        # #dataset._data_frame[dataset._data_frame.buys == 1]
         # if self._times % 500 == 0:
         #    from IPython import embed; embed()
-
 
     def _flatten_input(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
         flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
@@ -354,20 +323,7 @@ class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
         arm = self._oracle.predict_one(x)
         
         return self._rng.choice(self._total_arms) if arm is None else arm
-        # for i in range(self._total_arms):
-        #     arms    = np.zeros(self._total_arms)
-        #     arms[i] = 1
-        #     x = np.nan_to_num(np.reshape(input_, -1))
-        #     x = np.concatenate([x, arms])[2:-1] 
-        #     x = {i: e for i, e in enumerate(x)}         
-            
-        #     scores.append(self._oracle.predict_proba_one(x)[True])
-        #scores = self._reduction_rewards()
-        #print(scores)
-        #print(self._reduction_rewards())
-        #return np.argmax(self._reduction_rewards())
 
-        #return np.argmax(scores)
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
@@ -388,6 +344,46 @@ class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
         return list(arm_indices).index(action)
     
 
+class RemoteContextualSoftmax(RemoteContextualEpsilonGreedy):
+    def __init__(self, reward_model: nn.Module, logit_multiplier: float = 1.0, reverse_sigmoid: bool = True, index_data = None, endpoints=[], seed: int = 42) -> None:
+        super().__init__(reward_model, 0.1, index_data, endpoints)
+        self._logit_multiplier = logit_multiplier
+        self._reverse_sigmoid = reverse_sigmoid
+
+    def _arm_probs(self, arm_contexts):
+        scores = []
+        #from IPython import embed; embed()
+
+        input_ = self._flatten_input(arm_contexts)[0]
+        
+        x = np.nan_to_num(np.reshape(input_, -1))
+        x = {i: e for i, e in enumerate(x)} 
+
+        arm_probs = self._oracle.predict_proba_one(x)
+    
+        if len(arm_probs) != self._total_arms:
+            arm_probs = np.random.random(self._total_arms)
+            return arm_probs/arm_probs.sum()
+        else:
+            arm_probs = [arm_probs[i] if i in arm_probs else 0.0 for i in range(self._total_arms) ] 
+            return arm_probs/np.sum(arm_probs)
+
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+        # Select best endpoint
+        probs   = self._arm_probs(arm_contexts)
+        arm_idx = self._rng.choice(self._total_arms, p=probs)
+
+        # Request
+        action    = self._request(self._endpoints[arm_idx], arm_indices, arm_contexts)
+
+        # Save arm
+        self._arms_selected.append(arm_idx)
+        self._times += 1
+
+        return list(arm_indices).index(action)
+    
 
 
 
@@ -885,4 +881,4 @@ BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     adaptive=AdaptiveGreedy, model=ModelPolicy, softmax_explorer = SoftmaxExplorer,
     explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None, remote=RemotePolicy, 
     remote_epsilon_greedy=RemoteEpsilonGreedy, remote_ucb=RemoteUCB, remote_softmax=RemoteSoftmax,
-    remote_contextual_epsilon_greedy=RemoteContextualEpsilonGreedy)
+    remote_contextual_epsilon_greedy=RemoteContextualEpsilonGreedy, remote_contextual_softmax=RemoteContextualSoftmax)
