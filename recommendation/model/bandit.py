@@ -244,6 +244,7 @@ class RemoteSoftmax(RemotePolicy):
         
         reward_logit = expit(reward_mean)
         arms_probs   = softmax(self._logit_multiplier * reward_logit)
+        print(arms_probs)
         return self._rng.choice(list(range(self._total_arms)), p = arms_probs)
         
 
@@ -350,6 +351,12 @@ class RemoteContextualSoftmax(RemoteContextualEpsilonGreedy):
         self._logit_multiplier = logit_multiplier
         self._reverse_sigmoid = reverse_sigmoid
 
+    def _softmax(self, x: np.ndarray) -> np.ndarray:
+        return np.exp(x) / np.sum(np.exp(x), axis=0)
+
+    def inv_logit(self, p):
+        return np.exp(p) / (1 + np.exp(p))
+
     def _arm_probs(self, arm_contexts):
         scores = []
         #from IPython import embed; embed()
@@ -362,12 +369,16 @@ class RemoteContextualSoftmax(RemoteContextualEpsilonGreedy):
         arm_probs = self._oracle.predict_proba_one(x)
     
         if len(arm_probs) != self._total_arms:
-            arm_probs = np.random.random(self._total_arms)
-            return arm_probs/arm_probs.sum()
+            arm_scores = np.random.random(self._total_arms)
+            #return arm_probs/arm_probs.sum()
         else:
-            arm_probs = [arm_probs[i] if i in arm_probs else 0.0 for i in range(self._total_arms) ] 
-            return arm_probs/np.sum(arm_probs)
+            arm_scores = [arm_probs[i] if i in arm_probs else 0.0 for i in range(self._total_arms) ] 
+            #return arm_probs/np.sum(arm_probs)
+        
+        arm_scores = self.inv_logit(arm_scores)
+        arms_probs = self._softmax(self._logit_multiplier * arm_scores)
 
+        return arms_probs
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
