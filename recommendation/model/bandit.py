@@ -120,7 +120,9 @@ class RemotePolicy(BanditPolicy):
         input_   = row[0]
         output_  = row[1]
         reward   = output_[0][0] if isinstance(output_, tuple) else output_
-        
+        #if i % 500 == 0:
+        #    from IPython import embed; embed()
+
         self._arms_rewards[self._arms_selected[i]].append(reward)
 
     @property
@@ -201,8 +203,8 @@ class RemoteEpsilonGreedy(RemotePolicy):
         return list(arm_indices).index(action)
 
 class RemoteUCB(RemotePolicy):
-    def __init__(self, reward_model: nn.Module, c: float = 2, index_data = None, endpoints=[], seed: int = 42) -> None:
-        super().__init__(reward_model, seed, index_data, endpoints)
+    def __init__(self, reward_model: nn.Module, c: float = 2, index_data = None, window_reward=500,endpoints=[], seed: int = 42) -> None:
+        super().__init__(reward_model, seed, index_data, endpoints, window_reward)
         self._c            = c
         self._times        = 1
         self._action_times = np.zeros(len(endpoints))        
