@@ -31,6 +31,8 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
     direct_estimator_module: str = luigi.Parameter(default=None)
     direct_estimator_cls: str = luigi.Parameter(default=None)
     direct_estimator_negative_proportion: int = luigi.FloatParameter(0.8)
+    direct_estimator_batch_size: int = luigi.IntParameter(default=500)
+    direct_estimator_epochs: int = luigi.IntParameter(default=50)
 
     policy_estimator_extra_params: dict = luigi.DictParameter(default={})
 
@@ -58,7 +60,9 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         if not hasattr(self, "_direct_estimator"):
             self._direct_estimator = self.get_direct_estimator({
                 "project": "trivago_contextual_bandit_with_negative_item_generation",
-                "loss_function": "bce", "loss_function_params": {}, "observation": "",
+                "epochs": self.direct_estimator_epochs,
+                "batch_size": self.direct_estimator_batch_size,
+                "loss_function": "bce", "loss_function_params": {}, "observation": "All Data",
                 "negative_proportion": self.direct_estimator_negative_proportion})
         return self._direct_estimator
 
