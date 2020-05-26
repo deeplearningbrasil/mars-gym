@@ -18,12 +18,15 @@ class EvaluateTrivagoTestSetPredictions(EvaluateTestSetPredictions):
         "per_item_given_pos",
         "per_logistic_regression_of_pos_item_idx_and_item",
         "per_logistic_regression_of_pos_item_idx_and_item_ps",
+        "model",
     ], default="per_logistic_regression_of_pos_item_idx_and_item_ps")
 
     def output(self):
         return luigi.LocalTarget(super().output().path + "_ps_" + self.fill_ps_strategy)
 
     def requires(self):
+        if self.fill_ps_strategy == "model":
+            return super(EvaluateTrivagoTestSetPredictions, self).requires()
         if not self.no_offpolicy_eval:
             return [self.direct_estimator]
         return []
@@ -147,4 +150,5 @@ class EvaluateTrivagoTestSetPredictions(EvaluateTestSetPredictions):
                 self.fill_ps_per_logistic_regression_of_pos_item_idx_and_item,
             "per_logistic_regression_of_pos_item_idx_and_item_ps":
                 self.fill_ps_per_logistic_regression_of_pos_item_idx_and_item_ps,
+            "model": super(EvaluateTrivagoTestSetPredictions, self).fill_ps
         }[self.fill_ps_strategy](df, pool)
