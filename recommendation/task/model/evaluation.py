@@ -60,6 +60,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         if not hasattr(self, "_direct_estimator"):
             self._direct_estimator = self.get_direct_estimator({
                 "project": "trivago_contextual_bandit_with_negative_item_generation",
+                "test_size": 0.0,
                 "epochs": self.direct_estimator_epochs,
                 "batch_size": self.direct_estimator_batch_size,
                 "loss_function": "bce", "loss_function_params": {}, "observation": "All Data",
