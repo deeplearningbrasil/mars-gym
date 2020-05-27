@@ -68,6 +68,8 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     test_size:     float = luigi.FloatParameter(default=0.0)
     test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
     val_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
+    crm_ps_strategy: str = luigi.ChoiceParameter(choices=["bandit", "dataset"], default="bandit")
+
     obs_batch_size:  int = luigi.IntParameter(default=10000)
     num_episodes:    int = luigi.IntParameter(default=1)
     full_refit:     bool = luigi.BoolParameter(default=False)
@@ -180,7 +182,13 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         hist_output_column  = self.project_config.hist_output_column_name
         ps_column           = self.project_config.propensity_score_column_name
 
-        new_row = {**ob, item_column: action, output_column: reward, ps_column: self._calulate_propensity_score(ob, prob)}
+        if self.crm_ps_strategy == "bandit":
+            ps_val  = self._calulate_propensity_score(ob, prob)
+        else:
+            ps_val  = self._calulate_propensity_score_with_probs(ob, action)
+
+        new_row = {**ob, item_column: action, output_column: reward, ps_column: ps_val}
+
         self._known_observations_data_frame = self.known_observations_data_frame.append(new_row, ignore_index=True)
 
         user_index = ob[user_column]
@@ -197,6 +205,21 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         n    = np.sum(ob[self.project_config.available_arms_column_name]) #Binary Array [0,0,1,0,0,1...]
         prob += 0.001 #error
         ps   = (1/n)/prob
+        return ps
+    
+    def _calulate_propensity_score_with_probs(self, ob: dict, action: int):
+        df   = self.known_observations_data_frame
+        try:
+            prob = self._known_observations_data_frame.item_idx.value_counts(normalize=True)[action]
+        except IndexError:
+            prob = 0
+        except KeyError:
+            prob = 0
+
+        n    = np.sum(ob[self.project_config.available_arms_column_name]) #Binary Array [0,0,1,0,0,1...]
+        prob += 0.001 #error
+        ps   = (1/n)/prob
+        
         return ps
 
     def _create_hist_columns(self):
