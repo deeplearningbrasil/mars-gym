@@ -13,7 +13,6 @@ from recommendation.task.model.base import BaseTorchModelTraining, TORCH_WEIGHT_
 class PolicyEstimatorTraining(BaseTorchModelTraining):
     val_size  = 0.0
     test_size = 0.0
-    learning_rate  = 0.01 
     monitor_metric = "loss"
     loss_function  = "nll"
 
