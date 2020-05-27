@@ -251,7 +251,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def _save_log(self) -> None:
         columns = [self.project_config.user_column.name, self.project_config.item_column.name,
-                   self.project_config.output_column.name]
+                   self.project_config.output_column.name, self.project_config.propensity_score_column_name]
 
         # Env Dataset
         env_data_df = self.env_data_frame.reset_index()
@@ -260,7 +260,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         # Simulator Dataset
         sim_df = self.known_observations_data_frame.reset_index(drop=True)
         sim_df = sim_df[columns]
-        sim_df.columns = ['user', 'item', 'reward']
+        sim_df.columns = ['user', 'item', 'reward', 'ps']
         sim_df['index_env'] = env_data_duplicate_df['index']
 
         # All Dataset
