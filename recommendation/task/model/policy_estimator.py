@@ -11,16 +11,17 @@ from recommendation.task.model.base import BaseTorchModelTraining, TORCH_WEIGHT_
 
 
 class PolicyEstimatorTraining(BaseTorchModelTraining):
-    val_size = 0.0
+    val_size  = 0.0
     test_size = 0.0
+    learning_rate  = 0.01 
     monitor_metric = "loss"
-    loss_function = "nll"
+    loss_function  = "nll"
 
     layers: List[int] = luigi.ListParameter(default=[])
     weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
 
     embedding_dim: int = luigi.IntParameter(default=50)
-    epochs = luigi.IntParameter(default=1000)
+    epochs = luigi.IntParameter(default=200)
     early_stopping_patience: int = luigi.IntParameter(default=20)
     metrics = luigi.ListParameter(default=["loss", "acc"])
 

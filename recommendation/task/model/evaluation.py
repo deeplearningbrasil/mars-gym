@@ -33,7 +33,8 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
     direct_estimator_negative_proportion: int = luigi.FloatParameter(0.8)
     direct_estimator_batch_size: int = luigi.IntParameter(default=500)
     direct_estimator_epochs: int = luigi.IntParameter(default=50)
-
+    eval_cips_cap: int = luigi.IntParameter(default=15)
+    
     policy_estimator_extra_params: dict = luigi.DictParameter(default={})
 
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
@@ -205,12 +206,12 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
                 p.starmap(_ps_policy_eval, zip(df["relevance_list"], df["prob_actions"])), total=len(df)))
 
             action_rhat_rewards, item_idx_rhat_rewards, \
-                rewards, ps_eval, ps = self._offpolicy_eval(df)
+                rewards, ps_eval, ps_eval_i, ps = self._offpolicy_eval(df)
 
-            ips, c_ips       = eval_IPS(rewards, ps_eval, ps)
-            cips, c_cips     = eval_CIPS(rewards, ps_eval, ps)
-            snips, c_snips   = eval_SNIPS(rewards, ps_eval, ps)
-            doubly, c_doubly = eval_doubly_robust(action_rhat_rewards, item_idx_rhat_rewards, rewards, ps_eval, ps)
+            ips, c_ips       = eval_IPS(rewards, ps_eval_i, ps)
+            cips, c_cips     = eval_CIPS(rewards, ps_eval_i, ps, cap=self.eval_cips_cap)
+            snips, c_snips   = eval_SNIPS(rewards, ps_eval_i, ps)
+            doubly, c_doubly = eval_doubly_robust(action_rhat_rewards, item_idx_rhat_rewards, rewards, ps_eval_i, ps)
 
             metrics["IPS"]          = ips
             metrics["IPS_C"]        = c_ips
@@ -319,11 +320,13 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         rewards               = df_offpolicy["rewards"].values
         ps_eval               = df_offpolicy["ps_eval"].values
+        ps_eval_i             = df_offpolicy.apply(lambda row: int(row['item_idx'] == row['item_idx_action']), axis=1)
         ps                    = df_offpolicy[ps_column].values
         action_rhat_rewards   = df_offpolicy["action_rhat_rewards"].values
         item_idx_rhat_rewards = df_offpolicy["item_idx_rhat_rewards"].values
+        
 
-        return action_rhat_rewards, item_idx_rhat_rewards, rewards, ps_eval, ps
+        return action_rhat_rewards, item_idx_rhat_rewards, rewards, ps_eval, ps_eval_i, ps
 
 
 def _get_ps_from_probas(item_idx: int, probas: np.ndarray, available_item_indices: List[int] = None) -> float:
