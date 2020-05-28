@@ -65,7 +65,8 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
                 "epochs": self.direct_estimator_epochs,
                 "batch_size": self.direct_estimator_batch_size,
                 "loss_function": "bce", "loss_function_params": {}, "observation": "All Data",
-                "negative_proportion": self.direct_estimator_negative_proportion})
+                "negative_proportion": self.direct_estimator_negative_proportion,
+                "seed": 51})
         return self._direct_estimator
 
     @property
