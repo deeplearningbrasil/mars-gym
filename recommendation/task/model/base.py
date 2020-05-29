@@ -194,7 +194,7 @@ class BaseModelTraining(luigi.Task):
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
             self._val_dataset = self.project_config.dataset_class(
-                data_frame=self.train_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
+                data_frame=self.val_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
                 project_config=self.project_config, negative_proportion=self.negative_proportion)
         return self._val_dataset
 
@@ -202,7 +202,7 @@ class BaseModelTraining(luigi.Task):
     def test_dataset(self) -> Dataset:
         if not hasattr(self, "_test_dataset"):
             self._test_dataset = self.project_config.dataset_class(
-                data_frame=self.train_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
+                data_frame=self.test_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
                 project_config=self.project_config, negative_proportion=0.0)
         return self._test_dataset
 
