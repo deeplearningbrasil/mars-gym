@@ -116,6 +116,14 @@ class TrivagoModelTraining(FillTrivagoPropensityScoreMixin, FillPropensityScoreM
         return self._train_data_frame
 
     @property
+    def val_data_frame(self) -> pd.DataFrame:
+        if not hasattr(self, "_val_data_frame"):
+            self._val_data_frame = super().val_data_frame
+            with Pool(max(os.cpu_count(), 10)) as p:
+                self.fill_ps(self._val_data_frame, p)
+        return self._val_data_frame
+
+    @property
     def ps_base_df(self) -> pd.DataFrame:
         if not hasattr(self, "_base_df"):
             self._base_df = pd.concat([pd.read_csv(self.train_data_frame_path),

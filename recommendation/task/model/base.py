@@ -7,6 +7,7 @@ import os
 import random
 import shutil
 from contextlib import redirect_stdout
+from copy import deepcopy
 from typing import Type, Dict, List, Optional, Tuple, Union, Any
 
 import luigi
@@ -45,6 +46,7 @@ from recommendation.plot import plot_history
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, ProjectConfig
 from recommendation.task.cuda import CudaRepository
+from recommendation.task.meta_config import Column, IOType
 from recommendation.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from recommendation.utils import lecun_normal_init, he_init
 
@@ -125,7 +127,14 @@ class BaseModelTraining(luigi.Task):
 
     @property
     def project_config(self) -> ProjectConfig:
-        return PROJECTS[self.project]
+        if not hasattr(self, "_project_config"):
+            self._project_config = deepcopy(PROJECTS[self.project])
+            if self.loss_function == "crm" \
+                    and self.project_config.propensity_score_column_name not in self.project_config.auxiliar_output_columns:
+                self._project_config.auxiliar_output_columns = [
+                    *self._project_config.auxiliar_output_columns,
+                    Column(self.project_config.propensity_score_column_name, IOType.NUMBER)]
+        return self._project_config
 
     def _save_params(self):
         with open(get_params_path(self.output().path), "w") as params_file:
@@ -349,7 +358,7 @@ class BaseTorchModelTraining(BaseModelTraining):
                     .with_generators(val_generator=val_loader).eval()
 
         print(json.dumps((trial.evaluate(data_key=torchbearer.VALIDATION_DATA)), indent = 4))
-        
+
 
     def create_trial(self, module: nn.Module) -> Trial:
         loss_function = self._get_loss_function()

@@ -47,16 +47,6 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
     full_refit:     bool = luigi.BoolParameter(default=False)
     output_model_dir: str = luigi.Parameter(default='')
 
-    @property
-    def project_config(self) -> ProjectConfig:
-        if not hasattr(self, "_project_config"):
-            self._project_config = deepcopy(super().project_config)
-            if self.loss_function == "crm" and self.project_config.propensity_score_column_name not in self.project_config.auxiliar_output_columns:
-                self._project_config.auxiliar_output_columns = [
-                    *self._project_config.auxiliar_output_columns,
-                    Column(self.project_config.propensity_score_column_name, IOType.NUMBER)]
-        return self._project_config
-
     def output(self):
         return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
 
