@@ -23,11 +23,12 @@ from recommendation.rank_metrics import average_precision, precision_at_k, ndcg_
     personalization_at_k
 from recommendation.task.model.base import BaseEvaluationTask, BaseTorchModelTraining
 from recommendation.task.model.policy_estimator import PolicyEstimatorTraining
+from recommendation.task.model.propensity_score import FillPropensityScoreMixin
 from recommendation.torch import FasterBatchSampler, NoAutoCollationDataLoader
 from recommendation.utils import parallel_literal_eval, JsonEncoder
 
 
-class EvaluateTestSetPredictions(BaseEvaluationTask):
+class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     direct_estimator_module: str = luigi.Parameter(default=None)
     direct_estimator_cls: str = luigi.Parameter(default=None)
     direct_estimator_negative_proportion: int = luigi.FloatParameter(0.8)
@@ -70,7 +71,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         return self._direct_estimator
 
     @property
-    def policy_estimator(self):
+    def policy_estimator(self) -> PolicyEstimatorTraining:
         if not hasattr(self, "_policy_estimator"):
             self._policy_estimator = PolicyEstimatorTraining(
                 project=self.model_training.project,
@@ -83,6 +84,18 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         if not self.no_offpolicy_eval:
             return [self.direct_estimator, self.policy_estimator]
         return []
+
+    @property
+    def item_column(self) -> str:
+        return self.model_training.project_config.item_column.name
+
+    @property
+    def available_arms_column(self) -> str:
+        return self.model_training.project_config.available_arms_column_name
+
+    @property
+    def propensity_score_column(self) -> str:
+        return self.model_training.project_config.propensity_score_column_name
 
     def run(self):
         os.makedirs(self.output().path)
@@ -135,7 +148,6 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         df_fairness_metrics.to_csv(os.path.join(self.output().path, "fairness_metrics.csv"), index=False)
         df_fairness.to_csv(os.path.join(self.output().path, "fairness_df.csv"), index=False)
-
 
     def rank_metrics(self, df: pd.DataFrame):
         with Pool(self.num_processes) as p:
@@ -239,28 +251,6 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         return fairness_df, fairness_metrics
 
-    def fill_ps(self, df: pd.DataFrame, pool: Pool):
-        dataset       = InteractionsDataset(df, None, self.policy_estimator.project_config)
-        batch_sampler = FasterBatchSampler(dataset, self.policy_estimator.batch_size, shuffle=False)
-        data_loader   = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
-
-        trial = Trial(self.policy_estimator.get_trained_module(),
-                      criterion=lambda *args: torch.zeros(1, device=self.policy_estimator.torch_device, requires_grad=True)) \
-            .with_generators(val_generator=data_loader).to(self.policy_estimator.torch_device).eval()
-
-        with torch.no_grad():
-            log_probas: torch.Tensor = trial.predict(verbose=0, data_key=torchbearer.VALIDATION_DATA)
-        probas: np.ndarray = torch.exp(log_probas).cpu().numpy()
-
-        item_indices = df[self.model_training.project_config.item_column.name]
-
-        params = zip(item_indices, probas, df[self.model_training.project_config.available_arms_column_name]) \
-            if self.model_training.project_config.available_arms_column_name else zip(item_indices, probas)
-     
-        #from IPython import embed; embed()
-        df[self.model_training.project_config.propensity_score_column_name] = list(
-            tqdm(pool.starmap(_get_ps_from_probas, params), total=len(df)))
-
     def fill_rhat_rewards(self, df: pd.DataFrame, pool: Pool):
         #from IPython import embed; embed()
         
@@ -329,12 +319,6 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
 
         return action_rhat_rewards, item_idx_rhat_rewards, rewards, ps_eval, ps_eval_i, ps
 
-
-def _get_ps_from_probas(item_idx: int, probas: np.ndarray, available_item_indices: List[int] = None) -> float:
-    
-    if available_item_indices:
-        probas /= np.sum(probas[available_item_indices])
-    return probas[item_idx]
 
 def _create_relevance_list(sorted_actions: List[int], expected_action: int, reward: int) -> List[int]:
     return [1 if action == expected_action else 0 for action in sorted_actions]

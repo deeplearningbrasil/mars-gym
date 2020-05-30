@@ -155,7 +155,8 @@ class BaseModelTraining(luigi.Task):
         if not hasattr(self, "_metadata_data_frame"):
             self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path)\
                 if self.metadata_data_frame_path else None
-            literal_eval_array_columns(self._metadata_data_frame, self.project_config.metadata_columns)
+            if self._metadata_data_frame is not None:
+                literal_eval_array_columns(self._metadata_data_frame, self.project_config.metadata_columns)
         return self._metadata_data_frame
 
     @property
