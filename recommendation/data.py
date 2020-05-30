@@ -75,8 +75,8 @@ class InteractionsDataset(Dataset):
             return np.array([np.array(v, dtype=np.float64) for v in value])
         return value
 
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...],
-                                                                   Union[np.ndarray, Tuple[np.ndarray, ...]]]:
+    def __getitem__(self, indices: Union[int, List[int], slice]) -> Tuple[Tuple[np.ndarray, ...],
+                                                                          Union[np.ndarray, Tuple[np.ndarray, ...]]]:
         if isinstance(indices, int):
             indices = [indices]
         rows: pd.Series = self._data_frame.iloc[indices]
@@ -98,7 +98,7 @@ class InteractionsDataset(Dataset):
 class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
     def __init__(self, data_frame: pd.DataFrame, embeddings_for_metadata: Optional[Dict[str, np.ndarray]],
                  project_config: ProjectConfig, negative_proportion: float = 0.8, *args, **kwargs) -> None:
-        #data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
+        # data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
 
         super().__init__(data_frame, embeddings_for_metadata, project_config, *args, **kwargs)
         self._negative_proportion = negative_proportion
@@ -107,10 +107,12 @@ class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
     def __len__(self) -> int:
         return super().__len__() + int((1 / (1 - self._negative_proportion) - 1) * super().__len__())
 
-    def __getitem__(self, indices: Union[int, List[int]]) -> Tuple[Tuple[np.ndarray, ...],
-                                                                   np.ndarray]:
+    def __getitem__(self, indices: Union[int, List[int], slice]) -> Tuple[Tuple[np.ndarray, ...],
+                                                                          np.ndarray]:
         if isinstance(indices, int):
             indices = [indices]
+        if isinstance(indices, slice):
+            indices = list(range(len(self))[indices])
 
         n = super().__len__()
 

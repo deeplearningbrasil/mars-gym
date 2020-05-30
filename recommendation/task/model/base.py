@@ -7,7 +7,7 @@ import os
 import random
 import shutil
 from contextlib import redirect_stdout
-from typing import Type, Dict, List, Optional, Tuple
+from typing import Type, Dict, List, Optional, Tuple, Union, Any
 
 import luigi
 import numpy as np
@@ -31,12 +31,16 @@ from torchbearer.callbacks.checkpointers import ModelCheckpoint
 from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
+from tqdm import tqdm
 
 from recommendation.data import preprocess_interactions_data_frame, preprocess_metadata_data_frame, \
-    literal_eval_array_columns
+    literal_eval_array_columns, InteractionsDataset
 from recommendation.files import get_params_path, get_weights_path, get_interaction_dir, get_params, get_history_path, \
-    get_tensorboard_logdir, get_task_dir
+    get_tensorboard_logdir, get_task_dir, get_test_set_predictions_path
+from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
 from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization, FocalLoss
+from recommendation.model.agent import BanditAgent
+from recommendation.model.bandit import BANDIT_POLICIES
 from recommendation.plot import plot_history
 from recommendation.summary import summary
 from recommendation.task.config import PROJECTS, ProjectConfig
@@ -415,6 +419,149 @@ class BaseTorchModelTraining(BaseModelTraining):
                                          pin_memory=True if self.device == "cuda" else False)
 
 
+class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
+    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="model")
+    bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
+
+    def create_agent(self) -> BanditAgent:
+        bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.create_module(), **self.bandit_policy_params)
+        return BanditAgent(bandit)
+
+    @property
+    def unique_items(self) -> List[int]:
+        if not hasattr(self, "_unique_items"):
+            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique()
+        return self._unique_items
+
+    @property
+    def obs_columns(self) -> List[str]:
+        if not hasattr(self, "_obs_columns"):
+            self._obs_columns = [self.project_config.user_column.name] + [
+                column.name for column in self.project_config.other_input_columns]
+        return self._obs_columns
+
+    def _get_arm_indices(self, ob: dict) -> Union[List[int], np.ndarray]:
+        if self.project_config.available_arms_column_name:
+            arm_indices = np.flatnonzero(ob[self.project_config.available_arms_column_name])
+        else:
+            arm_indices = self.unique_items
+
+        return arm_indices
+
+    def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
+        batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
+        generator     = NoAutoCollationDataLoader(ob_dataset,
+                            batch_sampler=batch_sampler, num_workers=self.generator_workers,
+                            pin_memory=self.pin_memory if self.device == "cuda" else False)
+
+        trial = Trial(agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device,
+                                                                                     requires_grad=True)) \
+            .with_test_generator(generator).to(self.torch_device).eval()
+
+        with torch.no_grad():
+            model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=0)
+
+        scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
+        scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
+
+        return scores
+
+    def _create_ob_dataset(self, ob: dict, arm_indices: List[int]) -> Dataset:
+        data = [{**ob, self.project_config.item_column.name: arm_index} for arm_index in arm_indices]
+        ob_df = pd.DataFrame(
+            columns=self.obs_columns + [self.project_config.item_column.name],
+            data=data)
+
+        ob_df = self._fill_hist_columns(ob_df)
+
+        if self.project_config.output_column.name not in ob_df.columns:
+            ob_df[self.project_config.output_column.name] = 1
+        for auxiliar_output_column in self.project_config.auxiliar_output_columns:
+            if auxiliar_output_column.name not in ob_df.columns:
+                ob_df[auxiliar_output_column.name] = 0
+
+        dataset = InteractionsDataset(ob_df, ob[ITEM_METADATA_KEY], self.project_config)
+
+        return dataset
+
+    def _fill_hist_columns(self, ob_df: pd.DataFrame) -> pd.DataFrame:
+        if self.project_config.hist_view_column_name not in ob_df:
+            ob_df[self.project_config.hist_view_column_name] = 0
+        if self.project_config.hist_output_column_name not in ob_df:
+            ob_df[self.project_config.hist_output_column_name] = 0
+        return ob_df
+
+    def _prepare_for_agent(self, agent: BanditAgent, ob: dict) -> Tuple[np.ndarray, List[int], List[float]]:
+        arm_indices = self._get_arm_indices(ob)
+        ob_dataset = self._create_ob_dataset(ob, arm_indices)
+        arm_contexts = ob_dataset[:len(ob_dataset)][0]
+        arm_scores = self._get_arm_scores(agent, ob_dataset) \
+            if agent.bandit.reward_model else agent.bandit.calculate_scores(arm_contexts)
+        return arm_contexts, arm_indices, arm_scores
+
+    def _act(self, agent: BanditAgent, ob: dict) -> int:
+        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(agent, ob)
+
+        return agent.act(arm_indices, arm_contexts, arm_scores)
+
+    def _rank(self, agent: BanditAgent,  ob: dict) -> Tuple[List[int], List[float], List[float]]:
+        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(agent, ob)
+        sorted_actions, proba_actions = agent.rank(arm_indices, arm_contexts, arm_scores)
+
+        return sorted_actions, proba_actions, arm_scores
+
+    def clean(self):
+        if hasattr(self, "_train_dataset"):
+            del self._train_dataset
+
+        if hasattr(self, "_test_dataset"):
+            del self._test_dataset
+
+        if hasattr(self, "_train_data_frame"):
+            del self._train_data_frame
+
+        gc.collect()
+
+    def _save_test_set_predictions(self, agent: BanditAgent) -> None:
+        print("Saving test set predictions...")
+        sorted_actions_list = []
+        prob_actions_list = []
+        action_scores_list = []
+        obs = self.test_data_frame.to_dict('records')
+        self.clean()
+        # from IPython import embed; embed()
+        for ob in tqdm(obs, total=len(obs)):
+            if self.embeddings_for_metadata is not None:
+                ob[ITEM_METADATA_KEY] = self.embeddings_for_metadata
+
+            if self.project_config.available_arms_column_name:
+                items = np.zeros(np.max(ob[self.project_config.available_arms_column_name]) + 1)
+                items[ob[self.project_config.available_arms_column_name]] = 1
+                ob[self.project_config.available_arms_column_name] = items
+
+            sorted_actions, prob_actions, action_scores = self._rank(agent, ob)
+            sorted_actions_list.append(sorted_actions)
+            prob_actions_list.append(prob_actions)
+
+            if action_scores:
+                action_scores_list.append(list(reversed(sorted(action_scores))))
+
+            del ob
+            del items
+
+        self.test_data_frame["sorted_actions"] = sorted_actions_list
+        self.test_data_frame["prob_actions"] = prob_actions_list
+
+        if action_scores_list:
+            self.test_data_frame["action_scores"] = action_scores_list
+
+        self.test_data_frame.to_csv(get_test_set_predictions_path(self.output().path), index=False)
+
+    def after_fit(self):
+        if self.test_size > 0:
+            self._save_test_set_predictions(self.create_agent())
+
+
 class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     model_module: str = luigi.Parameter(default="recommendation.task.model.interaction")
     model_cls: str = luigi.Parameter(default="InteractionTraining")
@@ -464,6 +611,8 @@ def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraini
 
 def load_torch_model_training_from_task_id(model_cls: Type[BaseTorchModelTraining],
                                            task_id: str) -> BaseTorchModelTraining:
-    task_dir = get_interaction_dir(model_cls, task_id)
+    task_dir = get_task_dir(model_cls, task_id)
+    if not os.path.exists(task_dir):
+        task_dir = get_interaction_dir(model_cls, task_id)
 
     return load_torch_model_training_from_task_dir(model_cls, task_dir)

@@ -31,7 +31,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
     def _compute_prob(self, arm_scores: List[float]) -> List[float]:
         pass
 
-    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+    def calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
         if self.reward_model:
             inputs: torch.Tensor = default_convert(arm_contexts)
             scores: torch.Tensor = self.reward_model(*inputs)
@@ -44,7 +44,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         assert arm_contexts is not None or arm_scores is not None
 
         if not arm_scores:
-            arm_scores = self._calculate_scores(arm_contexts)
+            arm_scores = self.calculate_scores(arm_contexts)
         return self._select_idx(arm_indices, arm_contexts, arm_scores, pos)
 
     def select(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
@@ -57,7 +57,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
         assert arm_contexts is not None or arm_scores is not None
         
         if not arm_scores:
-            arm_scores = self._calculate_scores(arm_contexts)
+            arm_scores = self.calculate_scores(arm_contexts)
         
         assert len(arm_indices) == len(arm_scores)
         self._limit = limit
@@ -91,7 +91,7 @@ class RandomPolicy(BanditPolicy):
         super().__init__(None)
         self._rng = RandomState(seed)
 
-    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+    def calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
         return self._compute_prob(arm_contexts[0])
 
     def _compute_prob(self, arm_scores) -> List[float]:
@@ -116,7 +116,7 @@ class FixedPolicy(BanditPolicy):
         self._arg = arg
         self._arm_index = 1
 
-    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+    def calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
         X, arms    = self._flatten_input_and_extract_arms(arm_contexts)
         arm_scores = [int(x[self._arg] == arm) for x, arm in zip(X, arms)]
 
@@ -448,7 +448,7 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
              limit: int = None) -> Union[List[int], Tuple[List[int], List[float]]]:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
-            arm_scores = self._calculate_scores(arm_contexts)
+            arm_scores = self.calculate_scores(arm_contexts)
         assert len(arm_indices) == len(arm_scores)
 
         X, arms = self._flatten_input_and_extract_arms(arm_contexts)
@@ -482,7 +482,7 @@ class LinUCB(CustomRewardModelLinUCB):
         super().__init__(None, arm_index)
         self._alpha = alpha
 
-    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+    def calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
         X, arms = self._flatten_input_and_extract_arms(arm_contexts)
         scores: List[float] = []
 
@@ -517,7 +517,7 @@ class LinThompsonSampling(_LinBanditPolicy):
         mu = np.random.multivariate_normal(mu, self._v_sq * Ainv)
         return x.dot(mu)
 
-    def _calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+    def calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
         X, arms = self._flatten_input_and_extract_arms(arm_contexts)
         scores: List[float] = []
 

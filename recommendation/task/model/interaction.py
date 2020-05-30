@@ -20,50 +20,22 @@ from gym import spaces
 import gc
 from recommendation.data import preprocess_interactions_data_frame
 from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
+from recommendation.model.agent import BanditAgent
 from recommendation.task.meta_config import ProjectConfig, Column, IOType
-from recommendation.task.model.base import BaseTorchModelTraining, TORCH_LOSS_FUNCTIONS
+from recommendation.task.model.base import BaseTorchModelTraining, TORCH_LOSS_FUNCTIONS, BaseTorchModelWithAgentTraining
 from recommendation.plot import plot_history, plot_scores
 
 tqdm.pandas()
 from recommendation.gym.envs import RecSysEnv
-from recommendation.model.bandit import BanditPolicy, BANDIT_POLICIES
+from recommendation.model.bandit import BANDIT_POLICIES
 from recommendation.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from recommendation.files import get_interaction_dir, get_test_set_predictions_path, get_history_path
 from recommendation.files import get_simulator_datalog_path, get_interator_datalog_path, get_ground_truth_datalog_path
 from recommendation.utils import save_trained_data
 #from IPython import embed; embed()
 
-class BanditAgent(object):
 
-    def __init__(self, bandit: BanditPolicy) -> None:
-        super().__init__()
-
-        self.bandit = bandit
-
-    def fit(self, trial: Optional[Trial], train_loader: DataLoader, val_loader: DataLoader, epochs: int):
-        self.bandit.fit(train_loader.dataset)
-
-        if trial:
-            trial.with_generators(train_generator=train_loader, val_generator=val_loader).run(epochs=epochs)
-
-    def act(self, arm_indices: List[int],
-            arm_contexts: Tuple[np.ndarray, ...],
-            arm_scores: Optional[List[float]], with_probs=True) -> int:
-        
-        if with_probs:
-            arm_idx = self.bandit.select_idx(arm_indices, arm_contexts, arm_scores)
-            prob    = self.bandit._compute_prob(arm_scores)
-            return arm_indices[arm_idx], prob[arm_idx]
-        else:
-            return self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
-
-    def rank(self, arm_indices: List[int],
-            arm_contexts: Tuple[np.ndarray, ...],
-            arm_scores: Optional[List[float]]) -> Tuple[List[int], List[float]]:
-        return self.bandit.rank(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores, with_probs=True)
-
-
-class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
+class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta):
     loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="crm")
     test_size:     float = luigi.FloatParameter(default=0.0)
     test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="time")
@@ -73,8 +45,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
     obs_batch_size:  int = luigi.IntParameter(default=10000)
     num_episodes:    int = luigi.IntParameter(default=1)
     full_refit:     bool = luigi.BoolParameter(default=False)
-    bandit_policy:   str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="model")
-    bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
     output_model_dir: str = luigi.Parameter(default='')
 
     @property
@@ -89,69 +59,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
     def output(self):
         return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
-
-    def create_agent(self) -> BanditAgent:
-        bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.create_module(), **self.bandit_policy_params)
-        return BanditAgent(bandit)
-
-    @property
-    def obs_columns(self) -> List[str]:
-        if not hasattr(self, "_obs_columns"):
-            self._obs_columns = [self.project_config.user_column.name] + [
-                column.name for column in self.project_config.other_input_columns]
-        return self._obs_columns
-
-    def _get_arm_indices(self, ob: dict) -> Union[List[int], np.ndarray]:
-        if self.project_config.available_arms_column_name:
-            arm_indices = np.flatnonzero(ob[self.project_config.available_arms_column_name])
-        else:
-            arm_indices = self.unique_items
-
-        return arm_indices
-
-    def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
-        batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
-        generator     = NoAutoCollationDataLoader(ob_dataset,
-                            batch_sampler=batch_sampler, num_workers=self.generator_workers,
-                            pin_memory=self.pin_memory if self.device == "cuda" else False)
-
-        trial = Trial(agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device,
-                                                                                     requires_grad=True)) \
-            .with_test_generator(generator).to(self.torch_device).eval()
-
-        with torch.no_grad():
-            model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=0)
-
-        scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
-        scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
-
-        return scores
-
-    def _create_ob_dataset(self, ob: dict, arm_indices: List[int]) -> Dataset:
-        data = [{**ob, self.project_config.item_column.name: arm_index} for arm_index in arm_indices]
-        ob_df = pd.DataFrame(
-            columns=self.obs_columns + [self.project_config.item_column.name],
-            data=data)
-
-        if len(self.known_observations_data_frame) > 0:
-            ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
-                                        self.project_config.hist_output_column_name], errors='ignore')
-            ob_df = ob_df.merge(self.hist_data_frame, how='left',
-                                left_on=[self.project_config.user_column.name, self.project_config.item_column.name],
-                                right_index=True).fillna(0)
-        else:
-            ob_df[self.project_config.hist_view_column_name] = 0
-            ob_df[self.project_config.hist_output_column_name] = 0
-
-        if self.project_config.output_column.name not in ob_df.columns:
-            ob_df[self.project_config.output_column.name] = 1
-        for auxiliar_output_column in self.project_config.auxiliar_output_columns:
-            if auxiliar_output_column.name not in ob_df.columns:
-                ob_df[auxiliar_output_column.name] = 0
-
-        dataset = self.project_config.dataset_class(ob_df, ob[ITEM_METADATA_KEY], self.project_config)
-
-        return dataset
 
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
@@ -173,6 +80,18 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                 self.project_config.hist_view_column_name, self.project_config.hist_output_column_name], dtype=np.int) \
                 .set_index([self.project_config.user_column.name, self.project_config.item_column.name])
         return self._hist_data_frame
+
+    def _fill_hist_columns(self, ob_df: pd.DataFrame) -> pd.DataFrame:
+        if len(self.known_observations_data_frame) > 0:
+            ob_df = ob_df.drop(columns=[self.project_config.hist_view_column_name,
+                                        self.project_config.hist_output_column_name], errors='ignore')
+            ob_df = ob_df.merge(self.hist_data_frame, how='left',
+                                left_on=[self.project_config.user_column.name, self.project_config.item_column.name],
+                                right_index=True).fillna(0)
+        else:
+            ob_df[self.project_config.hist_view_column_name] = 0
+            ob_df[self.project_config.hist_output_column_name] = 0
+        return ob_df
 
     def _accumulate_known_observations(self, ob: dict, action: int, prob: float, reward: float):
         user_column         = self.project_config.user_column.name
@@ -262,7 +181,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         #self._save_bandit_model()
 
         if self.test_size > 0:
-            self._save_test_set_predictions()
+            self._save_test_set_predictions(self.agent)
 
         if self.output_model_dir:
             save_trained_data(self.output().path, self.output_model_dir)
@@ -326,43 +245,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
 
         plot_scores(scores).savefig(os.path.join(self.output().path, "plot_history", "scores_{}.jpg".format(i)))
 
-
-    def _save_test_set_predictions(self) -> None:
-        print("Saving test set predictions...")
-        sorted_actions_list = []
-        prob_actions_list   = []
-        action_scores_list  = []
-        obs = self.test_data_frame.to_dict('records')
-        self.clean()
-        #from IPython import embed; embed()    
-        for ob in tqdm(obs, total=len(obs)):
-
-            if self._embeddings_for_metadata is not None:
-                ob[ITEM_METADATA_KEY] = self._embeddings_for_metadata
-
-            if self.project_config.available_arms_column_name:
-                items = np.zeros(np.max(ob[self.project_config.available_arms_column_name]) + 1)
-                items[ob[self.project_config.available_arms_column_name]] = 1
-                ob[self.project_config.available_arms_column_name]        = items
-
-            sorted_actions, prob_actions, action_scores = self._rank(ob)
-            sorted_actions_list.append(sorted_actions)
-            prob_actions_list.append(prob_actions)
-
-            if action_scores:
-                action_scores_list.append(list(reversed(sorted(action_scores))))
-            
-            del ob
-            del items
-
-        self.test_data_frame["sorted_actions"] = sorted_actions_list
-        self.test_data_frame["prob_actions"]   = prob_actions_list
-
-        if action_scores_list:
-            self.test_data_frame["action_scores"] = action_scores_list
-
-        self.test_data_frame.to_csv(get_test_set_predictions_path(self.output().path), index=False)
-
     @property
     def interactions_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_interactions_data_frame"):
@@ -404,21 +286,13 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             del self._val_dataset
 
     def clean(self):
-        if hasattr(self, "_train_dataset"):
-            del self._train_dataset
-
-        if hasattr(self, "_test_dataset"):
-            del self._test_dataset
-
+        super().clean()
         if hasattr(self, "_interactions_data_frame"):
             del self._interactions_data_frame
 
         if hasattr(self, "_known_observations_data_frame"):
             del self._known_observations_data_frame
 
-        if hasattr(self, "_train_data_frame"):
-            del self._train_data_frame
-    
         gc.collect()
 
     @property
@@ -426,12 +300,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         if not hasattr(self, "_n_users"):
             self._n_users = self.interactions_data_frame[self.project_config.user_column.name].max() + 1
         return self._n_users
-
-    @property
-    def unique_items(self) -> List[int]:
-        if not hasattr(self, "_unique_items"):
-            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique()
-        return self._unique_items
 
     @property
     def n_items(self) -> int:
@@ -449,24 +317,6 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             self._env_data_frame = self.interactions_data_frame.loc[
                 self.interactions_data_frame[self.project_config.output_column.name] == 1, env_columns]
         return self._env_data_frame
-
-    def _prepare_for_agent(self, ob) -> Tuple[np.ndarray, List[int], List[float]]:
-        arm_indices  = self._get_arm_indices(ob)
-        ob_dataset   = self._create_ob_dataset(ob, arm_indices)
-        arm_contexts = ob_dataset[:len(ob_dataset)][0]
-        arm_scores   = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else self.agent.bandit._calculate_scores(arm_contexts)
-        return arm_contexts, arm_indices, arm_scores
-
-    def _act(self, ob: dict) -> int:
-        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
-
-        return self.agent.act(arm_indices, arm_contexts, arm_scores)
-
-    def _rank(self, ob: dict) -> Tuple[List[int], List[float], List[float]]:
-        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(ob)
-        sorted_actions, proba_actions = self.agent.rank(arm_indices, arm_contexts, arm_scores)
-        
-        return sorted_actions, proba_actions, arm_scores
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
@@ -494,7 +344,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
             while True:
                 interactions += 1
 
-                action, prob = self._act(ob)
+                action, prob = self._act(self.agent, ob)
 
                 new_ob, reward, done, info = self.env.step(action)
                 rewards.append(reward)

@@ -240,7 +240,7 @@ class EvaluateTestSetPredictions(BaseEvaluationTask):
         return fairness_df, fairness_metrics
 
     def fill_ps(self, df: pd.DataFrame, pool: Pool):
-        dataset       = self.policy_estimator.project_config.dataset_class(df, None, self.policy_estimator.project_config)
+        dataset       = InteractionsDataset(df, None, self.policy_estimator.project_config)
         batch_sampler = FasterBatchSampler(dataset, self.policy_estimator.batch_size, shuffle=False)
         data_loader   = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
 

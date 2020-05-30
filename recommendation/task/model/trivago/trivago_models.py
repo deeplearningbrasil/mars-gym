@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union, Tuple
 import functools
 from itertools import starmap
 import os
@@ -13,7 +13,8 @@ import numpy as np
 
 from recommendation.data import InteractionsDataset
 from recommendation.model.trivago.trivago_models import TestModel, SimpleCNNModel, SimpleRNNModel, SimpleLinearModel, SimpleCNNTransformerModel
-from recommendation.task.model.base import TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES, TORCH_LOSS_FUNCTIONS
+from recommendation.task.model.base import TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES, TORCH_LOSS_FUNCTIONS, \
+    BaseTorchModelWithAgentTraining
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 from recommendation.task.model.interaction import InteractionTraining
 from recommendation.task.model.base import BaseTorchModelTraining
@@ -62,7 +63,7 @@ class TrivagoModelTrainingMixin(object):
 class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
   pass
         
-class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelTraining):
+class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelWithAgentTraining):
 
   def evaluate(self):
       if self.project_config.dataset_class == InteractionsDataset:
