@@ -10,7 +10,7 @@ from torchbearer.metrics import default_for_key, running_mean, mean
 @running_mean
 @mean
 @metrics.lambda_metric("binary_accuracy", on_epoch=False)
-def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5):
+def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -26,7 +26,7 @@ def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float
 @running_mean
 @mean
 @metrics.lambda_metric("precision", on_epoch=False)
-def precision(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+def precision(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -54,7 +54,7 @@ def precision(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5
 @running_mean
 @mean
 @metrics.lambda_metric("recall", on_epoch=False)
-def recall(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+def recall(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -77,7 +77,7 @@ def recall(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, e
 @running_mean
 @mean
 @metrics.lambda_metric("f1_score", on_epoch=False)
-def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
