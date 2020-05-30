@@ -67,6 +67,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 "batch_size": self.direct_estimator_batch_size,
                 "loss_function": "bce", "loss_function_params": {}, "observation": "All Data",
                 "negative_proportion": self.direct_estimator_negative_proportion,
+                "policy_estimator_extra-params": {},
                 "seed": 51})
         return self._direct_estimator
 
