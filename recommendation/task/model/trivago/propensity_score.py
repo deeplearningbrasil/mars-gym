@@ -20,6 +20,7 @@ class FillTrivagoPropensityScoreMixin(object, metaclass=abc.ABCMeta):
         "per_logistic_regression_of_pos_item_idx_and_item",
         "per_logistic_regression_of_pos_item_idx_and_item_ps",
         "model",
+        "dummy",
     ], default="per_logistic_regression_of_pos_item_idx_and_item_ps")
 
     @property
@@ -123,5 +124,8 @@ class FillTrivagoPropensityScoreMixin(object, metaclass=abc.ABCMeta):
                 self.fill_ps_per_logistic_regression_of_pos_item_idx_and_item,
             "per_logistic_regression_of_pos_item_idx_and_item_ps":
                 self.fill_ps_per_logistic_regression_of_pos_item_idx_and_item_ps,
-            "model": super().fill_ps
+            "model": super().fill_ps,
+            "dummy": lambda x,y: 1,
         }[self.fill_ps_strategy](df, pool)
+
+        #df[self.propensity_score_column] = 1/df[self.propensity_score_column]

@@ -434,7 +434,7 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
 
     def create_agent(self) -> BanditAgent:
-        bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.create_module(), **self.bandit_policy_params)
+        bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.get_trained_module(), **self.bandit_policy_params)
         return BanditAgent(bandit)
 
     @property
