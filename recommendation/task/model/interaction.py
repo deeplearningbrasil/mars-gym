@@ -293,7 +293,7 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
     def n_users(self) -> int:
         if not hasattr(self, "_n_users"):
             self._n_users = max(self.interactions_data_frame[self.project_config.user_column.name].max() + 1,
-                                self.test_data_frame[self.project_config.user_column.name].max())
+                                self.test_data_frame[self.project_config.user_column.name].max() + 1)
         return self._n_users
 
     @property
