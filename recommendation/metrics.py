@@ -4,6 +4,21 @@ import torch
 import torchbearer
 from torchbearer import metrics, Metric
 from torchbearer.metrics import default_for_key, running_mean, mean
+import torch.nn.functional as F
+
+@metrics.default_for_key("bce")
+@running_mean
+@mean
+@metrics.lambda_metric("bce", on_epoch=False)
+def bce(y_pred: torch.Tensor, y_true: torch.Tensor, *args):
+    if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
+        y_true = y_true[0]
+    if y_true.layout == torch.sparse_coo:
+        y_true = y_true.to_dense()
+
+    loss  = F.binary_cross_entropy(y_pred, y_true, reduction='none')
+
+    return loss.mean()
 
 
 @metrics.default_for_key("binary_accuracy")

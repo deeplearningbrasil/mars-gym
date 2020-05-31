@@ -70,6 +70,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 "negative_proportion": self.direct_estimator_negative_proportion,
                 "policy_estimator_extra_params": {},
                 "fill_ps_strategy": "dummy",
+                "metrics": ['loss'],
                 "seed": 51})
         return self._direct_estimator
 

@@ -21,6 +21,7 @@ class FillTrivagoPropensityScoreMixin(object, metaclass=abc.ABCMeta):
         "per_logistic_regression_of_pos_item_idx_and_item_ps",
         "model",
         "dummy",
+        "per_prob",
     ], default="per_logistic_regression_of_pos_item_idx_and_item_ps")
 
     @property
@@ -114,6 +115,16 @@ class FillTrivagoPropensityScoreMixin(object, metaclass=abc.ABCMeta):
 
         df[self.propensity_score_column] = model.predict_proba(test_df.values)[:, 1]
 
+    def fill_ps_per_prob(self, df: pd.DataFrame, pool: Pool):
+        df_all  =  self.ps_base_df
+        #
+        df_prob = df_all.item_idx.value_counts(normalize=True).reset_index()
+        df_prob.columns = ['item_idx', 'ps_prob']
+
+        _df = df.merge(df_prob, on='item_idx').fillna(0)
+        df[self.propensity_score_column] = _df['ps_prob']
+        
+
     def fill_ps(self, df: pd.DataFrame, pool: Pool):
         {
             "per_pos_item_idx": self.fill_ps_per_pos_item_idx,
@@ -124,6 +135,7 @@ class FillTrivagoPropensityScoreMixin(object, metaclass=abc.ABCMeta):
                 self.fill_ps_per_logistic_regression_of_pos_item_idx_and_item,
             "per_logistic_regression_of_pos_item_idx_and_item_ps":
                 self.fill_ps_per_logistic_regression_of_pos_item_idx_and_item_ps,
+            "per_prob": self.fill_ps_per_prob,
             "model": super().fill_ps,
             "dummy": lambda x,y: 1,
         }[self.fill_ps_strategy](df, pool)

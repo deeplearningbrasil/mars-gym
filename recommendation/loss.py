@@ -83,7 +83,7 @@ class CounterfactualRiskMinimization(_Loss):
 
         loss  = F.binary_cross_entropy(prob.view(-1), target, reduction='none')
         
-        loss  = (loss * ps) # / ps.sum())#.sum()
+        loss  = (loss * ps)#(/ ps.sum())#.sum()
 
         if self.reduction == "mean":
             return loss.mean()
