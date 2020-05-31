@@ -47,6 +47,10 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
     full_refit:     bool = luigi.BoolParameter(default=False)
     output_model_dir: str = luigi.Parameter(default='')
 
+    def create_agent(self) -> BanditAgent:
+        bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.create_module(), **self.bandit_policy_params)
+        return BanditAgent(bandit)
+
     def output(self):
         return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
 

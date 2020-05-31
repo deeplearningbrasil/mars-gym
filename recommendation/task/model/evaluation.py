@@ -62,11 +62,15 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         if not hasattr(self, "_direct_estimator"):
             self._direct_estimator = self.get_direct_estimator({
                 "project": "trivago_contextual_bandit_with_negative_item_generation",
+                "learning_rate": 0.001,
                 "test_size": 0.0,
                 "epochs": self.direct_estimator_epochs,
                 "batch_size": self.direct_estimator_batch_size,
                 "loss_function": "bce", "loss_function_params": {}, "observation": "All Data",
                 "negative_proportion": self.direct_estimator_negative_proportion,
+                "policy_estimator_extra_params": {},
+                "fill_ps_strategy": "dummy",
+                "metrics": ['loss'],
                 "seed": 51})
         return self._direct_estimator
 
@@ -74,7 +78,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def policy_estimator(self) -> PolicyEstimatorTraining:
         if not hasattr(self, "_policy_estimator"):
             self._policy_estimator = PolicyEstimatorTraining(
-                project=self.model_training.project,
+                project="trivago_contextual_bandit",
                 data_frames_preparation_extra_params=self.model_training.data_frames_preparation_extra_params,
                 **self.policy_estimator_extra_params,
             )
@@ -124,7 +128,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         # Ground Truth
         ground_truth_df = df[df[self.model_training.project_config.output_column.name] == 1]
 
-        
+        #from IPython import embed; embed()
         print("Rank Metrics...")
         df_rank, dict_rank               = self.rank_metrics(ground_truth_df)
         gc.collect()

@@ -76,10 +76,14 @@ class CounterfactualRiskMinimization(_Loss):
         self.clip = clip
 
     def forward(self, prob, target, ps):
+        #from IPython import embed; embed()
+        ps   = 1/(ps+0.0001)
         if self.clip is not None:
             ps = torch.clamp(ps, max=self.clip)
 
-        loss     = F.binary_cross_entropy(prob.view(-1), target, weight=ps, reduction='none')
+        loss  = F.binary_cross_entropy(prob.view(-1), target, reduction='none')
+        
+        loss  = (loss * ps)#(/ ps.sum())#.sum()
 
         if self.reduction == "mean":
             return loss.mean()
