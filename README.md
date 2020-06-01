@@ -71,7 +71,7 @@ PYTHONPATH="." luigi --module MODULE --model-module MODEL_MODULE \
  --direct-estimator-cls DE_CLS
 ```
 
-### Evaluation Module
+#### Evaluation Module
 
 ```bash
 streamlit run tools/eval_viz/app.py
@@ -84,17 +84,26 @@ All results of the Paper can be reproduced with the scripts:
 Simulate results:
 
 ```bash
-./experiments/trivago//simu_como_italy.sh
-./experiments/trivago//simu_chicago_usa.sh
-./experiments/trivago//simu_rio_janeiro.sh
-./experiments/trivago//simi_new_your.sh
-./experiments/trivago//simu_recsys.sh
+./experiments/trivago/simulation/simu_como_italy.sh
+./experiments/trivago/simulation/simu_chicago_usa.sh
+./experiments/trivago/simulation/simu_rio_janeiro.sh
+./experiments/trivago/simulation/simu_new_your.sh
+./experiments/trivago/simulation/simu_recsys.sh
 ```
 
-Evaluate results:
+Rank and fairness metrics results can be run through the script ```./experiments/trivago/rank_metrics_chicago.sh``` or using the command:
+
 ```bash
-PYTHONPATH="." luigi --module recommendation.task.model.trivago.evaluation EvaluateTrivagoTestSetPredictions --model-module recommendation.task.model.trivago.trivago_logistic_model --model-cls TrivagoLogisticModelInteraction --model-task-id TrivagoLogisticModelInteraction_selu____random_1ace05d045 --fairness-columns "[\"city_idx\",\"platform_idx\",\"device_idx\"]" --direct-estimator-module recommendation.task.model.trivago.trivago_logistic_model --direct-estimator-cls TrivagoLogisticModelTraining --local-scheduler 
+PYTHONPATH="." luigi --module recommendation.task.model.trivago.evaluation EvaluateTrivagoTestSetPredictions \
+--model-module recommendation.task.model.trivago.trivago_logistic_model \
+--model-cls TrivagoLogisticModelInteraction \
+--model-task-id MODEL_TASK_ID \
+--fairness-columns "[\"city_idx\",\"platform_idx\",\"device_idx\"]" \
+--direct-estimator-module recommendation.task.model.trivago.trivago_logistic_model \
+--direct-estimator-cls TrivagoLogisticModelTraining --local-scheduler 
 ```
+
+
 # Cite
 Please cite the associated paper for this work if you use this code:
 
