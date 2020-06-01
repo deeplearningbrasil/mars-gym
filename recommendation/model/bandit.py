@@ -181,13 +181,12 @@ class RemoteEpsilonGreedy(RemotePolicy):
         super().__init__(reward_model, seed, index_data, endpoints, window_reward)
         self._epsilon = epsilon
         self._rng = RandomState(seed)
-
     def _select_best_endpoint(self):
         return np.argmax(self._reduction_rewards())
 
     def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
                    arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
-
+        
         # Select best endpoint
         if self._rng.choice([True, False], p=[self._epsilon, 1.0 - self._epsilon]):
             arm_idx = self._rng.choice(self._total_arms)

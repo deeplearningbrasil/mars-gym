@@ -38,7 +38,9 @@ class EnsambleMABInteraction(InteractionTraining):
   item_idx_column: str = luigi.Parameter(default="merchant_idx")
   
   def create_agent(self) -> BanditAgent:
+    self.seed_everything()
     bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.create_module(), 
+                                                  seed=self.seed,
                                                   index_data=self.index_mapping,
                                                   **self.bandit_policy_params)
     return BanditAgent(bandit)

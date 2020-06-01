@@ -89,7 +89,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
         return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
 
     def create_agent(self) -> BanditAgent:
-        bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.create_module(), **self.bandit_policy_params)
+        bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.create_module(), seed=self.seed, **self.bandit_policy_params)
         return BanditAgent(bandit)
 
     @property
@@ -461,7 +461,7 @@ class InteractionTraining(BaseTorchModelTraining, metaclass=abc.ABCMeta):
                                   number_of_items=self.interactions_data_frame[
                                                       self.project_config.item_column.name].max() + 2,
                                   item_metadata=self.embeddings_for_metadata)
-        self.env.seed(42)
+        self.env.seed(self.seed)
 
         self.agent: BanditAgent = self.create_agent()
 
