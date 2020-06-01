@@ -80,9 +80,9 @@ streamlit run tools/eval_viz/app.py
 
 ### Trivago Experiments
 
-All results of the Paper can be reproduced with the scripts:
+We used the Trivago 2019 RecSys Challenge Dataset (https://recsys.trivago.cloud/challenge/dataset/) for experiments. All the results of this Paper can be reproduced, just put  the Dataset in "output/trivago/trivagoRecSysChallengeData2019_v2" and use the scripts below:
 
-Simulate results:
+* For simulation results:
 
 ```bash
 ./experiments/trivago/simulation/simu_como_italy.sh
@@ -92,7 +92,7 @@ Simulate results:
 ./experiments/trivago/simulation/simu_recsys.sh
 ```
 
-Rank and fairness metrics results can be run through the script ```./experiments/trivago/rank_metrics_chicago.sh``` or using the command:
+* For Rank and fairness metrics results can be run through the script ```./experiments/trivago/rank_metrics_chicago.sh``` or using the command:
 
 ```bash
 PYTHONPATH="." luigi --module recommendation.task.model.trivago.evaluation EvaluateTrivagoTestSetPredictions \
