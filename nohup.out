@@ -1,73 +1,0 @@
-/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/sklearn/externals/six.py:31: DeprecationWarning: The module is deprecated in version 0.21 and will be removed in version 0.23 since we've dropped support for Python 2.7. Please rely on the official version of six (https://pypi.org/project/six/).
-  "(https://pypi.org/project/six/).", DeprecationWarning)
-2020-03-23 08:27:14,348 : INFO : Loaded ['luigi.cfg']
-DEBUG: Checking if TrivagoModelInteraction(project=trivago_contextual_bandit, sample_size=-1, minimum_interactions=5, session_test_size=0.1, dataset_split_method=holdout, val_size=0.2, n_splits=5, split_index=0, data_frames_preparation_extra_params={"filter_city": "Como, Italy"}, sampling_strategy=none, balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={}, seed=42, device=cuda, batch_size=20, epochs=250, optimizer=radam, optimizer_params={}, learning_rate=0.0001, loss_function_params={}, gradient_norm_clipping=0.0, gradient_norm_clipping_type=2, early_stopping_patience=10, early_stopping_min_delta=0.001, monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False, metrics=["loss"], test_size=0.0, test_split_type=time, obs_batch_size=100, num_episodes=30, full_refit=True, bandit_policy=custom_lin_ucb, bandit_policy_params={"alpha": 1e-05}, output_model_dir=, loss_function=crm, n_factors=50, weight_init=lecun_normal, dropout_prob=0.1, dropout_module=alpha, activation_function=selu, filter_sizes=[1, 3, 5], num_filters=64) is complete
-2020-03-23 08:27:14,412 : DEBUG : Checking if TrivagoModelInteraction(project=trivago_contextual_bandit, sample_size=-1, minimum_interactions=5, session_test_size=0.1, dataset_split_method=holdout, val_size=0.2, n_splits=5, split_index=0, data_frames_preparation_extra_params={"filter_city": "Como, Italy"}, sampling_strategy=none, balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={}, seed=42, device=cuda, batch_size=20, epochs=250, optimizer=radam, optimizer_params={}, learning_rate=0.0001, loss_function_params={}, gradient_norm_clipping=0.0, gradient_norm_clipping_type=2, early_stopping_patience=10, early_stopping_min_delta=0.001, monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False, metrics=["loss"], test_size=0.0, test_split_type=time, obs_batch_size=100, num_episodes=30, full_refit=True, bandit_policy=custom_lin_ucb, bandit_policy_params={"alpha": 1e-05}, output_model_dir=, loss_function=crm, n_factors=50, weight_init=lecun_normal, dropout_prob=0.1, dropout_module=alpha, activation_function=selu, filter_sizes=[1, 3, 5], num_filters=64) is complete
-DEBUG: Checking if PrepareTrivagoSessionsDataFrames(session_test_size=0.1, test_size=0.0, minimum_interactions=5, dataset_split_method=holdout, test_split_type=time, n_splits=5, split_index=0, val_size=0.2, sampling_strategy=none, balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={}, seed=42, sample_size=-1, filter_city=Como, Italy, window_hist=5) is complete
-2020-03-23 08:27:14,416 : DEBUG : Checking if PrepareTrivagoSessionsDataFrames(session_test_size=0.1, test_size=0.0, minimum_interactions=5, dataset_split_method=holdout, test_split_type=time, n_splits=5, split_index=0, val_size=0.2, sampling_strategy=none, balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={}, seed=42, sample_size=-1, filter_city=Como, Italy, window_hist=5) is complete
-INFO: Informed scheduler that task   TrivagoModelInteraction_selu____custom_lin_ucb_0a0657133a   has status   PENDING
-2020-03-23 08:27:14,419 : INFO : Informed scheduler that task   TrivagoModelInteraction_selu____custom_lin_ucb_0a0657133a   has status   PENDING
-INFO: Informed scheduler that task   PrepareTrivagoSessionsDataFrames____holdout____16ab39014b   has status   DONE
-2020-03-23 08:27:14,420 : INFO : Informed scheduler that task   PrepareTrivagoSessionsDataFrames____holdout____16ab39014b   has status   DONE
-INFO: Done scheduling tasks
-2020-03-23 08:27:14,420 : INFO : Done scheduling tasks
-INFO: Running Worker with 1 processes
-2020-03-23 08:27:14,420 : INFO : Running Worker with 1 processes
-DEBUG: Asking scheduler for work...
-2020-03-23 08:27:14,420 : DEBUG : Asking scheduler for work...
-DEBUG: Pending tasks: 1
-2020-03-23 08:27:14,420 : DEBUG : Pending tasks: 1
-INFO: [pid 23465] Worker Worker(salt=790687046, workers=1, host=marlesson-pc, username=marlesson, pid=23465) running   TrivagoModelInteraction(project=trivago_contextual_bandit, sample_size=-1, minimum_interactions=5, session_test_size=0.1, dataset_split_method=holdout, val_size=0.2, n_splits=5, split_index=0, data_frames_preparation_extra_params={"filter_city": "Como, Italy"}, sampling_strategy=none, balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={}, seed=42, device=cuda, batch_size=20, epochs=250, optimizer=radam, optimizer_params={}, learning_rate=0.0001, loss_function_params={}, gradient_norm_clipping=0.0, gradient_norm_clipping_type=2, early_stopping_patience=10, early_stopping_min_delta=0.001, monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False, metrics=["loss"], test_size=0.0, test_split_type=time, obs_batch_size=100, num_episodes=30, full_refit=True, bandit_policy=custom_lin_ucb, bandit_policy_params={"alpha": 1e-05}, output_model_dir=, loss_function=crm, n_factors=50, weight_init=lecun_normal, dropout_prob=0.1, dropout_module=alpha, activation_function=selu, filter_sizes=[1, 3, 5], num_filters=64)
-2020-03-23 08:27:14,420 : INFO : [pid 23465] Worker Worker(salt=790687046, workers=1, host=marlesson-pc, username=marlesson, pid=23465) running   TrivagoModelInteraction(project=trivago_contextual_bandit, sample_size=-1, minimum_interactions=5, session_test_size=0.1, dataset_split_method=holdout, val_size=0.2, n_splits=5, split_index=0, data_frames_preparation_extra_params={"filter_city": "Como, Italy"}, sampling_strategy=none, balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={}, seed=42, device=cuda, batch_size=20, epochs=250, optimizer=radam, optimizer_params={}, learning_rate=0.0001, loss_function_params={}, gradient_norm_clipping=0.0, gradient_norm_clipping_type=2, early_stopping_patience=10, early_stopping_min_delta=0.001, monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False, metrics=["loss"], test_size=0.0, test_split_type=time, obs_batch_size=100, num_episodes=30, full_refit=True, bandit_policy=custom_lin_ucb, bandit_policy_params={"alpha": 1e-05}, output_model_dir=, loss_function=crm, n_factors=50, weight_init=lecun_normal, dropout_prob=0.1, dropout_module=alpha, activation_function=selu, filter_sizes=[1, 3, 5], num_filters=64)
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3164709.58it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3769010.91it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3623091.57it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3505728.31it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3898308.03it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 2413379.11it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3929117.08it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3583914.19it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 1357886.23it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3384892.57it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3889729.85it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 3717923.60it/s]
-  0%|          | 0/3793 [00:00<?, ?it/s]100%|██████████| 3793/3793 [00:00<00:00, 1187061.26it/s]
-  0%|          | 0/343 [00:00<?, ?it/s]100%|██████████| 343/343 [00:00<00:00, 1821071.23it/s]
-INFO: Worker Worker(salt=790687046, workers=1, host=marlesson-pc, username=marlesson, pid=23465) was stopped. Shutting down Keep-Alive thread
-2020-03-23 08:27:18,683 : INFO : Worker Worker(salt=790687046, workers=1, host=marlesson-pc, username=marlesson, pid=23465) was stopped. Shutting down Keep-Alive thread
-Traceback (most recent call last):
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/bin/luigi", line 11, in <module>
-    sys.exit(luigi_run())
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/luigi/cmdline.py", line 11, in luigi_run
-    run_with_retcodes(argv)
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/luigi/retcodes.py", line 74, in run_with_retcodes
-    worker = luigi.interface._run(argv)['worker']
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/luigi/interface.py", line 248, in _run
-    return _schedule_and_run([cp.get_task_obj()], worker_scheduler_factory)
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/luigi/interface.py", line 207, in _schedule_and_run
-    success &= worker.run()
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/luigi/worker.py", line 1113, in run
-    self._run_task(get_work_response.task_id)
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/luigi/worker.py", line 931, in _run_task
-    task_process.run()
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/luigi/worker.py", line 203, in run
-    new_deps = self._run_get_new_deps()
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/luigi/worker.py", line 140, in _run_get_new_deps
-    task_gen = self.task.run()
-  File "/media/workspace/DeepFood/deep-reco-gym/recommendation/task/model/interaction.py", line 323, in run
-    action = self._act(ob)
-  File "/media/workspace/DeepFood/deep-reco-gym/recommendation/task/model/interaction.py", line 297, in _act
-    arm_scores = self._get_arm_scores(self.agent, ob_dataset) if self.agent.bandit.reward_model else None
-  File "/media/workspace/DeepFood/deep-reco-gym/recommendation/task/model/interaction.py", line 85, in _get_arm_scores
-    .with_test_generator(generator).to(self.torch_device).eval()
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/torchbearer/trial.py", line 1319, in to
-    self.state[torchbearer.MODEL].to(*args, **kwargs)
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/torch/nn/modules/module.py", line 432, in to
-    return self._apply(convert)
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/torch/nn/modules/module.py", line 208, in _apply
-    module._apply(fn)
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/torch/nn/modules/module.py", line 230, in _apply
-    param_applied = fn(param)
-  File "/home/marlesson/anaconda3/envs/deep-reco-gym/lib/python3.6/site-packages/torch/nn/modules/module.py", line 430, in convert
-    return t.to(device, dtype if t.is_floating_point() else None, non_blocking)
-KeyboardInterrupt

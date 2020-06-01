@@ -25,15 +25,6 @@ PYTHONPATH="." luigi --module recommendation.task.model.trivago.trivago_logistic
 PYTHONPATH="." luigi --module recommendation.task.model.trivago.trivago_logistic_model TrivagoLogisticModelInteraction --project test_fixed_trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Chicago, USA", "window_hist":10}'  --n-factors $n_factors --learning-rate $learning_rate --optimizer $optimizer --test-size 0.2 --loss-function bce --metrics '["loss"]' --epochs $epochs --obs-batch-size $obs_batch_size --early-stopping-patience $early_stopping_patience --batch-size $batch_size --num-episodes $num_episodes --val-split-type $val_split_type --full-refit --bandit-policy fixed --bandit-policy-params '{"arg": 2}' --observation "Popular Item"  --output-model-dir $bucket
 
 
-for i in $(seq 10 15) 
-do
-
-# # Lin_ts
-PYTHONPATH="." luigi --module recommendation.task.model.trivago.trivago_logistic_model TrivagoLogisticModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Chicago, USA", "window_hist":10}'  --n-factors $n_factors --learning-rate $learning_rate --optimizer $optimizer --test-size 0.2 --loss-function bce --metrics '["loss"]' --epochs $epochs --obs-batch-size $obs_batch_size --early-stopping-patience $early_stopping_patience --batch-size $batch_size --num-episodes $num_episodes --val-split-type $val_split_type --full-refit --bandit-policy lin_ts --bandit-policy-params '{"v_sq": 0.1}'  --seed $i --output-model-dir $bucket
-
-done
-
-
 for i in $(seq 1 10) 
 do
 
@@ -74,3 +65,11 @@ PYTHONPATH="." luigi --module recommendation.task.model.trivago.trivago_logistic
 done
 
 
+
+for i in $(seq 1 10) 
+do
+
+# # Lin_ts
+PYTHONPATH="." luigi --module recommendation.task.model.trivago.trivago_logistic_model TrivagoLogisticModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Chicago, USA", "window_hist":10}'  --n-factors $n_factors --learning-rate $learning_rate --optimizer $optimizer --test-size 0.2 --loss-function bce --metrics '["loss"]' --epochs $epochs --obs-batch-size $obs_batch_size --early-stopping-patience $early_stopping_patience --batch-size $batch_size --num-episodes $num_episodes --val-split-type $val_split_type --full-refit --bandit-policy lin_ts --bandit-policy-params '{"v_sq": 0.1}'  --seed $i --output-model-dir $bucket
+
+done
