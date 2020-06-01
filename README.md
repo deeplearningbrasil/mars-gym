@@ -9,7 +9,7 @@ MARS-Gym(MArketplaceRecommenderSystems Gym), a benchmark framework for modeling,
 ![Framework](doc/images/img2.jpg)
 
 
-# Dependencies and Requirements
+## Dependencies and Requirements
 
 - python=3.6.7
 - pandas=0.25.1
@@ -40,14 +40,14 @@ MARS-Gym(MArketplaceRecommenderSystems Gym), a benchmark framework for modeling,
 - gym==0.15.4
 - google-cloud-storage==1.26.0
 
-## Install
+### Install
 
 ```bash
 conda env create -f environment.yml
 conda activate deep-reco-gym
 ```
 
-# Usage
+## Usage
 
 ### Simulate Example
 
@@ -74,10 +74,11 @@ PYTHONPATH="." luigi --module MODULE --model-module MODEL_MODULE \
 #### Evaluation Module
 
 ```bash
+
 streamlit run tools/eval_viz/app.py
 ```
 
-## Trivago Experiments
+### Trivago Experiments
 
 All results of the Paper can be reproduced with the scripts:
 
@@ -104,12 +105,12 @@ PYTHONPATH="." luigi --module recommendation.task.model.trivago.evaluation Evalu
 ```
 
 
-# Cite
+## Cite
 Please cite the associated paper for this work if you use this code:
 
 
 ```
-@article{2020mars,
+@article{santana2020mars,
   title={MARS-Gym: A Gym framework to model, train, and evaluate recommendationsystems for marketplaces},
   author={Santana, Melo, and Camargo, et al.},
   journal={},
@@ -117,7 +118,7 @@ Please cite the associated paper for this work if you use this code:
 }
 ```
 
-# License
+## License
 
 Copyright ---
 
