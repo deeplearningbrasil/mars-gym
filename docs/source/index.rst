@@ -12,12 +12,27 @@ MARS-Gym(MArketplaceRecommenderSystems Gym), a benchmark framework for modeling,
   :width: 600
 
 
-Contents
-^^^^^^^^ 
+
+Table of contents
+-----------------
 
 .. toctree::
    :maxdepth: 2
+   :caption: Getting Started
 
-   installation
+   self
+   install
    how_to_use
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Guides
+
+   how_to_use
+
+.. toctree::
+   :maxdepth: 2
+   :caption: MARS
+
+   contrib
    authors
