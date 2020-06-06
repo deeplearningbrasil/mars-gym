@@ -4,7 +4,7 @@ import os
 
 import torch
 
-from recommendation.task.cuda import CudaRepository
+from mars_gym.task.cuda import CudaRepository
 
 if __name__ == "__main__":
     CudaRepository.fill()
