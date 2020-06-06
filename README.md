@@ -112,7 +112,13 @@ Please cite the associated paper for this work if you use this code:
 ```
 @article{santana2020mars,
   title={MARS-Gym: A Gym framework to model, train, and evaluate recommendationsystems for marketplaces},
-  author={Santana, Melo, and Camargo, et al.},
+  author={Marlesson R. O. de Santana and
+          Luckeciano C. Melo and
+          Fernando H. F. Camargo and
+          Bruno Brandão and
+          Renan Oliveira and
+          Sandor Caetano and
+          Anderson Soares},
   journal={},
   year={2020}
 }
