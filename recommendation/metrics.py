@@ -4,13 +4,28 @@ import torch
 import torchbearer
 from torchbearer import metrics, Metric
 from torchbearer.metrics import default_for_key, running_mean, mean
+import torch.nn.functional as F
+
+@metrics.default_for_key("bce")
+@running_mean
+@mean
+@metrics.lambda_metric("bce", on_epoch=False)
+def bce(y_pred: torch.Tensor, y_true: torch.Tensor, *args):
+    if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
+        y_true = y_true[0]
+    if y_true.layout == torch.sparse_coo:
+        y_true = y_true.to_dense()
+
+    loss  = F.binary_cross_entropy(y_pred, y_true, reduction='none')
+
+    return loss.mean()
 
 
 @metrics.default_for_key("binary_accuracy")
 @running_mean
 @mean
 @metrics.lambda_metric("binary_accuracy", on_epoch=False)
-def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5):
+def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -26,7 +41,7 @@ def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float
 @running_mean
 @mean
 @metrics.lambda_metric("precision", on_epoch=False)
-def precision(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+def precision(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -54,7 +69,7 @@ def precision(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5
 @running_mean
 @mean
 @metrics.lambda_metric("recall", on_epoch=False)
-def recall(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+def recall(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -77,13 +92,14 @@ def recall(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, e
 @running_mean
 @mean
 @metrics.lambda_metric("f1_score", on_epoch=False)
-def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5, eps=1e-9):
+def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
         y_true = y_true.to_dense()
     y_pred = (y_pred.float() > threshold).float()
     y_true = (y_true.float() > threshold).float()
+
 
     tp = (y_true * y_pred).sum().to(torch.float32)
     tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
@@ -98,33 +114,3 @@ def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, threshold: float = 0.5,
     f1 = 2* (precision*recall) / (precision + recall + epsilon)
 
     return f1
-
-@default_for_key('masked_zeroes_mse')
-@running_mean
-@mean
-class MaskedZeroesMeanSquaredError(Metric):
-    """Masked Zeroes Mean squared error metric. Computes the pixelwise squared error which is then averaged with decorators.
-    Decorated with a mean and running_mean. Default for key: 'masked_zeroes_mse'.
-
-    Args:
-        pred_key (StateKey): The key in state which holds the predicted values
-        target_key (StateKey): The key in state which holds the target values
-    """
-
-    def __init__(self, pred_key=torchbearer.Y_PRED, target_key=torchbearer.Y_TRUE):
-        super().__init__('masked_zeroes_mse')
-        self.pred_key = pred_key
-        self.target_key = target_key
-
-    def process(self, *args):
-        state = args[0]
-        y_pred = state[self.pred_key]
-        y_true = state[self.target_key]
-        if y_true.layout == torch.sparse_coo:
-            y_true = y_true.to_dense()
-
-        mask = y_true.ne(0)
-        y_pred = y_pred.masked_select(mask)
-        y_true = y_true.masked_select(mask)
-
-        return torch.pow(y_pred - y_true.view_as(y_pred), 2).data

@@ -4,11 +4,9 @@ from itertools import combinations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from recommendation.model.embedding import UserAndItemEmbedding
-from recommendation.model.attention import Attention
 from recommendation.utils import lecun_normal_init
 import numpy as np
+
 
 
 class LogisticRegression(nn.Module):
@@ -34,6 +32,10 @@ class LogisticRegression(nn.Module):
         if not self.none_tensor(item_representation):
             x = item_representation if self.none_tensor(x) else torch.cat((x, item_representation), dim=1)
 
+        return torch.sigmoid(self.linear(x))
+
+class SimpleLogisticRegression(LogisticRegression):
+    def predict(self, x):
         return torch.sigmoid(self.linear(x))
 
 
@@ -117,7 +119,7 @@ class DeepFactorizationMachine(nn.Module):
 class ContextualBandit(nn.Module):
 
     def __init__(self, n_users: int, n_items: int, n_factors: int, vocab_size: int, word_embeddings_size: int, num_filters: int = 64, 
-                filter_sizes: List[int] = [1, 3, 5], weight_init: Callable = lecun_normal_init, 
+                filter_sizes: List[int] = [1, 3, 5], weight_init: Callable = lecun_normal_init, use_original_content: bool = False,
                 use_buys_visits: bool = False, user_embeddings: bool = False, item_embeddings: bool = False, use_numerical_content: bool = False,
                 numerical_content_dim: int = None, context_embeddings: bool = False,
                 use_textual_content: bool = False, use_normalize: bool = False, content_layers=[1], binary: bool = False,
@@ -125,8 +127,8 @@ class ContextualBandit(nn.Module):
                 fm_hidden_layers: List[int] = [64, 32]):
         super(ContextualBandit, self).__init__()
 
-
         self.binary = binary
+        self.use_original_content = use_original_content
         self.user_embeddings = user_embeddings
         self.item_embeddings = item_embeddings
         self.context_embeddings = context_embeddings
@@ -137,9 +139,11 @@ class ContextualBandit(nn.Module):
         self.activation_function = activation_function
         self.predictor = predictor
 
-        user_input_dim = 0
-        item_input_dim = 0
-        context_input_dim = 0
+        user_input_dim    = 0
+        item_input_dim    = 0
+        context_input_dim = n_factors
+
+        self.shift_embeddings = nn.Embedding(10, n_factors)
 
         if self.user_embeddings:
             self.user_embeddings = nn.Embedding(n_users, n_factors)
@@ -168,7 +172,9 @@ class ContextualBandit(nn.Module):
             if self.use_numerical_content:
                 context_input_dim += numerical_content_dim
 
-        if predictor == "logistic_regression":
+        if predictor == "simple_logistic_regression":
+            self.predictor = SimpleLogisticRegression(n_factors, weight_init)
+        elif predictor == "logistic_regression":
             self.predictor = LogisticRegression(item_input_dim + context_input_dim + user_input_dim, weight_init)
         elif predictor == "factorization_machine":
             self.predictor = DeepFactorizationMachine(n_factors, context_input_dim, item_input_dim, user_input_dim, fm_order, \
@@ -225,8 +231,11 @@ class ContextualBandit(nn.Module):
 
         return x
 
-    def compute_context_embeddings(self, info, visits, buys):
+    def compute_context_embeddings(self, shift_ids, info, visits, buys):
         x : torch.Tensor = None
+
+        shift_embs = self.shift_embeddings(shift_ids.long())
+        x          = shift_embs if self.none_tensor(x) else torch.cat((x, shift_embs), dim=1)
 
         if self.use_numerical_content:
             x = info if self.none_tensor(x) else torch.cat((x, info), dim=1)
@@ -239,7 +248,6 @@ class ContextualBandit(nn.Module):
 
         return x
 
-
     def compute_user_embeddings(self, user_ids):
         user_emb = self.user_embeddings(user_ids.long())
 
@@ -248,97 +256,26 @@ class ContextualBandit(nn.Module):
         
         return user_emb
 
-    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, name: torch.Tensor, description: torch.Tensor,
-                category: torch.Tensor, info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor) -> torch.Tensor:
-        context_representation = self.compute_context_embeddings(info, visits, buys)
-        item_representation = self.compute_item_embeddings(item_ids, name, description, category)
-        user_representation = self.compute_user_embeddings(user_ids) if self.user_embeddings else None
+    def forward(self, user_ids: torch.Tensor, item_ids: torch.Tensor, shift_ids: torch.Tensor, visits: torch.Tensor,
+                buys: torch.Tensor, name: torch.Tensor, description: torch.Tensor, category: torch.Tensor,
+                info: torch.Tensor) -> torch.Tensor:
+        if self.use_original_content:
+            all_representation = torch.cat((user_ids.float().unsqueeze(1), 
+                                            item_ids.float().unsqueeze(1), 
+                                            shift_ids.float().unsqueeze(1), 
+                                            name.float(),
+                                            description.float(),
+                                            category.float(),
+                                            info,
+                                            visits.unsqueeze(1), 
+                                            buys.unsqueeze(1)), dim=1).float()
 
-        prob = self.predictor.predict(item_representation, user_representation, context_representation)
+            prob = self.predictor.predict(all_representation)
+        else:
+            context_representation = self.compute_context_embeddings(shift_ids, info, visits, buys)
+            item_representation    = self.compute_item_embeddings(item_ids, name, description, category)
+            user_representation    = self.compute_user_embeddings(user_ids) if self.user_embeddings else None
+
+            prob = self.predictor.predict(item_representation, user_representation, context_representation)
         
         return prob
-
-
-# PYTHONPATH="." luigi --module recommendation.task.model.contextual_bandits DirectEstimatorTraining 
-# --project ifood_offpolicy_direct_estimator --batch-size=512 --optimizer=radam --learning-rate=0.0001 
-# --loss-function=bce --n-factors=100 --epochs 305 --dropout-prob 0.1 --local-scheduler
-#
-#
-# DirectEstimatorTraining(project='ifood_offpolicy_direct_estimator', batch_size=512, epochs=305, 
-# optimizer='radam', learning_rate=0.0001, loss_function='bce', n_factors=100, dropout_prob=0.1)
-#
-class DirectEstimator(nn.Module):
-    def __init__(self, n_users: int, n_items: int, n_factors: int, dropout_prob: float,
-                    use_normalize: bool = False, weight_init: Callable = lecun_normal_init,
-                    dropout_module: Type[Union[nn.Dropout, nn.AlphaDropout]] = nn.AlphaDropout):
-        super(DirectEstimator, self).__init__()
-        self.linear = nn.Linear((n_factors * 3) + 24, 1)
-        self.weight_init = weight_init
-        self.apply(self.init_weights)
-
-        self.use_normalize   = use_normalize
-        self.user_embeddings = nn.Embedding(n_users, n_factors)
-        self.item_embeddings = nn.Embedding(n_items, n_factors)
-        self.shift_embeddings = nn.Embedding(10, n_factors)
-        
-        if dropout_prob:
-            self.dropout: nn.Module = dropout_module(dropout_prob)
-                
-        weight_init(self.user_embeddings.weight)
-        weight_init(self.item_embeddings.weight)
-        weight_init(self.shift_embeddings.weight)
-
-    def init_weights(self, module: nn.Module):
-        if type(module) == nn.Linear:
-            self.weight_init(module.weight)
-            module.bias.data.fill_(0.1)
-
-    def none_tensor(self, x):
-        return type(x) == type(None)
-
-    def compute_user_embeddings(self, user_ids):
-        user_emb = self.user_embeddings(user_ids.long())
-
-        if self.use_normalize:
-            user_emb = self.normalize(user_emb)
-        
-        return user_emb
-
-    def compute_item_embeddings(self, item_ids):
-        item_emb = self.item_embeddings(item_ids.long())
-
-        if self.use_normalize:
-            item_emb = self.normalize(item_emb)
-        
-        return item_emb
-
-    def compute_shift_embeddings(self, shift_ids):
-        shift_emb = self.shift_embeddings(shift_ids.long())
-
-        if self.use_normalize:
-            shift_emb = self.normalize(shift_emb)
-        
-        return shift_emb
-
-    def compute_context_embeddings(self, info, visits, buys):
-        x : torch.Tensor = None
-
-        x = info if self.none_tensor(x) else torch.cat((x, info), dim=1)
-        x = torch.cat((visits.unsqueeze(1), buys.unsqueeze(1)), dim=1) if self.none_tensor(x) else torch.cat((x, visits.unsqueeze(1), buys.unsqueeze(1)), dim=1)
-        
-        return x
-
-    def forward(self, user_ids: torch.Tensor, shift_ids: torch.Tensor, item_ids: torch.Tensor, category: torch.Tensor, 
-                    info: torch.Tensor, visits: torch.Tensor, buys: torch.Tensor) -> torch.Tensor:
-                    
-        context_representation = self.compute_context_embeddings(info, visits, buys)
-        shift_representation   = self.compute_shift_embeddings(shift_ids)
-        item_representation    = self.compute_item_embeddings(item_ids)
-        user_representation    = self.compute_user_embeddings(user_ids) 
-
-        x = torch.cat((context_representation, shift_representation, user_representation, item_representation), dim=1)
-
-        if hasattr(self, "dropout"):
-            x = self.dropout(x)
-
-        return torch.sigmoid(self.linear(x))#.reshape(-1)

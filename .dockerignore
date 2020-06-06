@@ -1,0 +1,10 @@
+.git
+.ipynb_checkpoints/*
+.cache
+doc
+experiments
+metastore_db
+notebooks
+spark-warehouse
+output
+!output/trivago

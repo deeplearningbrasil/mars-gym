@@ -1,20 +1,22 @@
 import abc
 import gc
+import importlib
 import json
 import logging
-import multiprocessing
 import os
+import random
 import shutil
 from contextlib import redirect_stdout
-from typing import Type, Dict, List, Optional
+from copy import deepcopy
+from typing import Type, Dict, List, Optional, Tuple, Union, Any
 
 import luigi
-import mlflow
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchbearer
 from torch.nn.init import xavier_normal
 from torch.optim import Adam, RMSprop, SGD
 from torch.optim.adadelta import Adadelta
@@ -30,44 +32,34 @@ from torchbearer.callbacks.checkpointers import ModelCheckpoint
 from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
-from torchbearer.callbacks.torch_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau, StepLR
+from tqdm import tqdm
 
-from recommendation.data import SupportBasedCorruptionTransformation, \
-    MaskingNoiseCorruptionTransformation, SaltAndPepperNoiseCorruptionTransformation, NegativeIndicesGenerator
-from recommendation.files import get_params_path, get_weights_path, get_params, get_history_path, \
-    get_tensorboard_logdir, get_task_dir
-from recommendation.loss import FocalLoss, BayesianPersonalizedRankingTripletLoss, VAELoss, \
-    FocalVAELoss, AttentiveVAELoss, WeightedTripletLoss, ImplicitFeedbackBCELoss, RelativeTripletLoss, \
-    CounterfactualRiskMinimization
-from recommendation.plot import plot_history, plot_loss_per_lr, plot_loss_derivatives_per_lr
+from recommendation.data import preprocess_interactions_data_frame, preprocess_metadata_data_frame, \
+    literal_eval_array_columns, InteractionsDataset
+from recommendation.files import get_params_path, get_weights_path, get_interaction_dir, get_params, get_history_path, \
+    get_tensorboard_logdir, get_task_dir, get_test_set_predictions_path
+from recommendation.gym.envs.recsys import ITEM_METADATA_KEY
+from recommendation.loss import ImplicitFeedbackBCELoss, CounterfactualRiskMinimization, FocalLoss
+from recommendation.model.agent import BanditAgent
+from recommendation.model.bandit import BANDIT_POLICIES
+from recommendation.plot import plot_history
 from recommendation.summary import summary
-from recommendation.task.config import PROJECTS, IOType
+from recommendation.task.config import PROJECTS, ProjectConfig
 from recommendation.task.cuda import CudaRepository
-from recommendation.torch import MLFlowLogger, CosineAnnealingWithRestartsLR, CyclicLR, LearningRateFinder, \
-    NoAutoCollationDataLoader, RAdam, FasterBatchSampler
+from recommendation.task.meta_config import Column, IOType
+from recommendation.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from recommendation.utils import lecun_normal_init, he_init
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-TORCH_DATA_TRANSFORMATIONS = dict(support_based=SupportBasedCorruptionTransformation,
-                                  masking_noise=MaskingNoiseCorruptionTransformation,
-                                  salt_and_pepper_noise=SaltAndPepperNoiseCorruptionTransformation,
-                                  none=None)
 TORCH_OPTIMIZERS = dict(adam=Adam, rmsprop=RMSprop, sgd=SGD, adadelta=Adadelta, adagrad=Adagrad, adamax=Adamax,
                         radam=RAdam)
-TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, bce_loss=nn.BCELoss, nll=nn.NLLLoss, bce=nn.BCELoss,
-                            mlm=nn.MultiLabelMarginLoss, relative_triplet=RelativeTripletLoss,
-                            focal=FocalLoss, triplet_margin=nn.TripletMarginLoss,
-                            bpr_triplet=BayesianPersonalizedRankingTripletLoss, vae_loss=VAELoss,
-                            focal_vae_loss=FocalVAELoss, attentive_vae_loss=AttentiveVAELoss,
-                            weighted_triplet=WeightedTripletLoss, implicit_feedback_bce=ImplicitFeedbackBCELoss,
-                            crm=CounterfactualRiskMinimization)
+TORCH_LOSS_FUNCTIONS = dict(mse=nn.MSELoss, nll=nn.NLLLoss, bce=nn.BCELoss, mlm=nn.MultiLabelMarginLoss,
+                            implicit_feedback_bce=ImplicitFeedbackBCELoss, crm=CounterfactualRiskMinimization,
+                            focal_loss=FocalLoss)
 TORCH_ACTIVATION_FUNCTIONS = dict(relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear)
 TORCH_WEIGHT_INIT = dict(lecun_normal=lecun_normal_init, he=he_init, xavier_normal=xavier_normal)
 TORCH_DROPOUT_MODULES = dict(dropout=nn.Dropout, alpha=nn.AlphaDropout)
-TORCH_LR_SCHEDULERS = dict(step=StepLR, exponential=ExponentialLR, cosine_annealing=CosineAnnealingLR,
-                           cosine_annealing_with_restarts=CosineAnnealingWithRestartsLR, cyclic=CyclicLR,
-                           reduce_on_plateau=ReduceLROnPlateau)
 
 SEED = 42
 
@@ -79,17 +71,15 @@ class BaseModelTraining(luigi.Task):
 
     project: str = luigi.ChoiceParameter(choices=PROJECTS.keys())
 
-    data_transformation: str = luigi.ChoiceParameter(choices=TORCH_DATA_TRANSFORMATIONS.keys(), default="none")
-    data_transformation_params: dict = luigi.DictParameter(default={})
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     session_test_size: float = luigi.FloatParameter(default=0.10)
     test_size: float = luigi.FloatParameter(default=0.0)
-    dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "k_fold"], default="holdout")
+    dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "column", "time", "k_fold"], default="time")
+    test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="random")
     val_size: float = luigi.FloatParameter(default=0.2)
     n_splits: int = luigi.IntParameter(default=5)
     split_index: int = luigi.IntParameter(default=0)
-    negative_proportion: float = luigi.FloatParameter(default=1.0)
     data_frames_preparation_extra_params: dict = luigi.DictParameter(default={})
     sampling_strategy: str = luigi.ChoiceParameter(choices=["oversample", "undersample", "none"], default="none")
     balance_fields: List[str] = luigi.ListParameter(default=[])
@@ -99,6 +89,9 @@ class BaseModelTraining(luigi.Task):
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
     seed: int = luigi.IntParameter(default=SEED)
+    observation: str = luigi.Parameter(default="")
+
+    negative_proportion: int = luigi.FloatParameter(0.0)
 
     @property
     def cache_attrs(self):
@@ -106,11 +99,16 @@ class BaseModelTraining(luigi.Task):
                 '_test_data_frame', '_val_data_frame', '_train_data_frame', '_metadata_data_frame']
 
     def requires(self):
+        return self.prepare_data_frames
+
+    @property
+    def prepare_data_frames(self):
         return self.project_config.prepare_data_frames_task(session_test_size=self.session_test_size,
                                                             sample_size=self.sample_size,
                                                             minimum_interactions=self.minimum_interactions,
                                                             test_size=self.test_size,
                                                             dataset_split_method=self.dataset_split_method,
+                                                            test_split_type=self.test_split_type,
                                                             val_size=self.val_size,
                                                             n_splits=self.n_splits,
                                                             split_index=self.split_index,
@@ -128,19 +126,19 @@ class BaseModelTraining(luigi.Task):
         return luigi.LocalTarget(get_task_dir(self.__class__, self.task_id))
 
     @property
-    def project_config(self):
-        return PROJECTS[self.project]
+    def project_config(self) -> ProjectConfig:
+        if not hasattr(self, "_project_config"):
+            self._project_config = deepcopy(PROJECTS[self.project])
+            if self.loss_function == "crm" \
+                    and self.project_config.propensity_score_column_name not in self.project_config.auxiliar_output_columns:
+                self._project_config.auxiliar_output_columns = [
+                    *self._project_config.auxiliar_output_columns,
+                    Column(self.project_config.propensity_score_column_name, IOType.NUMBER)]
+        return self._project_config
 
     def _save_params(self):
         with open(get_params_path(self.output().path), "w") as params_file:
             json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
-        for key, value in self.param_kwargs.items():
-            mlflow.log_param(key, value)
-
-    def get_data_transformation(self):
-        transformation = TORCH_DATA_TRANSFORMATIONS[self.data_transformation](**self.data_transformation_params) \
-            if self.data_transformation != "none" else None
-        return transformation
 
     @property
     def train_data_frame_path(self) -> str:
@@ -164,67 +162,69 @@ class BaseModelTraining(luigi.Task):
     @property
     def metadata_data_frame(self) -> Optional[pd.DataFrame]:
         if not hasattr(self, "_metadata_data_frame"):
-            self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path) \
+            self._metadata_data_frame = pd.read_csv(self.metadata_data_frame_path)\
                 if self.metadata_data_frame_path else None
+            if self._metadata_data_frame is not None:
+                literal_eval_array_columns(self._metadata_data_frame, self.project_config.metadata_columns)
         return self._metadata_data_frame
+
+    @property
+    def embeddings_for_metadata(self) -> Optional[Dict[str, np.ndarray]]:
+        if not hasattr(self, "_embeddings_for_metadata"):
+            self._embeddings_for_metadata = preprocess_metadata_data_frame(
+                self.metadata_data_frame, self.project_config) if self.metadata_data_frame is not None else None
+        return self._embeddings_for_metadata
 
     @property
     def train_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_train_data_frame"):
-            self._train_data_frame = pd.read_csv(self.train_data_frame_path)
+            self._train_data_frame = preprocess_interactions_data_frame(pd.read_csv(self.train_data_frame_path),
+                                                                        self.project_config)
         return self._train_data_frame
 
     @property
     def val_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_val_data_frame"):
-            self._val_data_frame = pd.read_csv(self.val_data_frame_path)
+            self._val_data_frame = preprocess_interactions_data_frame(pd.read_csv(self.val_data_frame_path),
+                                                                      self.project_config)
         return self._val_data_frame
 
     @property
     def test_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_test_data_frame"):
-            self._test_data_frame = pd.read_csv(self.test_data_frame_path)
+            self._test_data_frame = preprocess_interactions_data_frame(pd.read_csv(self.test_data_frame_path),
+                                                                       self.project_config)
         return self._test_data_frame
-
-    @property
-    def negative_indices_generator(self) -> NegativeIndicesGenerator:
-        if not hasattr(self, "_negative_indices_generator"):
-            self._negative_indices_generator = NegativeIndicesGenerator(
-                pd.concat([self.train_data_frame, self.val_data_frame, self.test_data_frame]),
-                self.metadata_data_frame,
-                [input_column.name for input_column in self.project_config.input_columns
-                 if input_column.type == IOType.INDEX],
-                self.project_config.possible_negative_indices_columns)
-        return self._negative_indices_generator
 
     @property
     def train_dataset(self) -> Dataset:
         if not hasattr(self, "_train_dataset"):
             self._train_dataset = self.project_config.dataset_class(
-                self.train_data_frame, self.metadata_data_frame, self.project_config,
-                transformation=self.get_data_transformation(),
-                negative_indices_generator=self.negative_indices_generator,
-                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
+                data_frame=self.train_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
+                project_config=self.project_config, negative_proportion=self.negative_proportion)
         return self._train_dataset
 
     @property
     def val_dataset(self) -> Dataset:
         if not hasattr(self, "_val_dataset"):
             self._val_dataset = self.project_config.dataset_class(
-                self.val_data_frame, self.metadata_data_frame, self.project_config,
-                transformation=self.get_data_transformation(),
-                negative_indices_generator=self.negative_indices_generator,
-                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
+                data_frame=self.val_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
+                project_config=self.project_config, negative_proportion=self.negative_proportion)
         return self._val_dataset
 
     @property
     def test_dataset(self) -> Dataset:
         if not hasattr(self, "_test_dataset"):
             self._test_dataset = self.project_config.dataset_class(
-                self.test_data_frame, self.metadata_data_frame, self.project_config,
-                negative_indices_generator=self.negative_indices_generator,
-                negative_proportion=self.negative_proportion, **self.project_config.dataset_extra_params)
+                data_frame=self.test_data_frame, embeddings_for_metadata=self.embeddings_for_metadata,
+                project_config=self.project_config, negative_proportion=0.0)
         return self._test_dataset
+
+    @property
+    def vocab_size(self):
+        if not hasattr(self, "_vocab_size"):
+            self._vocab_size = int(self.train_data_frame.iloc[0]["vocab_size"])
+        return self._vocab_size
 
     @property
     def n_users(self) -> int:
@@ -247,22 +247,29 @@ class BaseModelTraining(luigi.Task):
             if hasattr(self, a):
                 delattr(self, a)
 
-    def run(self):
+    def seed_everything(self):
+        random.seed(self.seed)
+        os.environ['PYTHONHASHSEED'] = str(self.seed)
         np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+        torch.cuda.manual_seed(self.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
-        mlflow.set_experiment(self.__class__.__name__)
-        with mlflow.start_run(run_name=self.task_id):
-            os.makedirs(self.output().path, exist_ok=True)
-            self._save_params()
-            try:
-                self.train()
-            except Exception:
-                shutil.rmtree(self.output().path)
-                raise
-            finally:
-                gc.collect()
-                if self.device == "cuda":
-                    CudaRepository.put_available_device(self.device_id)
+    def run(self):
+        self.seed_everything()
+
+        os.makedirs(self.output().path, exist_ok=True)
+        self._save_params()
+        try:
+            self.train()
+        except Exception:
+            shutil.rmtree(self.output().path)
+            raise
+        finally:
+            gc.collect()
+            if self.device == "cuda":
+                CudaRepository.put_available_device(self.device_id)
 
 
 class BaseTorchModelTraining(BaseModelTraining):
@@ -270,15 +277,11 @@ class BaseTorchModelTraining(BaseModelTraining):
 
     device: str = luigi.ChoiceParameter(choices=["cpu", "cuda"], default=DEFAULT_DEVICE)
 
-    mode: str = luigi.ChoiceParameter(choices=["fit", "lr_find"], default="fit")
-    lr_find_iterations: int = luigi.IntParameter(default=100)
     batch_size: int = luigi.IntParameter(default=500)
     epochs: int = luigi.IntParameter(default=100)
     optimizer: str = luigi.ChoiceParameter(choices=TORCH_OPTIMIZERS.keys(), default="adam")
     optimizer_params: dict = luigi.DictParameter(default={})
     learning_rate: float = luigi.FloatParameter(1e-3)
-    lr_scheduler: str = luigi.ChoiceParameter(choices=TORCH_LR_SCHEDULERS.keys(), default=None)
-    lr_scheduler_params: dict = luigi.DictParameter(default={})
     loss_function: str = luigi.ChoiceParameter(choices=TORCH_LOSS_FUNCTIONS.keys(), default="mse")
     loss_function_params: dict = luigi.DictParameter(default={})
     gradient_norm_clipping: float = luigi.FloatParameter(default=0.0)
@@ -287,9 +290,8 @@ class BaseTorchModelTraining(BaseModelTraining):
     early_stopping_min_delta: float = luigi.FloatParameter(default=1e-3)
     monitor_metric: str = luigi.Parameter(default="val_loss")
     monitor_mode: str = luigi.Parameter(default="min")
-    generator_workers: int = luigi.IntParameter(default=min(multiprocessing.cpu_count(), 20))
+    generator_workers: int = luigi.IntParameter(default=0)
     pin_memory: bool = luigi.BoolParameter(default=False)
-    task_hash: str = luigi.Parameter(default='none')
 
     metrics = luigi.ListParameter(default=["loss"])
 
@@ -314,20 +316,16 @@ class BaseTorchModelTraining(BaseModelTraining):
         if self.device == "cuda":
             torch.cuda.set_device(self.device_id)
 
-        torch.manual_seed(self.seed)
-        dict(fit=self.fit, lr_find=self.lr_find)[self.mode]()
-
-    def fit(self):
-        train_loader = self.get_train_generator()
-        val_loader = self.get_val_generator()
-        module = self.create_module()
+        train_loader    = self.get_train_generator()
+        val_loader      = self.get_val_generator()
+        module          = self.create_module()
 
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
             with redirect_stdout(summary_file):
-                sample_input = default_convert(self.train_dataset[0][0])
+                sample_input = self.get_sample_batch()
                 summary(module, sample_input)
-        mlflow.log_artifact(summary_path)
+            summary(module, sample_input)
 
         trial = self.create_trial(module)
 
@@ -340,37 +338,27 @@ class BaseTorchModelTraining(BaseModelTraining):
 
         plot_history(history_df).savefig(os.path.join(self.output().path, "history.jpg"))
 
-        mlflow.log_artifact(get_weights_path(self.output().path))
         self.after_fit()
+        self.evaluate()
         self.cache_cleanup()
+
+    def get_sample_batch(self):
+        return default_convert(self.train_dataset[0][0])
 
     def after_fit(self):
         pass
 
-    def lr_find(self):
-        train_loader = self.get_train_generator()
+    def evaluate(self):
+        module      = self.get_trained_module()
+        val_loader  = self.get_val_generator()
 
-        self.learning_rate = 1e-6
-        lr_finder = LearningRateFinder(min(len(train_loader), self.lr_find_iterations), self.learning_rate)
+        print("================== Evaluate ========================")
+        trial = Trial(module, self._get_optimizer(module), self._get_loss_function(), callbacks=[],
+                      metrics=self.metrics).to(self.torch_device)\
+                    .with_generators(val_generator=val_loader).eval()
 
-        module = self.create_module()
+        print(json.dumps((trial.evaluate(data_key=torchbearer.VALIDATION_DATA)), indent = 4))
 
-        trial = Trial(module, self._get_optimizer(module), self._get_loss_function(), callbacks=[lr_finder]) \
-            .with_train_generator(train_loader) \
-            .to(self.torch_device)
-
-        trial.run(epochs=1)
-
-        loss_per_lr_path = os.path.join(self.output().path, "loss_per_lr.jpg")
-        loss_derivatives_per_lr_path = os.path.join(self.output().path, "loss_derivatives_per_lr.jpg")
-
-        plot_loss_per_lr(lr_finder.learning_rates, lr_finder.loss_values) \
-            .savefig(loss_per_lr_path)
-        plot_loss_derivatives_per_lr(lr_finder.learning_rates, lr_finder.get_loss_derivatives(5)) \
-            .savefig(loss_derivatives_per_lr_path)
-
-        mlflow.log_artifact(loss_per_lr_path)
-        mlflow.log_artifact(loss_derivatives_per_lr_path)
 
     def create_trial(self, module: nn.Module) -> Trial:
         loss_function = self._get_loss_function()
@@ -394,13 +382,11 @@ class BaseTorchModelTraining(BaseModelTraining):
                             mode=self.monitor_mode),
             EarlyStopping(patience=self.early_stopping_patience, min_delta=self.early_stopping_min_delta,
                           monitor=self.monitor_metric, mode=self.monitor_mode),
-            CSVLogger(get_history_path(self.output().path)), MLFlowLogger(),
+            CSVLogger(get_history_path(self.output().path)),
             TensorBoard(get_tensorboard_logdir(self.task_id), write_graph=False),
         ]
         if self.gradient_norm_clipping:
             callbacks.append(GradientNormClipping(self.gradient_norm_clipping, self.gradient_norm_clipping_type))
-        if self.lr_scheduler:
-            callbacks.append(TORCH_LR_SCHEDULERS[self.lr_scheduler](**self.lr_scheduler_params))
         return callbacks
 
     def _get_extra_callbacks(self):
@@ -428,7 +414,9 @@ class BaseTorchModelTraining(BaseModelTraining):
                                          num_workers=self.generator_workers,
                                          pin_memory=self.pin_memory if self.device == "cuda" else False)
 
-    def get_val_generator(self) -> DataLoader:
+    def get_val_generator(self) -> Optional[DataLoader]:
+        if len(self.val_data_frame) == 0:
+            return None
         batch_sampler = FasterBatchSampler(self.val_dataset, self.batch_size, shuffle=False)
         return NoAutoCollationDataLoader(self.val_dataset, batch_sampler=batch_sampler,
                                          num_workers=self.generator_workers,
@@ -441,6 +429,191 @@ class BaseTorchModelTraining(BaseModelTraining):
                                          pin_memory=True if self.device == "cuda" else False)
 
 
+class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
+    bandit_policy: str = luigi.ChoiceParameter(choices=BANDIT_POLICIES.keys(), default="model")
+    bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
+
+    def create_agent(self) -> BanditAgent:
+        bandit = BANDIT_POLICIES[self.bandit_policy](reward_model=self.get_trained_module(), **self.bandit_policy_params)
+        return BanditAgent(bandit)
+
+    @property
+    def unique_items(self) -> List[int]:
+        if not hasattr(self, "_unique_items"):
+            self._unique_items = self.interactions_data_frame[self.project_config.item_column.name].unique()
+        return self._unique_items
+
+    @property
+    def obs_columns(self) -> List[str]:
+        if not hasattr(self, "_obs_columns"):
+            self._obs_columns = [self.project_config.user_column.name] + [
+                column.name for column in self.project_config.other_input_columns]
+        return self._obs_columns
+
+    def _get_arm_indices(self, ob: dict) -> Union[List[int], np.ndarray]:
+        if self.project_config.available_arms_column_name:
+            arm_indices = np.flatnonzero(ob[self.project_config.available_arms_column_name])
+        else:
+            arm_indices = self.unique_items
+
+        return arm_indices
+
+    def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
+        batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
+        generator     = NoAutoCollationDataLoader(ob_dataset,
+                            batch_sampler=batch_sampler, num_workers=self.generator_workers,
+                            pin_memory=self.pin_memory if self.device == "cuda" else False)
+
+        trial = Trial(agent.bandit.reward_model, criterion=lambda *args: torch.zeros(1, device=self.torch_device,
+                                                                                     requires_grad=True)) \
+            .with_test_generator(generator).to(self.torch_device).eval()
+
+        with torch.no_grad():
+            model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(verbose=0)
+
+        scores_tensor: torch.Tensor = model_output if isinstance(model_output, torch.Tensor) else model_output[0][0]
+        scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
+
+        return scores
+
+    def _create_ob_dataset(self, ob: dict, arm_indices: List[int]) -> Dataset:
+        data = [{**ob, self.project_config.item_column.name: arm_index} for arm_index in arm_indices]
+        ob_df = pd.DataFrame(
+            columns=self.obs_columns + [self.project_config.item_column.name],
+            data=data)
+
+        ob_df = self._fill_hist_columns(ob_df)
+
+        if self.project_config.output_column.name not in ob_df.columns:
+            ob_df[self.project_config.output_column.name] = 1
+        for auxiliar_output_column in self.project_config.auxiliar_output_columns:
+            if auxiliar_output_column.name not in ob_df.columns:
+                ob_df[auxiliar_output_column.name] = 0
+
+        dataset = InteractionsDataset(ob_df, ob[ITEM_METADATA_KEY], self.project_config)
+
+        return dataset
+
+    def _fill_hist_columns(self, ob_df: pd.DataFrame) -> pd.DataFrame:
+        if self.project_config.hist_view_column_name not in ob_df:
+            ob_df[self.project_config.hist_view_column_name] = 0
+        if self.project_config.hist_output_column_name not in ob_df:
+            ob_df[self.project_config.hist_output_column_name] = 0
+        return ob_df
+
+    def _prepare_for_agent(self, agent: BanditAgent, ob: dict) -> Tuple[np.ndarray, List[int], List[float]]:
+        arm_indices = self._get_arm_indices(ob)
+        ob_dataset = self._create_ob_dataset(ob, arm_indices)
+        arm_contexts = ob_dataset[:len(ob_dataset)][0]
+        arm_scores = self._get_arm_scores(agent, ob_dataset) \
+            if agent.bandit.reward_model else agent.bandit.calculate_scores(arm_contexts)
+        return arm_contexts, arm_indices, arm_scores
+
+    def _act(self, agent: BanditAgent, ob: dict) -> int:
+        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(agent, ob)
+
+        return agent.act(arm_indices, arm_contexts, arm_scores)
+
+    def _rank(self, agent: BanditAgent,  ob: dict) -> Tuple[List[int], List[float], List[float]]:
+        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(agent, ob)
+        sorted_actions, proba_actions = agent.rank(arm_indices, arm_contexts, arm_scores)
+
+        return sorted_actions, proba_actions, arm_scores
+
+    def clean(self):
+        if hasattr(self, "_train_dataset"):
+            del self._train_dataset
+
+        if hasattr(self, "_test_dataset"):
+            del self._test_dataset
+
+        if hasattr(self, "_train_data_frame"):
+            del self._train_data_frame
+
+        gc.collect()
+
+    def _save_test_set_predictions(self, agent: BanditAgent) -> None:
+        print("Saving test set predictions...")
+        sorted_actions_list = []
+        prob_actions_list = []
+        action_scores_list = []
+        obs = self.test_data_frame.to_dict('records')
+        self.clean()
+        # from IPython import embed; embed()
+        for ob in tqdm(obs, total=len(obs)):
+            if self.embeddings_for_metadata is not None:
+                ob[ITEM_METADATA_KEY] = self.embeddings_for_metadata
+
+            if self.project_config.available_arms_column_name:
+                items = np.zeros(np.max(ob[self.project_config.available_arms_column_name]) + 1)
+                items[ob[self.project_config.available_arms_column_name]] = 1
+                ob[self.project_config.available_arms_column_name] = items
+
+            sorted_actions, prob_actions, action_scores = self._rank(agent, ob)
+            sorted_actions_list.append(sorted_actions)
+            prob_actions_list.append(prob_actions)
+
+            if action_scores:
+                action_scores_list.append(list(reversed(sorted(action_scores))))
+
+            del ob
+            del items
+
+        self.test_data_frame["sorted_actions"] = sorted_actions_list
+        self.test_data_frame["prob_actions"] = prob_actions_list
+
+        if action_scores_list:
+            self.test_data_frame["action_scores"] = action_scores_list
+
+        self.test_data_frame.to_csv(get_test_set_predictions_path(self.output().path), index=False)
+
+    def after_fit(self):
+        if self.test_size > 0:
+            self._save_test_set_predictions(self.create_agent())
+
+
+class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
+    model_module: str = luigi.Parameter(default="recommendation.task.model.interaction")
+    model_cls: str = luigi.Parameter(default="InteractionTraining")
+    model_task_id: str = luigi.Parameter()
+    no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
+    task_hash: str = luigi.Parameter(default='none')
+
+    @property
+    def cache_attr(self):
+        return ['']
+
+    @property
+    def task_name(self):
+        return self.model_task_id + "_" + self.task_id.split("_")[-1]
+
+    @property
+    def model_training(self) -> BaseTorchModelTraining:
+        if not hasattr(self, "_model_training"):
+            module = importlib.import_module(self.model_module)
+            class_ = getattr(module, self.model_cls)
+
+            self._model_training = load_torch_model_training_from_task_id(class_, self.model_task_id)
+
+        return self._model_training
+
+    @property
+    def n_items(self):
+        return self.model_training.n_items
+
+    def output(self):
+        return luigi.LocalTarget(os.path.join("output", "evaluation", self.__class__.__name__, "results",
+                                              self.task_name))
+
+    def cache_cleanup(self):
+        for a in self.cache_attrs:
+            if hasattr(self, a):
+                delattr(self, a)
+
+    def _save_params(self):
+        with open(get_params_path(self.output().path), "w") as params_file:
+            json.dump(self.param_kwargs, params_file, default=lambda o: dict(o), indent=4)
+
 def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraining],
                                             task_dir: str) -> BaseTorchModelTraining:
     return model_cls(**get_params(task_dir))
@@ -449,5 +622,7 @@ def load_torch_model_training_from_task_dir(model_cls: Type[BaseTorchModelTraini
 def load_torch_model_training_from_task_id(model_cls: Type[BaseTorchModelTraining],
                                            task_id: str) -> BaseTorchModelTraining:
     task_dir = get_task_dir(model_cls, task_id)
+    if not os.path.exists(task_dir):
+        task_dir = get_interaction_dir(model_cls, task_id)
 
     return load_torch_model_training_from_task_dir(model_cls, task_dir)

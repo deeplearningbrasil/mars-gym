@@ -51,7 +51,9 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     test_size: float = luigi.FloatParameter(default=0.0)
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
-    dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "k_fold"], default="holdout")
+    dataset_split_method: str = luigi.ChoiceParameter(choices=["holdout", "time", "column", "k_fold"], default="time")
+    column_stratification: str = luigi.Parameter(default=None)
+    test_split_type: str = luigi.ChoiceParameter(choices=["random", "time"], default="random")
     n_splits: int = luigi.IntParameter(default=10)
     split_index: int = luigi.IntParameter(default=0)
     val_size: float = luigi.FloatParameter(default=0.2)
@@ -63,6 +65,10 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     neq_filters: Dict[str, any] = luigi.DictParameter(default={})
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
     seed: int = luigi.IntParameter(default=42)
+
+    VALIDATION_DATA = "VALIDATION_DATA" 
+    TRAIN_DATA      = "TRAIN_DATA"
+    TEST_GENERATOR  = "TEST_GENERATOR"
 
     @property
     @abc.abstractmethod
@@ -79,32 +85,42 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         pass
 
     @property
+    def timestamp_property(self) -> Optional[str]:
+        return None
+
+    @property
     def metadata_data_frame_path(self) -> Optional[str]:
         return None
 
     def output(self) -> Tuple[luigi.LocalTarget, ...]:
         task_hash = self.task_id
-        if self.dataset_split_method == "holdout":
+        if self.dataset_split_method == "k_fold":
             output = (luigi.LocalTarget(os.path.join(self.dataset_dir,
-                                                     "train_%.2f_%d_%s_%s.csv" % (
-                                                         self.val_size, self.seed, self.sampling_strategy, task_hash))),
+                                                     "train_[%dof%d]_test=%s_%d_%s_%s.csv" % (
+                                                         self.split_index + 1, self.n_splits, self.test_split_type,
+                                                         self.seed, self.sampling_strategy, task_hash))),
                       luigi.LocalTarget(
-                          os.path.join(self.dataset_dir, "val_%.2f_%d_%s.csv" % (self.val_size, self.seed, task_hash))),
+                          os.path.join(self.dataset_dir, "val_[%of%d]_test=%s_%d_%s.csv" % (
+                              self.split_index + 1, self.n_splits, self.test_split_type, self.seed, task_hash))),
                       luigi.LocalTarget(
                           os.path.join(self.dataset_dir,
-                                       "test_%.2f_%d_%s.csv" % (self.test_size, self.seed, task_hash))),
+                                       "test_%.2f_test=%s_%d_%s.csv" % (self.test_size, self.test_split_type, self.seed,
+                                                                        task_hash))),
                       )
+                      
         else:
             output = (luigi.LocalTarget(os.path.join(self.dataset_dir,
-                                                     "train_[%dof%d]_%d_%s_%s.csv" % (
-                                                         self.split_index + 1, self.n_splits, self.seed,
+                                                     "train_%.2f_test=%s_%d_%s_%s.csv" % (
+                                                         self.val_size, self.test_split_type, self.seed,
                                                          self.sampling_strategy, task_hash))),
                       luigi.LocalTarget(
-                          os.path.join(self.dataset_dir, "val_[%of%d]_%d_%s.csv" % (
-                              self.split_index + 1, self.n_splits, self.seed, task_hash))),
+                          os.path.join(self.dataset_dir, "val_%.2f_test=%s_%d_%s.csv" % (self.val_size,
+                                                                                         self.test_split_type,
+                                                                                         self.seed, task_hash))),
                       luigi.LocalTarget(
                           os.path.join(self.dataset_dir,
-                                       "test_%.2f_%d_%s.csv" % (self.test_size, self.seed, task_hash))),
+                                       "test_%.2f_test=%s_%d_%s.csv" % (self.test_size, self.test_split_type,
+                                                                        self.seed, task_hash))),
                       )
         if self.metadata_data_frame_path:
             return output + (luigi.LocalTarget(self.metadata_data_frame_path),)
@@ -125,25 +141,41 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         for field, value in self.isin_filters.items():
             df = df[df[field].isin(value)]
 
+        train_df, val_df, test_df = self.split_dataset(df)
+
+        self.transform_data_frame(train_df, data_key=self.TRAIN_DATA).to_csv(self.output()[0].path, index=False)
+        self.transform_data_frame(val_df, data_key=self.VALIDATION_DATA).to_csv(self.output()[1].path, index=False)
+        self.transform_data_frame(test_df, data_key=self.TEST_GENERATOR).to_csv(self.output()[2].path, index=False)
+
+    def split_dataset(self, df):
         if self.test_size:
-            train_df, test_df = self.train_test_split(df, test_size=self.test_size)
+            if self.test_split_type == "random":
+                train_df, test_df = self.random_train_test_split(df, test_size=self.test_size)
+            else:
+                train_df, test_df = self.time_train_test_split(df, test_size=self.test_size)
         else:
             train_df, test_df = df, df[:0]
-        if self.dataset_split_method == "holdout":
-            train_df, val_df = self.train_test_split(train_df, test_size=self.val_size)
+
+        if self.val_size:
+            if self.dataset_split_method == "holdout":
+                train_df, val_df = self.random_train_test_split(train_df, test_size=self.val_size)
+            elif self.dataset_split_method == "column":
+                train_df, val_df = self.column_train_test_split(train_df, test_size=self.val_size)
+            elif self.dataset_split_method == "time":
+                train_df, val_df = self.time_train_test_split(train_df, test_size=self.val_size)
+            else:
+                train_df, val_df = self.kfold_split(train_df)
         else:
-            train_df, val_df = self.kfold_split(train_df)
+            train_df, val_df = train_df, train_df[:0]
 
         if self.sampling_strategy != "none":
             train_df = self.balance_dataset(train_df)
             if self.use_sampling_in_validation:
                 val_df = self.balance_dataset(val_df)
+        
+        return train_df, val_df, test_df
 
-        self.transform_data_frame(train_df).to_csv(self.output()[0].path, index=False)
-        self.transform_data_frame(val_df).to_csv(self.output()[1].path, index=False)
-        self.transform_data_frame(test_df).to_csv(self.output()[2].path, index=False)
-
-    def transform_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+    def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
         return df
 
     def kfold_split(self, df) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -154,7 +186,21 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         train_df, test_df = df.iloc[train_indices], df.iloc[val_indices]
         return train_df, test_df
 
-    def train_test_split(self, df: pd.DataFrame, test_size: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def column_train_test_split(self, df: pd.DataFrame, test_size: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        keys = df[self.column_stratification].unique()
+        keys_train, keys_test =  train_test_split(keys, test_size=test_size, random_state=self.seed)
+        return df[df[self.column_stratification].isin(keys_train)],\
+                df[df[self.column_stratification].isin(keys_test)],\
+
+    def time_train_test_split(self, df: pd.DataFrame, test_size: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        if self.timestamp_property:
+            df = df.sort_values(self.timestamp_property)
+        size = len(df)
+        cut = int(size - size * test_size)
+
+        return df.iloc[:cut], df.iloc[cut:]
+
+    def random_train_test_split(self, df: pd.DataFrame, test_size: float) -> Tuple[pd.DataFrame, pd.DataFrame]:
         return train_test_split(df, test_size=test_size,
                                 stratify=df[self.stratification_property] if self.stratification_property else None,
                                 random_state=self.seed)
@@ -186,14 +232,13 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
 
         if random_sampler_cls is None:
             return df
-
         index_resampled = df.index
         for balance_field in self.balance_fields:
-            random_sampler = random_sampler_cls(sampling_strategy=self._create_sampling_strategy(df, balance_field),
+            random_sampler     = random_sampler_cls(sampling_strategy=self._create_sampling_strategy(df, balance_field),
                                                 random_state=self.seed)
             index_resampled, _ = random_sampler.fit_sample(np.array(index_resampled).reshape(-1, 1),
                                                            df.loc[index_resampled][balance_field])
-            index_resampled = index_resampled.flatten()
+            index_resampled    = index_resampled.flatten()
 
         return df.loc[index_resampled]
 

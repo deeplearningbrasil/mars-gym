@@ -117,3 +117,4 @@ ENV/
 
 # Zip Files
 *.zip
+tools/eval_viz/export/

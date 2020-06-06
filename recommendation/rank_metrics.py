@@ -61,6 +61,53 @@ def r_precision(r):
         return 0.
     return np.mean(r[:z[-1] + 1])
 
+def reciprocal_rank_at_k(r, k):
+    """Score is reciprocal of the rank of the first relevant item
+    First element is 'rank 1'.  Relevance is binary (nonzero is relevant).
+    Example from http://en.wikipedia.org/wiki/Mean_reciprocal_rank
+    >>> r = [0, 0, 1]
+    >>> recall_at_k(r, 1)
+    0.0
+    >>> recall_at_k(r, 2)
+    0.0
+    >>> recall_at_k(r, 3)
+    1
+    >>> recall_at_k(r, 4)
+    Returns:
+         reciprocal rank
+    """
+    assert k >= 1    
+    r = np.asarray(r)[:k]
+    return 1. / (r.argmax()+1) if r.size and r.max() > 0 else 0.
+
+
+def recall_at_k(r, k):
+    """Score is recall @ k
+    Relevance is binary (nonzero is relevant).
+    >>> r = [0, 0, 1]
+    >>> recall_at_k(r, 1)
+    0.0
+    >>> recall_at_k(r, 2)
+    0.0
+    >>> recall_at_k(r, 3)
+    1
+    >>> recall_at_k(r, 4)
+    Traceback (most recent call last):
+        File "<stdin>", line 1, in ?
+    ValueError: Relevance score length < k
+    Args:
+        r: Relevance scores (list or numpy) in rank order
+            (first element is the first item)
+    Returns:
+        recall @ k
+    Raises:
+        ValueError: len(r) must be >= k
+    """
+    assert k >= 1
+    r = np.asarray(r)[:k] != 0
+    if r.size != k:
+        raise ValueError('Relevance score length < k')
+    return np.max(r)/1
 
 def precision_at_k(r, k):
     """Score is precision @ k

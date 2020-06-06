@@ -1,4 +1,4 @@
-name: recommendation-system
+name: deep-reco-gym
 channels:
 - anaconda
 - conda-forge
@@ -20,7 +20,6 @@ dependencies:
 - jupyterlab=1.0.2
 - ipywidgets=7.5.1
 - diskcache=3.0.6
-- pillow=6.0.0
 - pyspark=2.4.3
 - psutil=5.2.2
 - pip
@@ -29,8 +28,9 @@ dependencies:
 - pip:
   - imbalanced-learn==0.4.3
   - torchbearer==0.5.1
-  - mlflow==1.0.0
   - pytorch-nlp==0.4.1
   - unidecode==1.1.1
   - streamlit==0.52.2
+  - dask[dataframe]==2.12.0
   - gym==0.15.4
+  - google-cloud-storage==1.26.0

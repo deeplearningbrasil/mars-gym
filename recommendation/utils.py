@@ -3,7 +3,10 @@ import ast
 from datetime import datetime
 from multiprocessing.pool import Pool
 from typing import List, Union, Dict, Tuple
-
+from zipfile import ZipFile 
+from google.cloud import storage
+import json
+import scipy
 import numpy as np
 import pandas as pd
 import torch
@@ -11,9 +14,35 @@ import torch.nn as nn
 from math import sqrt
 from torch.nn.init import _calculate_fan_in_and_fan_out
 from tqdm import tqdm
+import shutil
 
 from recommendation.files import get_params, get_task_dir
 
+"""
+Url: https://gist.github.com/wassname/1393c4a57cfcbf03641dbc31886123b8
+"""
+import unicodedata
+import string
+
+valid_filename_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
+char_limit = 255
+def clean_filename(filename, whitelist=valid_filename_chars, replace=' '):
+    # replace spaces
+    for r in replace:
+        filename = filename.replace(r,'_')
+    
+    # keep only valid ascii chars
+    cleaned_filename = unicodedata.normalize('NFKD', filename).encode('ASCII', 'ignore').decode()
+    
+    # keep only whitelisted chars
+    cleaned_filename = ''.join(c for c in cleaned_filename if c in whitelist)
+    if len(cleaned_filename)>char_limit:
+        print("Warning, filename truncated because it was over {}. Filenames may no longer be unique".format(char_limit))
+    return cleaned_filename[:char_limit]    
+
+# test
+s='fake_folder/\[]}{}|~`"\':;,/? abcABC 0123 !@#$%^&*()_+ clᐖﯫⅺຶ 讀ϯՋ㉘ ⅮRㇻᎠ⍩ 𝁱C ℿ؛ἂeuឃC ᅕ ᑉﺜͧ bⓝ s⡽Հᛕ\ue063 牢𐐥er ᐛŴ n წş .ھڱ                                 df                                         df                                  dsfsdfgsg!zip'
+clean_filename(s) # 'fake_folder_abcABC_0123_____clxi_28_DR_C_euC___bn_s_er_W_n_s_.zip'
 
 def load_torch_model_training_from_task_dir(model_cls,
                                             task_dir: str):
@@ -145,3 +174,62 @@ def flatten(t):
             yield x
         else:
             yield from flatten(x)
+def get_all_file_paths(directory): 
+    # initializing empty file paths list 
+    file_paths = [] 
+  
+    # crawling through directory and subdirectories 
+    for root, directories, files in os.walk(directory): 
+        for filename in files: 
+            # join the two strings in order to form the full filepath. 
+            filepath = os.path.join(root, filename) 
+            file_paths.append(filepath) 
+  
+    # returning all file paths 
+    return file_paths 
+
+def save_trained_data(source_dir: str, target_dir: str):
+    print("save_trained_data from '{}' to '{}'".format(source_dir, target_dir))
+
+    file_paths = get_all_file_paths(source_dir) 
+    
+    # printing the list of all files to be zipped 
+    print('Following files will be zipped:') 
+    for file_name in file_paths: 
+        print(file_name) 
+
+    # writing files to a zipfile 
+    zip_filename = source_dir.split("/")[-1]+'.zip'
+    with ZipFile(source_dir+'/'+zip_filename,'w') as zip: 
+        # writing each file one by one 
+        for file in file_paths: 
+            zip.write(file)         
+
+    if "gs://" in target_dir:
+        bucket = storage.Client().bucket(target_dir.split("//")[-1])
+        #blob   = bucket.blob('{}/{}'.format(datetime.now().strftime('%Y%m%d_%H%M%S'), zip_filename))
+        blob   = bucket.blob(zip_filename)
+        blob.upload_from_filename(source_dir+'/'+zip_filename)
+    else:
+        shutil.copy(source_dir+'/'+zip_filename, target_dir+'/'+zip_filename)
+
+
+def mean_confidence_interval(data, confidence=0.95):
+    data = np.array(data)
+    data = data[~np.isnan(data)]
+    a = 1.0 * data
+    n = len(a)
+    m, se = np.mean(a), scipy.stats.sem(a)
+    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+    return m, h
+
+class JsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return super(JsonEncoder, self).default(obj)
