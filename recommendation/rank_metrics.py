@@ -34,7 +34,7 @@ def mean_reciprocal_rank(rs):
         Mean reciprocal rank
     """
     rs = (np.asarray(r).nonzero()[0] for r in rs)
-    return np.mean([1. / (r[0] + 1) if r.size else 0. for r in rs])
+    return np.mean([1.0 / (r[0] + 1) if r.size else 0.0 for r in rs])
 
 
 def r_precision(r):
@@ -58,8 +58,9 @@ def r_precision(r):
     r = np.asarray(r) != 0
     z = r.nonzero()[0]
     if not z.size:
-        return 0.
-    return np.mean(r[:z[-1] + 1])
+        return 0.0
+    return np.mean(r[: z[-1] + 1])
+
 
 def reciprocal_rank_at_k(r, k):
     """Score is reciprocal of the rank of the first relevant item
@@ -76,9 +77,9 @@ def reciprocal_rank_at_k(r, k):
     Returns:
          reciprocal rank
     """
-    assert k >= 1    
+    assert k >= 1
     r = np.asarray(r)[:k]
-    return 1. / (r.argmax()+1) if r.size and r.max() > 0 else 0.
+    return 1.0 / (r.argmax() + 1) if r.size and r.max() > 0 else 0.0
 
 
 def recall_at_k(r, k):
@@ -106,8 +107,9 @@ def recall_at_k(r, k):
     assert k >= 1
     r = np.asarray(r)[:k] != 0
     if r.size != k:
-        raise ValueError('Relevance score length < k')
-    return np.max(r)/1
+        raise ValueError("Relevance score length < k")
+    return np.max(r) / 1
+
 
 def precision_at_k(r, k):
     """Score is precision @ k
@@ -134,7 +136,7 @@ def precision_at_k(r, k):
     assert k >= 1
     r = np.asarray(r)[:k] != 0
     if r.size != k:
-        raise ValueError('Relevance score length < k')
+        raise ValueError("Relevance score length < k")
     return np.mean(r)
 
 
@@ -156,7 +158,7 @@ def average_precision(r):
     r = np.asarray(r) != 0
     out = [precision_at_k(r, k + 1) for k in range(r.size) if r[k]]
     if not out:
-        return 0.
+        return 0.0
     return np.mean(out)
 
 
@@ -213,8 +215,8 @@ def dcg_at_k(r, k, method=0):
         elif method == 1:
             return np.sum(r / np.log2(np.arange(2, r.size + 2)))
         else:
-            raise ValueError('method must be 0 or 1.')
-    return 0.
+            raise ValueError("method must be 0 or 1.")
+    return 0.0
 
 
 def ndcg_at_k(r, k, method=0):
@@ -246,7 +248,7 @@ def ndcg_at_k(r, k, method=0):
     """
     dcg_max = dcg_at_k(sorted(r, reverse=True), k, method)
     if not dcg_max:
-        return 0.
+        return 0.0
     return dcg_at_k(r, k, method) / dcg_max
 
 
@@ -297,10 +299,12 @@ def personalization(predicted: List[list]) -> float:
     """
 
     def make_rec_matrix(predicted):
-        df = pd.DataFrame(data=predicted).reset_index().melt(
-            id_vars='index', value_name='item',
+        df = (
+            pd.DataFrame(data=predicted)
+            .reset_index()
+            .melt(id_vars="index", value_name="item",)
         )
-        df = df[['index', 'item']].pivot(index='index', columns='item', values='item')
+        df = df[["index", "item"]].pivot(index="index", columns="item", values="item")
         df = df.mask(pd.notna(df), 1)
         df = df.mask(pd.isna(df), 0)
         rec_matrix = sp.csr_matrix(df.values)
@@ -313,7 +317,7 @@ def personalization(predicted: List[list]) -> float:
     similarity = cosine_similarity(X=rec_matrix_sparse, dense_output=False)
 
     del predicted, rec_matrix_sparse
-    
+
     data = sp.triu(similarity, k=1).data
     if len(data) > 0:
         # calculate average similarity
@@ -328,7 +332,7 @@ def _get_predicted_at_k(predicted: List[list], k: int) -> List[list]:
 
 
 def prediction_coverage_at_k(predicted: List[list], catalog: list, k: int) -> float:
-    return prediction_coverage(_get_predicted_at_k(predicted, k), catalog)/100
+    return prediction_coverage(_get_predicted_at_k(predicted, k), catalog) / 100
 
 
 def personalization_at_k(predicted: List[list], k: int) -> float:

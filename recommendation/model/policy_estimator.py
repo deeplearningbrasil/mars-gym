@@ -7,22 +7,32 @@ from recommendation.utils import lecun_normal_init
 
 
 class PolicyEstimator(nn.Module):
-    def __init__(self, n_items: int, embedding_dim: int, input_columns: List[Column],
-                 num_elements_per_embeddings: List[int], layers: List[int], sample_batch: List[torch.Tensor],
-                 weight_init: Callable = lecun_normal_init) -> None:
+    def __init__(
+        self,
+        n_items: int,
+        embedding_dim: int,
+        input_columns: List[Column],
+        num_elements_per_embeddings: List[int],
+        layers: List[int],
+        sample_batch: List[torch.Tensor],
+        weight_init: Callable = lecun_normal_init,
+    ) -> None:
         super().__init__()
 
         self.input_columns = input_columns
-        self.embeddings = nn.ModuleList([nn.Embedding(n, embedding_dim) for n in num_elements_per_embeddings])
+        self.embeddings = nn.ModuleList(
+            [nn.Embedding(n, embedding_dim) for n in num_elements_per_embeddings]
+        )
 
         sample_transformed_inputs = self.transform_inputs(sample_batch)
 
         input_dim = sample_transformed_inputs.shape[1]
         self.layers = nn.ModuleList(
-            [nn.Linear(
-                input_dim if i == 0 else layers[i - 1],
-                layer_size
-            ) for i, layer_size in enumerate(layers)])
+            [
+                nn.Linear(input_dim if i == 0 else layers[i - 1], layer_size)
+                for i, layer_size in enumerate(layers)
+            ]
+        )
         self.output = nn.Linear(layers[-1] if len(layers) > 0 else input_dim, n_items)
 
         self.weight_init = weight_init
@@ -42,21 +52,23 @@ class PolicyEstimator(nn.Module):
         transformed_inputs: List[torch.Tensor] = []
         embeddings_idx = 0
         for input, input_column in zip(inputs, self.input_columns):
-            #from IPython import embed; embed()
-            #if embeddings_idx == 0:
+            # from IPython import embed; embed()
+            # if embeddings_idx == 0:
             #    embeddings_idx += 1
             #    continue
             if input_column.type == IOType.INDEX:
                 transformed_inputs.append(self.embeddings[embeddings_idx](input))
                 embeddings_idx += 1
             elif input_column.type == IOType.INDEX_ARRAY:
-                transformed_inputs.append(self.flatten(self.embeddings[embeddings_idx](input)))
+                transformed_inputs.append(
+                    self.flatten(self.embeddings[embeddings_idx](input))
+                )
                 embeddings_idx += 1
             elif input_column.type in (IOType.FLOAT_ARRAY, IOType.INT_ARRAY):
                 transformed_inputs.append(input.float())
             else:
                 transformed_inputs.append(input.view(-1, 1).float())
-            
+
         return torch.cat(transformed_inputs, dim=1)
 
     def forward(self, *inputs: torch.Tensor) -> torch.Tensor:

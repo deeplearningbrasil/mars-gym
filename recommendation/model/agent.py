@@ -7,30 +7,51 @@ from recommendation.model.bandit import BanditPolicy
 
 
 class BanditAgent(object):
-
     def __init__(self, bandit: BanditPolicy) -> None:
         super().__init__()
 
         self.bandit = bandit
 
-    def fit(self, trial: Optional[Trial], train_loader: DataLoader, val_loader: DataLoader, epochs: int):
+    def fit(
+        self,
+        trial: Optional[Trial],
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+        epochs: int,
+    ):
         self.bandit.fit(train_loader.dataset)
 
         if trial:
-            trial.with_generators(train_generator=train_loader, val_generator=val_loader).run(epochs=epochs)
+            trial.with_generators(
+                train_generator=train_loader, val_generator=val_loader
+            ).run(epochs=epochs)
 
-    def act(self, arm_indices: List[int],
-            arm_contexts: Tuple[np.ndarray, ...],
-            arm_scores: Optional[List[float]], with_probs=True) -> int:
+    def act(
+        self,
+        arm_indices: List[int],
+        arm_contexts: Tuple[np.ndarray, ...],
+        arm_scores: Optional[List[float]],
+        with_probs=True,
+    ) -> int:
 
         if with_probs:
             arm_idx = self.bandit.select_idx(arm_indices, arm_contexts, arm_scores)
             prob = self.bandit._compute_prob(arm_scores)
             return arm_indices[arm_idx], prob[arm_idx]
         else:
-            return self.bandit.select(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores)
+            return self.bandit.select(
+                arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores
+            )
 
-    def rank(self, arm_indices: List[int],
-             arm_contexts: Tuple[np.ndarray, ...],
-             arm_scores: Optional[List[float]]) -> Tuple[List[int], List[float]]:
-        return self.bandit.rank(arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores, with_probs=True)
+    def rank(
+        self,
+        arm_indices: List[int],
+        arm_contexts: Tuple[np.ndarray, ...],
+        arm_scores: Optional[List[float]],
+    ) -> Tuple[List[int], List[float]]:
+        return self.bandit.rank(
+            arm_indices,
+            arm_contexts=arm_contexts,
+            arm_scores=arm_scores,
+            with_probs=True,
+        )

@@ -12,7 +12,9 @@ class CudaRepository(object):
     @classmethod
     def fill(cls):
         CudaRepository._avaliable_devices.clear()
-        CudaRepository._avaliable_devices.extend([i for i in range(torch.cuda.device_count())])
+        CudaRepository._avaliable_devices.extend(
+            [i for i in range(torch.cuda.device_count())]
+        )
 
     @classmethod
     def get_avaliable_device(self) -> int:

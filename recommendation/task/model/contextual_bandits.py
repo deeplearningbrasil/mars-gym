@@ -4,7 +4,10 @@ import luigi
 import torch.nn as nn
 
 from recommendation.model.contextual_bandits import ContextualBandit
-from recommendation.task.model.base import TORCH_ACTIVATION_FUNCTIONS, TORCH_DROPOUT_MODULES
+from recommendation.task.model.base import (
+    TORCH_ACTIVATION_FUNCTIONS,
+    TORCH_DROPOUT_MODULES,
+)
 from recommendation.task.model.base import TORCH_WEIGHT_INIT
 from recommendation.task.model.interaction import InteractionTraining
 
@@ -12,9 +15,15 @@ from recommendation.task.model.interaction import InteractionTraining
 class ContextualBanditsTraining(InteractionTraining):
     loss_function: str = luigi.ChoiceParameter(choices=["crm"], default="crm")
     n_factors: int = luigi.IntParameter(default=128)
-    weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
-    dropout_module: str = luigi.ChoiceParameter(choices=TORCH_DROPOUT_MODULES.keys(), default="alpha")
-    activation_function: str = luigi.ChoiceParameter(choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu")
+    weight_init: str = luigi.ChoiceParameter(
+        choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal"
+    )
+    dropout_module: str = luigi.ChoiceParameter(
+        choices=TORCH_DROPOUT_MODULES.keys(), default="alpha"
+    )
+    activation_function: str = luigi.ChoiceParameter(
+        choices=TORCH_ACTIVATION_FUNCTIONS.keys(), default="selu"
+    )
     content_layers: List[int] = luigi.ListParameter(default=[200, 128])
     use_original_content: bool = luigi.BoolParameter(default=False)
     use_buys_visits: bool = luigi.BoolParameter(default=False)
@@ -26,8 +35,13 @@ class ContextualBanditsTraining(InteractionTraining):
     use_normalize: bool = luigi.BoolParameter(default=False)
     binary: bool = luigi.BoolParameter(default=False)
     predictor: str = luigi.ChoiceParameter(
-        choices=["simple_logistic_regression", "logistic_regression", "factorization_machine"],
-        default="logistic_regression")
+        choices=[
+            "simple_logistic_regression",
+            "logistic_regression",
+            "factorization_machine",
+        ],
+        default="logistic_regression",
+    )
     word_embeddings_size: int = luigi.IntParameter(default=128)
     fm_order: int = luigi.IntParameter(default=1)
     fm_hidden_layers: List[int] = luigi.ListParameter(default=[64, 32])
@@ -36,7 +50,9 @@ class ContextualBanditsTraining(InteractionTraining):
     @property
     def non_textual_input_dim(self):
         if not hasattr(self, "_non_textual_input_dim"):
-            self._non_textual_input_dim = int(self.metadata_data_frame.iloc[0]["non_textual_input_dim"])
+            self._non_textual_input_dim = int(
+                self.metadata_data_frame.iloc[0]["non_textual_input_dim"]
+            )
         return self._non_textual_input_dim
 
     @property
@@ -48,25 +64,33 @@ class ContextualBanditsTraining(InteractionTraining):
     @property
     def menu_full_text_max_words(self):
         if not hasattr(self, "_menu_full_text_max_words"):
-            self._menu_full_text_max_words = int(self.metadata_data_frame.iloc[0]["menu_full_text_max_words"])
+            self._menu_full_text_max_words = int(
+                self.metadata_data_frame.iloc[0]["menu_full_text_max_words"]
+            )
         return self._menu_full_text_max_words
 
     @property
     def description_max_words(self):
         if not hasattr(self, "_description_max_words"):
-            self._description_max_words = int(self.metadata_data_frame.iloc[0]["description_max_words"])
+            self._description_max_words = int(
+                self.metadata_data_frame.iloc[0]["description_max_words"]
+            )
         return self._description_max_words
 
     @property
     def category_names_max_words(self):
         if not hasattr(self, "_category_names_max_words"):
-            self._category_names_max_words = int(self.metadata_data_frame.iloc[0]["category_names_max_words"])
+            self._category_names_max_words = int(
+                self.metadata_data_frame.iloc[0]["category_names_max_words"]
+            )
         return self._category_names_max_words
 
     @property
     def name_max_words(self):
         if not hasattr(self, "_name_max_words"):
-            self._name_max_words = int(self.metadata_data_frame.iloc[0]["trading_name_max_words"])
+            self._name_max_words = int(
+                self.metadata_data_frame.iloc[0]["trading_name_max_words"]
+            )
         return self._name_max_words
 
     def create_module(self) -> nn.Module:

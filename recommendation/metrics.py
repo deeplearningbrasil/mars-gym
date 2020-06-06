@@ -6,6 +6,7 @@ from torchbearer import metrics, Metric
 from torchbearer.metrics import default_for_key, running_mean, mean
 import torch.nn.functional as F
 
+
 @metrics.default_for_key("bce")
 @running_mean
 @mean
@@ -16,7 +17,7 @@ def bce(y_pred: torch.Tensor, y_true: torch.Tensor, *args):
     if y_true.layout == torch.sparse_coo:
         y_true = y_true.to_dense()
 
-    loss  = F.binary_cross_entropy(y_pred, y_true, reduction='none')
+    loss = F.binary_cross_entropy(y_pred, y_true, reduction="none")
 
     return loss.mean()
 
@@ -25,7 +26,9 @@ def bce(y_pred: torch.Tensor, y_true: torch.Tensor, *args):
 @running_mean
 @mean
 @metrics.lambda_metric("binary_accuracy", on_epoch=False)
-def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5):
+def binary_accuracy(
+    y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5
+):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -41,12 +44,14 @@ def binary_accuracy(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold
 @running_mean
 @mean
 @metrics.lambda_metric("precision", on_epoch=False)
-def precision(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
+def precision(
+    y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9
+):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
         y_true = y_true.to_dense()
-   
+
     y_pred = (y_pred.float() > threshold).float()
     y_true = (y_true.float() > threshold).float()
 
@@ -57,9 +62,9 @@ def precision(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: floa
     tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
     fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
     fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
-    
+
     epsilon = 1e-7
-    
+
     precision = tp / (tp + fp + epsilon)
 
     return precision
@@ -69,7 +74,9 @@ def precision(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: floa
 @running_mean
 @mean
 @metrics.lambda_metric("recall", on_epoch=False)
-def recall(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
+def recall(
+    y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9
+):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -81,18 +88,21 @@ def recall(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float =
     tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
     fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
     fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
-    
+
     epsilon = 1e-7
-    
+
     recall = tp / (tp + fn + epsilon)
 
     return recall
+
 
 @metrics.default_for_key("f1_score")
 @running_mean
 @mean
 @metrics.lambda_metric("f1_score", on_epoch=False)
-def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9):
+def f1_score(
+    y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float = 0.5, eps=1e-9
+):
     if isinstance(y_true, Sequence) and isinstance(y_pred, torch.Tensor):
         y_true = y_true[0]
     if y_true.layout == torch.sparse_coo:
@@ -100,17 +110,16 @@ def f1_score(y_pred: torch.Tensor, y_true: torch.Tensor, *args, threshold: float
     y_pred = (y_pred.float() > threshold).float()
     y_true = (y_true.float() > threshold).float()
 
-
     tp = (y_true * y_pred).sum().to(torch.float32)
     tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
     fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
     fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
-    
+
     epsilon = 1e-7
-    
+
     precision = tp / (tp + fp + epsilon)
     recall = tp / (tp + fn + epsilon)
-    
-    f1 = 2* (precision*recall) / (precision + recall + epsilon)
+
+    f1 = 2 * (precision * recall) / (precision + recall + epsilon)
 
     return f1

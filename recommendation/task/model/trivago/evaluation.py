@@ -2,10 +2,14 @@ import luigi
 import pandas as pd
 
 from recommendation.task.model.evaluation import EvaluateTestSetPredictions
-from recommendation.task.model.trivago.propensity_score import FillTrivagoPropensityScoreMixin
+from recommendation.task.model.trivago.propensity_score import (
+    FillTrivagoPropensityScoreMixin,
+)
 
 
-class EvaluateTrivagoTestSetPredictions(FillTrivagoPropensityScoreMixin, EvaluateTestSetPredictions):
+class EvaluateTrivagoTestSetPredictions(
+    FillTrivagoPropensityScoreMixin, EvaluateTestSetPredictions
+):
     def output(self):
         return luigi.LocalTarget(super().output().path + "_ps_" + self.fill_ps_strategy)
 
@@ -18,10 +22,14 @@ class EvaluateTrivagoTestSetPredictions(FillTrivagoPropensityScoreMixin, Evaluat
 
     @property
     def ps_base_df(self) -> pd.DataFrame:
-        base_df = pd.concat([pd.read_csv(self.model_training.train_data_frame_path),
-                             pd.read_csv(self.model_training.val_data_frame_path),
-                             pd.read_csv(self.model_training.test_data_frame_path)],
-                            ignore_index=True)
+        base_df = pd.concat(
+            [
+                pd.read_csv(self.model_training.train_data_frame_path),
+                pd.read_csv(self.model_training.val_data_frame_path),
+                pd.read_csv(self.model_training.test_data_frame_path),
+            ],
+            ignore_index=True,
+        )
         return base_df
 
     @property

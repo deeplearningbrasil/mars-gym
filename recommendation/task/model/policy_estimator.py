@@ -11,13 +11,15 @@ from recommendation.task.model.base import BaseTorchModelTraining, TORCH_WEIGHT_
 
 
 class PolicyEstimatorTraining(BaseTorchModelTraining):
-    val_size  = 0.0
+    val_size = 0.0
     test_size = 0.0
     monitor_metric = "loss"
-    loss_function  = "nll"
+    loss_function = "nll"
 
-    layers: List[int] = luigi.ListParameter(default=[])#1000
-    weight_init: str = luigi.ChoiceParameter(choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal")
+    layers: List[int] = luigi.ListParameter(default=[])  # 1000
+    weight_init: str = luigi.ChoiceParameter(
+        choices=TORCH_WEIGHT_INIT.keys(), default="lecun_normal"
+    )
 
     embedding_dim: int = luigi.IntParameter(default=50)
     epochs = luigi.IntParameter(default=500)
@@ -35,9 +37,11 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
 
     def create_module(self) -> nn.Module:
         input_columns = self.project_config.input_columns
-        num_elements_per_embeddings = [np.max(self.train_data_frame[input_column.name].values.tolist()) + 1
-                                       for input_column in input_columns
-                                       if input_column.type in (IOType.INDEX, IOType.INDEX_ARRAY)]
+        num_elements_per_embeddings = [
+            np.max(self.train_data_frame[input_column.name].values.tolist()) + 1
+            for input_column in input_columns
+            if input_column.type in (IOType.INDEX, IOType.INDEX_ARRAY)
+        ]
         return PolicyEstimator(
             n_items=self.n_items,
             embedding_dim=self.embedding_dim,
@@ -45,4 +49,5 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
             num_elements_per_embeddings=num_elements_per_embeddings,
             layers=self.layers,
             sample_batch=self.get_sample_batch(),
-            weight_init=TORCH_WEIGHT_INIT[self.weight_init])
+            weight_init=TORCH_WEIGHT_INIT[self.weight_init],
+        )
