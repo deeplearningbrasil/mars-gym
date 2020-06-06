@@ -121,7 +121,7 @@ class RemotePolicy(BanditPolicy):
         output_  = row[1]
         reward   = output_[0][0] if isinstance(output_, tuple) else output_
         #if i % 500 == 0:
-        #    from IPython import embed; embed()
+        #    
 
         self._arms_rewards[self._arms_selected[i]].append(reward)
 
@@ -174,6 +174,7 @@ class RemotePolicy(BanditPolicy):
         self._arms_selected.append(arm_idx)
 
         return list(arm_indices).index(action)
+
 
 class RemoteEpsilonGreedy(RemotePolicy):
     def __init__(self, reward_model: nn.Module, epsilon: float = 0.1, 
@@ -305,7 +306,7 @@ class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
             self._oracle.fit_one(x, self._arms_selected[i])
         
         # if self._times % 500 == 0:
-        #    from IPython import embed; embed()
+        #    
 
     def _flatten_input(self, input_: Tuple[np.ndarray, ...]) -> Tuple[np.ndarray, np.ndarray]:
         flattened_input = np.concatenate([el.reshape(-1, 1) if len(el.shape) == 1 else el for el in input_], axis=1)
@@ -313,14 +314,14 @@ class RemoteContextualEpsilonGreedy(RemoteEpsilonGreedy):
 
     def _select_best_endpoint(self, arm_contexts):
         scores = []
-        #from IPython import embed; embed()
+        #
 
         input_ = self._flatten_input(arm_contexts)[0]
         
         x = np.nan_to_num(np.reshape(input_, -1))
         x = {i: e for i, e in enumerate(x)} 
 
-        #from IPython import embed; embed()
+        #
         
         arm = self._oracle.predict_one(x)
         
@@ -360,7 +361,7 @@ class RemoteContextualSoftmax(RemoteContextualEpsilonGreedy):
 
     def _arm_probs(self, arm_contexts):
         scores = []
-        #from IPython import embed; embed()
+        #
 
         input_ = self._flatten_input(arm_contexts)[0]
         
@@ -397,12 +398,75 @@ class RemoteContextualSoftmax(RemoteContextualEpsilonGreedy):
         return list(arm_indices).index(action)
     
 
+class MetaBanditPolicy(RemoteContextualEpsilonGreedy):
+    def __init__(self, reward_model: nn.Module, epsilon: float = 0.1, index_data = None, 
+            endpoints="", seed: int = 42) -> None:
+        super().__init__(reward_model, epsilon, index_data, endpoints, seed)
+        self._rng = RandomState(seed)
+        self._endpoint = endpoints
+        #self._arms = arms#['random', 'most_popular', 'cvae']
+
+    def _update(self, c, a, r):
+        
+        payload = {
+            "context": c,
+            "arm": a,
+            "reward": r
+        }
+
+        r = requests.post(self._endpoint+"/update", data = json.dumps(payload), 
+                        headers={"Content-Type": "application/json"} )
+        
+
+    def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
+        i        = len(dataset)-1
+        row      = dataset[i]
+
+        input_   = row[0]
+        output_  = row[1]
+        reward   = output_[0][0] if isinstance(output_, tuple) else output_
+        
+        # build features
+        x = np.nan_to_num(np.reshape(input_, -1))
+        x = {i: e for i, e in enumerate(x)} 
+
+        if reward:
+            #from IPython import embed; embed()
+            self._update(x, self._arms_selected[i], reward)
 
 
+    def _request(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None):
+
+        # Context        
+        input_ = self._flatten_input(arm_contexts)[0]
+        x      = np.nan_to_num(np.reshape(input_, -1))
+        x      = {i: e for i, e in enumerate(x)} 
+
+        # input
+        items_idx = arm_indices
+        user_idx  = arm_contexts[0][0]
+        
+        payload   = {"context": x, "input": {"user": self.index_mapping.user[user_idx], "items": [self.index_mapping.item[i] for i in items_idx]}}
+        
+        r = requests.post(self._endpoint+"/predict", data = json.dumps(payload), headers={"Content-Type": "application/json"} )
+        
+        return json.loads(r.text)
 
 
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
 
+        # Request
+        result  = self._request(arm_indices, arm_contexts)
 
+        action  = self.inverse_index_mapping.item[result['result']['items'][0]]
+        arm     = result['bandit']['arm']
+        
+        # Save arm
+        self._arms_selected.append(arm)
+        self._times += 1
+
+        return list(arm_indices).index(action)
 
 
 
@@ -893,4 +957,5 @@ BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     adaptive=AdaptiveGreedy, model=ModelPolicy, softmax_explorer = SoftmaxExplorer,
     explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None, remote=RemotePolicy, 
     remote_epsilon_greedy=RemoteEpsilonGreedy, remote_ucb=RemoteUCB, remote_softmax=RemoteSoftmax,
-    remote_contextual_epsilon_greedy=RemoteContextualEpsilonGreedy, remote_contextual_softmax=RemoteContextualSoftmax)
+    remote_contextual_epsilon_greedy=RemoteContextualEpsilonGreedy, meta_bandit=MetaBanditPolicy, 
+    remote_contextual_softmax=RemoteContextualSoftmax)
