@@ -5,7 +5,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 
 from mars_gym.task.meta_config import ProjectConfig, IOType, Column
-from mars_gym.utils import parallel_literal_eval
+from mars_gym.utils.utils import parallel_literal_eval
 
 
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
@@ -15,7 +15,6 @@ def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
             and column.name in data_frame
         ):
             data_frame[column.name] = parallel_literal_eval(data_frame[column.name])
-
 
 def preprocess_interactions_data_frame(
     data_frame: pd.DataFrame, project_config: ProjectConfig
@@ -45,7 +44,6 @@ def preprocess_interactions_data_frame(
         )
     return data_frame
 
-
 def preprocess_metadata_data_frame(
     metadata_data_frame: pd.DataFrame, project_config: ProjectConfig
 ) -> Dict[str, np.ndarray]:
@@ -67,6 +65,11 @@ def preprocess_metadata_data_frame(
 
     return embeddings_for_metadata
 
+def _rand_int_except(low: int, high: int, exception: int) -> int:
+    while True:
+        number = np.random.randint(low, high)
+        if number != exception:
+            return number
 
 class InteractionsDataset(Dataset):
     def __init__(
@@ -144,7 +147,6 @@ class InteractionsDataset(Dataset):
             )
         return inputs, output
 
-
 class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
     def __init__(
         self,
@@ -218,9 +220,3 @@ class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
 
         return input_, output
 
-
-def _rand_int_except(low: int, high: int, exception: int) -> int:
-    while True:
-        number = np.random.randint(low, high)
-        if number != exception:
-            return number

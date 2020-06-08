@@ -44,7 +44,7 @@ from mars_gym.task.data_preparation.base import (
     BasePySparkTask,
     BasePrepareDataFrames,
 )
-from mars_gym.utils import (
+from mars_gym.utils.utils import (
     parallel_literal_eval,
     date_to_day_of_week,
     date_to_day_of_month,

@@ -27,23 +27,23 @@ from mars_gym.task.model.base import (
     TORCH_LOSS_FUNCTIONS,
     BaseTorchModelWithAgentTraining,
 )
-from mars_gym.plot import plot_history, plot_scores
+from mars_gym.utils.plot import plot_history, plot_scores
 
 tqdm.pandas()
 from mars_gym.gym.envs import RecSysEnv
 from mars_gym.model.bandit import BANDIT_POLICIES
 from mars_gym.torch.torch import NoAutoCollationDataLoader, FasterBatchSampler
-from mars_gym.files import (
+from mars_gym.utils.files import (
     get_interaction_dir,
     get_test_set_predictions_path,
     get_history_path,
 )
-from mars_gym.files import (
+from mars_gym.utils.files import (
     get_simulator_datalog_path,
     get_interator_datalog_path,
     get_ground_truth_datalog_path,
 )
-from mars_gym.utils import save_trained_data
+from mars_gym.utils.utils import save_trained_data
 
 # from IPython import embed; embed()
 

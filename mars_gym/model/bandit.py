@@ -11,7 +11,7 @@ from torch.utils.data._utils.collate import default_convert
 from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
 
-from mars_gym.utils import chunks
+from mars_gym.utils.utils import chunks
 
 
 class BanditPolicy(object, metaclass=abc.ABCMeta):

@@ -40,7 +40,7 @@ from mars_gym.data import (
     literal_eval_array_columns,
     InteractionsDataset,
 )
-from mars_gym.files import (
+from mars_gym.utils.files import (
     get_params_path,
     get_weights_path,
     get_interaction_dir,
@@ -58,13 +58,14 @@ from mars_gym.torch.loss import (
 )
 from mars_gym.model.agent import BanditAgent
 from mars_gym.model.bandit import BANDIT_POLICIES
-from mars_gym.plot import plot_history
+from mars_gym.utils.plot import plot_history
 from mars_gym.torch.summary import summary
 from mars_gym.task.config import PROJECTS, ProjectConfig
 from mars_gym.task.cuda import CudaRepository
 from mars_gym.task.meta_config import Column, IOType
-from mars_gym.torch.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
-from mars_gym.utils import lecun_normal_init, he_init
+from mars_gym.torch.torch import NoAutoCollationDataLoader, FasterBatchSampler
+from mars_gym.torch.optimizer import RAdam
+from mars_gym.torch.torch import lecun_normal_init, he_init
 
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO

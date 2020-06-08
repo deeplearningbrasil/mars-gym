@@ -3,7 +3,7 @@ from torch import nn as nn
 from typing import List, Callable
 
 from mars_gym.task.meta_config import Column, IOType
-from mars_gym.utils import lecun_normal_init
+from mars_gym.torch.torch import lecun_normal_init
 
 class PolicyEstimator(nn.Module):
     def __init__(
