@@ -1,1 +1,1 @@
-import mars_gym.metrics
+import mars_gym.torch.metrics

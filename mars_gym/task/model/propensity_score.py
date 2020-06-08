@@ -11,7 +11,7 @@ from typing import List
 
 from mars_gym.data import InteractionsDataset
 from mars_gym.task.model.policy_estimator import PolicyEstimatorTraining
-from mars_gym.torch import FasterBatchSampler, NoAutoCollationDataLoader
+from mars_gym.torch.torch import FasterBatchSampler, NoAutoCollationDataLoader
 
 
 class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):

@@ -15,10 +15,7 @@ import numpy as np
 from mars_gym.data import InteractionsDataset
 from mars_gym.model.trivago.trivago_models import (
     TestModel,
-    SimpleCNNModel,
-    SimpleRNNModel,
-    SimpleLinearModel,
-    SimpleCNNTransformerModel,
+    SimpleLinearModel
 )
 from mars_gym.task.model.base import (
     TORCH_ACTIVATION_FUNCTIONS,
@@ -29,7 +26,7 @@ from mars_gym.task.model.base import (
 from mars_gym.task.model.base import TORCH_WEIGHT_INIT
 from mars_gym.task.model.interaction import InteractionTraining
 from mars_gym.task.model.base import BaseTorchModelTraining
-from mars_gym.rank_metrics import *
+from mars_gym.evaluation.rank_metrics import *
 from mars_gym.task.model.policy_estimator import PolicyEstimatorTraining
 from mars_gym.task.model.propensity_score import FillPropensityScoreMixin
 from mars_gym.task.model.trivago.propensity_score import (

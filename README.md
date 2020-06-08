@@ -2,11 +2,11 @@
 
 Framework Code for the RecSys 2020 entitled 'MARS-Gym: A Gym framework to model, train, and evaluate recommendationsystems for marketplaces'. 
 
-![MDP](doc/images/img1.jpg)
+![MDP](images/img1.jpg)
 
 MARS-Gym(MArketplaceRecommenderSystems Gym), a benchmark framework for modeling, training, and evaluating RL-based recommender systems for marketplaces. Three main components composesthe framework. The first one is a highly customizable module where the consumer can ingest and process a massiveamount of data for learning using spark jobs. We designed the second component for training purposes. It holdsan extensible module built on top of PyTorch to design learning architectures. It also possesses an OpenAI’s Gym environment that ingests the processed dataset to run a multi-agent system that simulates the targeted marketplace. Finally, the last component is an evaluation module that provides a set of distinct perspectives on theagent’s performance. It presents not only traditional recommendation metrics but also off-policy evaluation metrics, toaccount for the bias induced from the historical data representation of marketplace dynamics. Finally, it also presentsfairness indicators to analyze the long-term impact of such recommenders in the ecosystem concerning sensitive attributes. This component is powered by a user-friendly interface to facilitate the analysis and comparison betweenagents
 
-![Framework](doc/images/img2.jpg)
+![Framework](images/img2.jpg)
 
 
 ## Dependencies and Requirements
@@ -44,7 +44,7 @@ MARS-Gym(MArketplaceRecommenderSystems Gym), a benchmark framework for modeling,
 
 ```bash
 conda env create -f environment.yml
-conda activate deep-reco-gym
+conda activate mars-gym
 ```
 
 ## Usage
@@ -77,33 +77,6 @@ PYTHONPATH="." luigi --module MODULE --model-module MODEL_MODULE \
 
 streamlit run tools/eval_viz/app.py
 ```
-
-### Trivago Experiments
-
-We used the Trivago 2019 RecSys Challenge Dataset (https://recsys.trivago.cloud/challenge/dataset/) for experiments. All the results of this Paper can be reproduced, just put  the Dataset in "output/trivago/trivagoRecSysChallengeData2019_v2" and use the scripts below:
-
-* For simulation results:
-
-```bash
-./experiments/trivago/simulation/simu_como_italy.sh
-./experiments/trivago/simulation/simu_chicago_usa.sh
-./experiments/trivago/simulation/simu_rio_janeiro.sh
-./experiments/trivago/simulation/simu_new_your.sh
-./experiments/trivago/simulation/simu_recsys.sh
-```
-
-* For Rank and fairness metrics results can be run through the script ```./experiments/trivago/rank_metrics_chicago.sh``` or using the command:
-
-```bash
-PYTHONPATH="." luigi --module recommendation.task.model.trivago.evaluation EvaluateTrivagoTestSetPredictions \
---model-module recommendation.task.model.trivago.trivago_logistic_model \
---model-cls TrivagoLogisticModelInteraction \
---model-task-id MODEL_TASK_ID \
---fairness-columns "[\"city_idx\",\"platform_idx\",\"device_idx\"]" \
---direct-estimator-module recommendation.task.model.trivago.trivago_logistic_model \
---direct-estimator-cls TrivagoLogisticModelTraining --local-scheduler 
-```
-
 
 ## Cite
 Please cite the associated paper for this work if you use this code:

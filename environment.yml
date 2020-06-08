@@ -1,4 +1,4 @@
-name: deep-reco-gym
+name: mars-gym
 channels:
 - anaconda
 - conda-forge

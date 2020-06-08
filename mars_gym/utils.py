@@ -138,30 +138,6 @@ def date_to_day_of_week(date: str) -> int:
 def date_to_day_of_month(date: str) -> int:
     return int(datetime.strptime(date, "%Y-%m-%d").strftime("%d"))
 
-
-def datetime_to_shift(datetime_: str) -> str:
-    datetime_: datetime = datetime_ if isinstance(
-        datetime_, datetime
-    ) else datetime.strptime(datetime_, "%Y-%m-%d %H:%M:%S")
-    day_of_week = int(datetime_.strftime("%w"))
-    # 0 - 4:59h - dawn
-    # 5 - 9:59h - breakfast
-    # 10 - 13:59h - lunch
-    # 14 - 16:59h - snack
-    # 17 - 23:59h - dinner
-    if 0 <= datetime_.hour <= 4:
-        shift = "dawn"
-    elif 5 <= datetime_.hour <= 9:
-        shift = "breakfast"
-    elif 10 <= datetime_.hour <= 13:
-        shift = "lunch"
-    elif 14 <= datetime_.hour <= 16:
-        shift = "snack"
-    else:
-        shift = "dinner"
-    return "%s %s" % ("weekday" if day_of_week < 4 else "weekend", shift)
-
-
 def get_scores_per_tuples(
     account_idx: int,
     merchant_idx_list: List[int],

@@ -51,7 +51,7 @@ from mars_gym.files import (
     get_test_set_predictions_path,
 )
 from mars_gym.gym.envs.recsys import ITEM_METADATA_KEY
-from mars_gym.loss import (
+from mars_gym.torch.loss import (
     ImplicitFeedbackBCELoss,
     CounterfactualRiskMinimization,
     FocalLoss,
@@ -59,11 +59,11 @@ from mars_gym.loss import (
 from mars_gym.model.agent import BanditAgent
 from mars_gym.model.bandit import BANDIT_POLICIES
 from mars_gym.plot import plot_history
-from mars_gym.summary import summary
+from mars_gym.torch.summary import summary
 from mars_gym.task.config import PROJECTS, ProjectConfig
 from mars_gym.task.cuda import CudaRepository
 from mars_gym.task.meta_config import Column, IOType
-from mars_gym.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
+from mars_gym.torch.torch import NoAutoCollationDataLoader, RAdam, FasterBatchSampler
 from mars_gym.utils import lecun_normal_init, he_init
 
 logging.basicConfig(

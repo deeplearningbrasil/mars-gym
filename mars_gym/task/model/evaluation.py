@@ -16,15 +16,15 @@ from torchbearer import Trial
 from tqdm import tqdm
 import gc
 from mars_gym.data import preprocess_interactions_data_frame, InteractionsDataset
-from mars_gym.fairness_metrics import calculate_fairness_metrics
+from mars_gym.evaluation.fairness_metrics import calculate_fairness_metrics
 from mars_gym.files import get_test_set_predictions_path
-from mars_gym.offpolicy_metrics import (
+from mars_gym.evaluation.offpolicy_metrics import (
     eval_IPS,
     eval_CIPS,
     eval_SNIPS,
     eval_doubly_robust,
 )
-from mars_gym.rank_metrics import (
+from mars_gym.evaluation..rank_metrics import (
     average_precision,
     precision_at_k,
     ndcg_at_k,

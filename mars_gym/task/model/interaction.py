@@ -32,7 +32,7 @@ from mars_gym.plot import plot_history, plot_scores
 tqdm.pandas()
 from mars_gym.gym.envs import RecSysEnv
 from mars_gym.model.bandit import BANDIT_POLICIES
-from mars_gym.torch import NoAutoCollationDataLoader, FasterBatchSampler
+from mars_gym.torch.torch import NoAutoCollationDataLoader, FasterBatchSampler
 from mars_gym.files import (
     get_interaction_dir,
     get_test_set_predictions_path,

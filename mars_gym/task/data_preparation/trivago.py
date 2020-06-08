@@ -46,7 +46,6 @@ from mars_gym.task.data_preparation.base import (
 )
 from mars_gym.utils import (
     parallel_literal_eval,
-    datetime_to_shift,
     date_to_day_of_week,
     date_to_day_of_month,
     clean_filename,
