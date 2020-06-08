@@ -514,10 +514,10 @@ def display_fairness_metrics():
 
 def main():
     """Main function of the App"""
-    st.sidebar.title("DeepFood - DataViz Evaluation ")
+    st.sidebar.title("MARS - DataViz Evaluation ")
     st.sidebar.markdown(
         """
-    DeepFood Evaluation Analysis
+    MARS Evaluation Analysis
     """
     )
 
@@ -542,7 +542,7 @@ def main():
     st.sidebar.title("About")
     st.sidebar.info(
         """
-        DeepFood Evaluation Analysis - @UFG
+        
         """
     )
 

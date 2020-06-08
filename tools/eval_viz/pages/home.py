@@ -46,7 +46,7 @@ def visualize_data(df, x_axis, y_axis):
     st.write(graph)
 
 
-st.sidebar.title("DeepFood - DataViz Evaluation ")
+st.sidebar.title("MARS - DataViz Evaluation ")
 st.sidebar.markdown(
     """
 ...
