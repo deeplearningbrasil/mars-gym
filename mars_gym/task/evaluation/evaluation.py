@@ -17,14 +17,14 @@ from tqdm import tqdm
 import gc
 from mars_gym.data import preprocess_interactions_data_frame, InteractionsDataset
 from mars_gym.evaluation.fairness_metrics import calculate_fairness_metrics
-from mars_gym.files import get_test_set_predictions_path
+from mars_gym.utils.files import get_test_set_predictions_path
 from mars_gym.evaluation.offpolicy_metrics import (
     eval_IPS,
     eval_CIPS,
     eval_SNIPS,
     eval_doubly_robust,
 )
-from mars_gym.evaluation..rank_metrics import (
+from mars_gym.evaluation.rank_metrics import (
     average_precision,
     precision_at_k,
     ndcg_at_k,
@@ -32,10 +32,10 @@ from mars_gym.evaluation..rank_metrics import (
     personalization_at_k,
 )
 from mars_gym.task.model.base import BaseEvaluationTask, BaseTorchModelTraining
-from mars_gym.task.model.policy_estimator import PolicyEstimatorTraining
-from mars_gym.task.model.propensity_score import FillPropensityScoreMixin
-from mars_gym.torch import FasterBatchSampler, NoAutoCollationDataLoader
-from mars_gym.utils import parallel_literal_eval, JsonEncoder
+from mars_gym.task.evaluation.policy_estimator import PolicyEstimatorTraining
+from mars_gym.task.evaluation.propensity_score import FillPropensityScoreMixin
+from mars_gym.torch.torch import FasterBatchSampler, NoAutoCollationDataLoader
+from mars_gym.utils.utils import parallel_literal_eval, JsonEncoder
 
 
 class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):

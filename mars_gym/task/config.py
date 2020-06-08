@@ -2,7 +2,7 @@ from mars_gym.data import (
     InteractionsDataset,
     InteractionsWithNegativeItemGenerationDataset,
 )
-from mars_gym.task.data_preparation import trivago
+from mars_gym.task.data import trivago
 from mars_gym.task.meta_config import *
 
 PROJECTS: Dict[str, ProjectConfig] = {

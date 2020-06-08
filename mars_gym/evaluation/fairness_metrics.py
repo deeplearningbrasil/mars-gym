@@ -7,7 +7,7 @@ from sklearn.metrics import (
     multilabel_confusion_matrix,
     classification_report,
 )
-from mars_gym.utils import mean_confidence_interval
+from mars_gym.utils.utils import mean_confidence_interval
 
 # https://stackoverflow.com/questions/50666091/true-positive-rate-and-false-positive-rate-tpr-fpr-for-multi-class-data-in-py
 # https://en.wikipedia.org/wiki/Sensitivity_and_specificity

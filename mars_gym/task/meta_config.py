@@ -4,7 +4,7 @@ from typing import List, Type, Dict
 from torch.utils.data import Dataset
 import numpy as np
 
-from mars_gym.task.data_preparation.base import BasePrepareDataFrames
+from mars_gym.task.data.base import BasePrepareDataFrames
 
 
 class IOType(Enum):

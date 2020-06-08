@@ -40,7 +40,7 @@ from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.feature import RegexTokenizer
 from pyspark.ml.feature import CountVectorizer as CountVectorizerSpark
 from pyspark.ml.linalg import Vectors
-from mars_gym.task.data_preparation.base import (
+from mars_gym.task.data.base import (
     BasePySparkTask,
     BasePrepareDataFrames,
 )
