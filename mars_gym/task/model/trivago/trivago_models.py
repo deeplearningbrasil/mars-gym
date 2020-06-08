@@ -29,9 +29,6 @@ from mars_gym.task.model.base import BaseTorchModelTraining
 from mars_gym.evaluation.rank_metrics import *
 from mars_gym.task.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.task.evaluation.propensity_score import FillPropensityScoreMixin
-from mars_gym.task.model.trivago.propensity_score import (
-    FillTrivagoPropensityScoreMixin,
-)
 
 
 class TrivagoModelTrainingMixin(object):
@@ -87,7 +84,6 @@ class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
 
 
 class TrivagoModelTraining(
-    FillTrivagoPropensityScoreMixin,
     FillPropensityScoreMixin,
     TrivagoModelTrainingMixin,
     BaseTorchModelWithAgentTraining,
@@ -96,8 +92,7 @@ class TrivagoModelTraining(
 
     def requires(self):
         required_tasks = [super().requires()]
-        if self.fill_ps_strategy == "model":
-            required_tasks.append(self.policy_estimator)
+        required_tasks.append(self.policy_estimator)
         return required_tasks
 
     @property
