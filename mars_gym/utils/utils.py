@@ -1,6 +1,6 @@
 import os
 import ast
-from datetime import datetime
+from datetime import datetime, timedelta
 from multiprocessing.pool import Pool
 from typing import List, Union, Dict, Tuple
 from zipfile import ZipFile
@@ -12,6 +12,7 @@ import pandas as pd
 from math import sqrt
 from tqdm import tqdm
 import shutil
+from random import randrange
 
 from mars_gym.utils.files import get_params, get_task_dir
 
@@ -24,7 +25,13 @@ import string
 valid_filename_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
 char_limit = 255
 
-
+def random_date(start,l):
+   current = start
+   while l > 0:
+      curr = current + timedelta(minutes=randrange(60))
+      yield curr
+      l-=1
+      
 def clean_filename(filename, whitelist=valid_filename_chars, replace=" "):
     # replace spaces
     for r in replace:

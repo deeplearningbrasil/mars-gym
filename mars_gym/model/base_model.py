@@ -4,14 +4,22 @@ from itertools import combinations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mars_gym.utils import lecun_normal_init
+from mars_gym.torch.torch import lecun_normal_init
 import numpy as np
 
 
 class LogisticRegression(nn.Module):
-    def __init__(self, n_factors: int, weight_init: Callable = lecun_normal_init):
+    def __init__(self, n_users: int, n_items: int, n_factors: int, weight_init: Callable = lecun_normal_init):
         super(LogisticRegression, self).__init__()
-        self.linear = nn.Linear(n_factors, 1)
+
+        self.user_embeddings = nn.Embedding(n_users, n_factors)
+        self.item_embeddings = nn.Embedding(n_items, n_factors)
+
+
+        weight_init(self.user_embeddings.weight)
+        weight_init(self.item_embeddings.weight)
+
+        self.linear = nn.Linear(n_factors*2, 1)
         self.weight_init = weight_init
         self.apply(self.init_weights)
 
@@ -23,21 +31,14 @@ class LogisticRegression(nn.Module):
     def none_tensor(self, x):
         return type(x) == type(None)
 
-    def predict(self, item_representation, user_representation, context_representation):
+    def forward(self, user_ids, item_ids, context_representation = None):
         x: torch.Tensor = context_representation
 
-        if not self.none_tensor(user_representation):
-            x = (
-                user_representation
-                if self.none_tensor(x)
-                else torch.cat((x, user_representation), dim=1)
-            )
-        if not self.none_tensor(item_representation):
-            x = (
-                item_representation
-                if self.none_tensor(x)
-                else torch.cat((x, item_representation), dim=1)
-            )
+        # Geral embs
+        user_emb = self.user_embeddings(user_ids)
+        item_emb = self.item_embeddings(item_ids)
+
+        x = torch.cat((user_emb,item_emb),dim=1,)
 
         return torch.sigmoid(self.linear(x))
 
@@ -87,7 +88,7 @@ class DeepFactorizationMachine(nn.Module):
     def none_tensor(self, x):
         return type(x) == type(None)
 
-    def predict(self, item_representation, user_representation, context_representation):
+    def forward(self, item_representation, user_representation, context_representation):
         latent_vectors = []
 
         if not self.none_tensor(context_representation):

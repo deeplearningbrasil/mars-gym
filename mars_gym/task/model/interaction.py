@@ -18,7 +18,7 @@ import time
 import pickle
 from gym import spaces
 import gc
-from mars_gym.data import preprocess_interactions_data_frame
+from mars_gym.data.data import preprocess_interactions_data_frame
 from mars_gym.gym.envs.recsys import ITEM_METADATA_KEY
 from mars_gym.model.agent import BanditAgent
 from mars_gym.task.meta_config import ProjectConfig, Column, IOType
@@ -46,7 +46,6 @@ from mars_gym.utils.files import (
 from mars_gym.utils.utils import save_trained_data
 
 # from IPython import embed; embed()
-
 
 class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta):
     loss_function: str = luigi.ChoiceParameter(
@@ -169,9 +168,12 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
     def _calulate_propensity_score(self, ob: dict, prob: float) -> float:
         df = self.known_observations_data_frame
 
-        n = np.sum(
-            ob[self.project_config.available_arms_column_name]
-        )  # Binary Array [0,0,1,0,0,1...]
+        if self.project_config.available_arms_column_name is None:
+            n = 1
+        else: 
+            n = np.sum(
+                ob[self.project_config.available_arms_column_name]
+            )  # Binary Array [0,0,1,0,0,1...]
         prob += 0.001  # error
         ps = (1 / n) / prob
         return ps
@@ -266,6 +268,10 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
         sim_df["index_env"] = env_data_duplicate_df["index"]
 
         # All Dataset
+        if self.project_config.propensity_score_column_name not in self.interactions_data_frame:
+            self.interactions_data_frame[self.project_config.propensity_score_column_name] = None 
+
+
         gt_df = self.interactions_data_frame[columns].reset_index()
 
         sim_df.to_csv(get_simulator_datalog_path(self.output().path), index=False)
@@ -273,10 +279,6 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
         env_data_df.to_csv(
             get_ground_truth_datalog_path(self.output().path), index=False
         )
-
-        # Train
-        # history_df = pd.read_csv(get_history_path(self.output().path))
-        # plot_history(history_df).savefig(os.path.join(self.output().path, "history.jpg"))
 
     def _save_metrics(self) -> None:
         df = self.known_observations_data_frame.reset_index()

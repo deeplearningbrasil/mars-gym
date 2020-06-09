@@ -9,7 +9,7 @@ from torchbearer import Trial
 from tqdm import tqdm
 from typing import List
 
-from mars_gym.data import InteractionsDataset
+from mars_gym.data.data import InteractionsDataset
 from mars_gym.task.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.torch.torch import FasterBatchSampler, NoAutoCollationDataLoader
 

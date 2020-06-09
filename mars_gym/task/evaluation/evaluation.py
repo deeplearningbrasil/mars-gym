@@ -15,7 +15,7 @@ import torchbearer
 from torchbearer import Trial
 from tqdm import tqdm
 import gc
-from mars_gym.data import preprocess_interactions_data_frame, InteractionsDataset
+from mars_gym.data.data import preprocess_interactions_data_frame, InteractionsDataset
 from mars_gym.evaluation.fairness_metrics import calculate_fairness_metrics
 from mars_gym.utils.files import get_test_set_predictions_path
 from mars_gym.evaluation.offpolicy_metrics import (
@@ -84,7 +84,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         if not hasattr(self, "_direct_estimator"):
             self._direct_estimator = self.get_direct_estimator(
                 {
-                    "project": "trivago_contextual_bandit_with_negative_item_generation",
+                    "project": self.model_training.project,
                     "learning_rate": 0.001,
                     "test_size": 0.0,
                     "epochs": self.direct_estimator_epochs,
@@ -104,7 +104,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def policy_estimator(self) -> PolicyEstimatorTraining:
         if not hasattr(self, "_policy_estimator"):
             self._policy_estimator = PolicyEstimatorTraining(
-                project="trivago_contextual_bandit",
+                project=self.model_training.project,
                 data_frames_preparation_extra_params=self.model_training.data_frames_preparation_extra_params,
                 **self.policy_estimator_extra_params,
             )
@@ -174,7 +174,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             df[self.model_training.project_config.output_column.name] == 1
         ]
 
-        # from IPython import embed; embed()
+        ## from IPython import embed; embed()
         print("Rank Metrics...")
         df_rank, dict_rank = self.rank_metrics(ground_truth_df)
         gc.collect()
@@ -299,7 +299,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             return metrics
 
         df["rewards"] = df[self.model_training.project_config.output_column.name]
-
+        #from IPython import embed; embed()
         with Pool(self.num_processes) as p:
             self.fill_rhat_rewards(df, p)
             self.fill_ps(df, p)
@@ -345,6 +345,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         return df, metrics
 
     def fairness_metrics(self, df: pd.DataFrame):
+        if len(self.fairness_columns) == 0:
+            return pd.DataFrame(), pd.DataFrame()
 
         df["action"] = df["sorted_actions"].apply(
             lambda sorted_actions: sorted_actions[0]
@@ -365,6 +367,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 *self.fairness_columns,
             ]
         ]
+
         fairness_metrics = calculate_fairness_metrics(
             fairness_df,
             self.fairness_columns,
@@ -397,7 +400,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
         df_action = df.copy()
         # set item_idx for direct_estimator
-        df_action["item_idx"] = df["item_idx_action"]
+        df_action[self.model_training.project_config.item_column.name] = df["action"]
 
         rewards = self._direct_estimator_predict(df_action)
         del df_action
@@ -451,7 +454,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         rewards = df_offpolicy["rewards"].values
         ps_eval = df_offpolicy["ps_eval"].values
         ps_eval_i = df_offpolicy.apply(
-            lambda row: int(row["item_idx"] == row["item_idx_action"]), axis=1
+            lambda row: int(row[self.model_training.project_config.item_column.name] == row["action"]), axis=1
         )
         ps = df_offpolicy[ps_column].values
         action_rhat_rewards = df_offpolicy["action_rhat_rewards"].values

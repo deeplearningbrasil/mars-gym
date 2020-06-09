@@ -12,7 +12,7 @@ from torchbearer import Trial
 import torchbearer
 import numpy as np
 
-from mars_gym.data import InteractionsDataset
+from mars_gym.data.data import InteractionsDataset
 from mars_gym.model.trivago.trivago_models import (
     TestModel,
     SimpleLinearModel
@@ -88,7 +88,6 @@ class TrivagoModelTraining(
     TrivagoModelTrainingMixin,
     BaseTorchModelWithAgentTraining,
 ):
-    policy_estimator_extra_params: dict = luigi.DictParameter(default={})
 
     def requires(self):
         required_tasks = [super().requires()]

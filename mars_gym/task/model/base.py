@@ -34,7 +34,7 @@ from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from tqdm import tqdm
 
-from mars_gym.data import (
+from mars_gym.data.data import (
     preprocess_interactions_data_frame,
     preprocess_metadata_data_frame,
     literal_eval_array_columns,
@@ -382,6 +382,7 @@ class BaseTorchModelTraining(BaseModelTraining):
     monitor_mode: str = luigi.Parameter(default="min")
     generator_workers: int = luigi.IntParameter(default=0)
     pin_memory: bool = luigi.BoolParameter(default=False)
+    policy_estimator_extra_params: dict = luigi.DictParameter(default={})
 
     metrics = luigi.ListParameter(default=["loss"])
 
@@ -636,7 +637,7 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
             model_output, torch.Tensor
         ) else model_output[0][0]
         scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
-
+        
         return scores
 
     def _create_ob_dataset(self, ob: dict, arm_indices: List[int]) -> Dataset:
@@ -716,8 +717,12 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
         self.clean()
         # from IPython import embed; embed()
         for ob in tqdm(obs, total=len(obs)):
+            items = None
+
             if self.embeddings_for_metadata is not None:
                 ob[ITEM_METADATA_KEY] = self.embeddings_for_metadata
+            else:
+                ob[ITEM_METADATA_KEY] = None
 
             if self.project_config.available_arms_column_name:
                 items = np.zeros(

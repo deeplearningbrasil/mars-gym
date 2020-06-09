@@ -112,6 +112,8 @@ class RecSysEnv(gym.Env, utils.EzPickle):
         ob = self._obs_dataset[self._current_index]
         if self._item_metadata is not None:
             ob[ITEM_METADATA_KEY] = self._item_metadata
+        else:
+            ob[ITEM_METADATA_KEY] = None
         return ob
 
     def step(self, action: int) -> Tuple[dict, float, bool, dict]:
