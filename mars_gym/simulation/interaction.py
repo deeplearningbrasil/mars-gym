@@ -1,29 +1,22 @@
 import abc
 import os
-from typing import List, Tuple, Dict, Any, Union, Optional
+from typing import List, Tuple, Union
 
 import gym
 import luigi
 import numpy as np
 import pandas as pd
 import torch
-from copy import deepcopy
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset
-from torch.utils.data.dataloader import DataLoader
 import torchbearer
 from torchbearer import Trial
 from tqdm import tqdm
 import time
 import pickle
-from gym import spaces
 import gc
-from mars_gym.data.data import preprocess_interactions_data_frame
-from mars_gym.gym.envs.recsys import ITEM_METADATA_KEY
+from mars_gym.data.dataset import preprocess_interactions_data_frame
 from mars_gym.model.agent import BanditAgent
-from mars_gym.task.meta_config import ProjectConfig, Column, IOType
-from mars_gym.task.model.base import (
-    BaseTorchModelTraining,
+from mars_gym.simulation.base import (
     TORCH_LOSS_FUNCTIONS,
     BaseTorchModelWithAgentTraining,
 )
@@ -32,10 +25,8 @@ from mars_gym.utils.plot import plot_history, plot_scores
 tqdm.pandas()
 from mars_gym.gym.envs import RecSysEnv
 from mars_gym.model.bandit import BANDIT_POLICIES
-from mars_gym.torch.data import NoAutoCollationDataLoader, FasterBatchSampler
 from mars_gym.utils.files import (
     get_interaction_dir,
-    get_test_set_predictions_path,
     get_history_path,
 )
 from mars_gym.utils.files import (
@@ -46,6 +37,7 @@ from mars_gym.utils.files import (
 from mars_gym.utils.utils import save_trained_data
 
 # from IPython import embed; embed()
+
 
 class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta):
     loss_function: str = luigi.ChoiceParameter(
@@ -170,7 +162,7 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
 
         if self.project_config.available_arms_column_name is None:
             n = 1
-        else: 
+        else:
             n = np.sum(
                 ob[self.project_config.available_arms_column_name]
             )  # Binary Array [0,0,1,0,0,1...]
@@ -268,9 +260,13 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
         sim_df["index_env"] = env_data_duplicate_df["index"]
 
         # All Dataset
-        if self.project_config.propensity_score_column_name not in self.interactions_data_frame:
-            self.interactions_data_frame[self.project_config.propensity_score_column_name] = None 
-
+        if (
+            self.project_config.propensity_score_column_name
+            not in self.interactions_data_frame
+        ):
+            self.interactions_data_frame[
+                self.project_config.propensity_score_column_name
+            ] = None
 
         gt_df = self.interactions_data_frame[columns].reset_index()
 

@@ -1,11 +1,11 @@
 import os
-from mars_gym.data.data import (
+from mars_gym.data.dataset import (
     InteractionsDataset,
-    InteractionsWithNegativeItemGenerationDataset
+    InteractionsWithNegativeItemGenerationDataset,
 )
-from mars_gym.task.data import trivago
-from mars_gym.task.meta_config import *
-from mars_gym.data.dataset import UnitTestDataFrames
+from mars_gym.data import trivago
+from mars_gym.meta_config import *
+from mars_gym.data.utils import UnitTestDataFrames
 
 PROJECTS: Dict[str, ProjectConfig] = {
     "trivago_contextual_bandit": ProjectConfig(
@@ -271,11 +271,9 @@ PROJECTS: Dict[str, ProjectConfig] = {
         dataset_class=InteractionsDataset,
         user_column=Column("user", IOType.INDEX),
         item_column=Column("item", IOType.INDEX),
-        other_input_columns=[
-        ],
+        other_input_columns=[],
         metadata_columns=[],
         output_column=Column("reward", IOType.NUMBER),
         recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
     ),
 }
-

@@ -1,67 +1,39 @@
-import os
 import re
-from collections import Counter
-from pyspark.sql.functions import posexplode, explode  # , arrays_zip
-import re
-from scipy.sparse.csr import csr_matrix
 import luigi
-import math
-import numpy as np
-import pandas as pd
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import (
-    collect_set,
     collect_list,
     lit,
-    sum,
-    udf,
-    concat_ws,
     col,
-    count,
-    abs,
-    date_format,
     max,
-    from_utc_timestamp,
-    expr,
 )
-from pyspark.sql.functions import explode, posexplode
+from pyspark.sql.functions import posexplode
 from pyspark.sql.types import IntegerType, StringType
-from pyspark.sql.window import Window
-from torchnlp.encoders import LabelEncoder
 from torchnlp.encoders.text.static_tokenizer_encoder import StaticTokenizerEncoder
-from unidecode import unidecode
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from pyspark.sql.types import ArrayType, FloatType
-from pyspark.sql.functions import udf, struct
+from pyspark.sql.functions import udf
 from pyspark.ml.linalg import DenseVector
-from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.feature import RegexTokenizer
 from pyspark.ml.feature import CountVectorizer as CountVectorizerSpark
-from pyspark.ml.linalg import Vectors
-from mars_gym.task.data.base import (
+from mars_gym.data.task import (
     BasePySparkTask,
     BasePrepareDataFrames,
 )
 from mars_gym.utils.utils import (
-    parallel_literal_eval,
-    date_to_day_of_week,
-    date_to_day_of_month,
     clean_filename,
     literal_eval_if_str,
 )
 from pyspark.sql.window import Window
-import pyspark.sql.functions as func
 from pyspark.sql.functions import when
 from sklearn.preprocessing import MinMaxScaler
 from pyspark.ml.feature import QuantileDiscretizer
-import random
 import pandas as pd
 import numpy as np
 from multiprocessing import Pool
 import os
-import gc
 
 BASE_DIR: str = os.path.join("output", "trivago")
 DATASET_DIR: str = os.path.join("output", "trivago", "dataset")

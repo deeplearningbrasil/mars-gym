@@ -1,13 +1,10 @@
 #import sys, os
 import pandas as pd
-import luigi
-import torch
 import torch.nn as nn
 from mars_gym.model.base_model import LogisticRegression
-from mars_gym.data.dataset import RandomData
-from mars_gym.task.model.interaction import InteractionTraining
-from mars_gym.task.data.base import (
-    BasePySparkTask,
+from mars_gym.data.utils import RandomData
+from mars_gym.simulation import InteractionTraining
+from mars_gym.data.task import (
     BasePrepareDataFrames,
 )
 

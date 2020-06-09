@@ -25,13 +25,15 @@ import string
 valid_filename_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
 char_limit = 255
 
-def random_date(start,l):
-   current = start
-   while l > 0:
-      curr = current + timedelta(minutes=randrange(60))
-      yield curr
-      l-=1
-      
+
+def random_date(start, l):
+    current = start
+    while l > 0:
+        curr = current + timedelta(minutes=randrange(60))
+        yield curr
+        l -= 1
+
+
 def clean_filename(filename, whitelist=valid_filename_chars, replace=" "):
     # replace spaces
     for r in replace:
@@ -56,8 +58,6 @@ def clean_filename(filename, whitelist=valid_filename_chars, replace=" "):
 # test
 s = "fake_folder/\[]}{}|~`\"':;,/? abcABC 0123 !@#$%^&*()_+ clᐖﯫⅺຶ 讀ϯՋ㉘ ⅮRㇻᎠ⍩ 𝁱C ℿ؛ἂeuឃC ᅕ ᑉﺜͧ bⓝ s⡽Հᛕ\ue063 牢𐐥er ᐛŴ n წş .ھڱ                                 df                                         df                                  dsfsdfgsg!zip"
 clean_filename(s)  # 'fake_folder_abcABC_0123_____clxi_28_DR_C_euC___bn_s_er_W_n_s_.zip'
-
-
 
 
 def chunks(l: Union[list, range], n: int) -> Union[list, range]:
@@ -97,6 +97,7 @@ def date_to_day_of_week(date: str) -> int:
 
 def date_to_day_of_month(date: str) -> int:
     return int(datetime.strptime(date, "%Y-%m-%d").strftime("%d"))
+
 
 def get_scores_per_tuples(
     account_idx: int,

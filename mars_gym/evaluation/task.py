@@ -3,7 +3,6 @@ import importlib
 import inspect
 import json
 import os
-from itertools import starmap
 from multiprocessing.pool import Pool
 from typing import List, Tuple
 import pprint
@@ -15,25 +14,28 @@ import torchbearer
 from torchbearer import Trial
 from tqdm import tqdm
 import gc
-from mars_gym.data.data import preprocess_interactions_data_frame, InteractionsDataset
-from mars_gym.evaluation.fairness_metrics import calculate_fairness_metrics
+from mars_gym.data.dataset import (
+    preprocess_interactions_data_frame,
+    InteractionsDataset,
+)
+from mars_gym.evaluation.propensity_score import FillPropensityScoreMixin
+from mars_gym.evaluation.metrics.fairness import calculate_fairness_metrics
 from mars_gym.utils.files import get_test_set_predictions_path
-from mars_gym.evaluation.offpolicy_metrics import (
+from mars_gym.evaluation.metrics.offpolicy import (
     eval_IPS,
     eval_CIPS,
     eval_SNIPS,
     eval_doubly_robust,
 )
-from mars_gym.evaluation.rank_metrics import (
+from mars_gym.evaluation.metrics.rank import (
     average_precision,
     precision_at_k,
     ndcg_at_k,
     prediction_coverage_at_k,
     personalization_at_k,
 )
-from mars_gym.task.model.base import BaseEvaluationTask, BaseTorchModelTraining
-from mars_gym.task.evaluation.policy_estimator import PolicyEstimatorTraining
-from mars_gym.task.evaluation.propensity_score import FillPropensityScoreMixin
+from mars_gym.simulation.base import BaseEvaluationTask, BaseTorchModelTraining
+from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.torch.data import FasterBatchSampler, NoAutoCollationDataLoader
 from mars_gym.utils.utils import parallel_literal_eval, JsonEncoder
 
@@ -299,7 +301,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             return pd.DataFrame(), metrics
 
         df["rewards"] = df[self.model_training.project_config.output_column.name]
-        #from IPython import embed; embed()
+        # from IPython import embed; embed()
         with Pool(self.num_processes) as p:
             self.fill_rhat_rewards(df, p)
             self.fill_ps(df, p)
@@ -454,7 +456,11 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         rewards = df_offpolicy["rewards"].values
         ps_eval = df_offpolicy["ps_eval"].values
         ps_eval_i = df_offpolicy.apply(
-            lambda row: int(row[self.model_training.project_config.item_column.name] == row["action"]), axis=1
+            lambda row: int(
+                row[self.model_training.project_config.item_column.name]
+                == row["action"]
+            ),
+            axis=1,
         )
         ps = df_offpolicy[ps_column].values
         action_rhat_rewards = df_offpolicy["action_rhat_rewards"].values

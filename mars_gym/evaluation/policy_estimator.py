@@ -6,8 +6,8 @@ import numpy as np
 from torch import nn as nn
 
 from mars_gym.model.policy_estimator import PolicyEstimator
-from mars_gym.task.meta_config import ProjectConfig, IOType
-from mars_gym.task.model.base import BaseTorchModelTraining, TORCH_WEIGHT_INIT
+from mars_gym.meta_config import ProjectConfig, IOType
+from mars_gym.simulation.base import BaseTorchModelTraining, TORCH_WEIGHT_INIT
 
 
 class PolicyEstimatorTraining(BaseTorchModelTraining):

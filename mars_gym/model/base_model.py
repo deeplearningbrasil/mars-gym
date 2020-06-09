@@ -9,17 +9,22 @@ import numpy as np
 
 
 class LogisticRegression(nn.Module):
-    def __init__(self, n_users: int, n_items: int, n_factors: int, weight_init: Callable = lecun_normal_init):
+    def __init__(
+        self,
+        n_users: int,
+        n_items: int,
+        n_factors: int,
+        weight_init: Callable = lecun_normal_init,
+    ):
         super(LogisticRegression, self).__init__()
 
         self.user_embeddings = nn.Embedding(n_users, n_factors)
         self.item_embeddings = nn.Embedding(n_items, n_factors)
 
-
         weight_init(self.user_embeddings.weight)
         weight_init(self.item_embeddings.weight)
 
-        self.linear = nn.Linear(n_factors*2, 1)
+        self.linear = nn.Linear(n_factors * 2, 1)
         self.weight_init = weight_init
         self.apply(self.init_weights)
 
@@ -31,16 +36,17 @@ class LogisticRegression(nn.Module):
     def none_tensor(self, x):
         return type(x) == type(None)
 
-    def forward(self, user_ids, item_ids, context_representation = None):
+    def forward(self, user_ids, item_ids, context_representation=None):
         x: torch.Tensor = context_representation
 
         # Geral embs
         user_emb = self.user_embeddings(user_ids)
         item_emb = self.item_embeddings(item_ids)
 
-        x = torch.cat((user_emb,item_emb),dim=1,)
+        x = torch.cat((user_emb, item_emb), dim=1,)
 
         return torch.sigmoid(self.linear(x))
+
 
 class DeepFactorizationMachine(nn.Module):
     def __init__(
@@ -123,4 +129,3 @@ class DeepFactorizationMachine(nn.Module):
         x = torch.sum(x, dim=1)
 
         return torch.sigmoid(x)
-

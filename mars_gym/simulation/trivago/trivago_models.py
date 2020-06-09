@@ -1,34 +1,28 @@
 from multiprocessing import Pool
-from typing import List, Union, Tuple, Optional
-import functools
-from itertools import starmap
+from typing import Union, Tuple, Optional, List
 import os
 import json
 
 import luigi
+import pandas as pd
+import numpy as np
 import torch
 import torch.nn as nn
 from torchbearer import Trial
-import torchbearer
-import numpy as np
 
-from mars_gym.data.data import InteractionsDataset
-from mars_gym.model.trivago.trivago_models import (
-    TestModel,
-    SimpleLinearModel
-)
-from mars_gym.task.model.base import (
+from mars_gym.data.dataset import InteractionsDataset
+from mars_gym.evaluation.metrics.rank import mean_reciprocal_rank, ndcg_at_k, reciprocal_rank_at_k, precision_at_k
+from mars_gym.model.trivago.trivago_models import SimpleLinearModel
+from mars_gym.simulation.base import (
     TORCH_ACTIVATION_FUNCTIONS,
     TORCH_DROPOUT_MODULES,
     TORCH_LOSS_FUNCTIONS,
-    BaseTorchModelWithAgentTraining,
+    TORCH_WEIGHT_INIT,
+    BaseTorchModelWithAgentTraining
 )
-from mars_gym.task.model.base import TORCH_WEIGHT_INIT
-from mars_gym.task.model.interaction import InteractionTraining
-from mars_gym.task.model.base import BaseTorchModelTraining
-from mars_gym.evaluation.rank_metrics import *
-from mars_gym.task.evaluation.policy_estimator import PolicyEstimatorTraining
-from mars_gym.task.evaluation.propensity_score import FillPropensityScoreMixin
+from mars_gym.simulation.interaction import InteractionTraining
+from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
+from mars_gym.evaluation.propensity_score import FillPropensityScoreMixin
 
 
 class TrivagoModelTrainingMixin(object):
@@ -65,7 +59,7 @@ class TrivagoModelTrainingMixin(object):
 
     def create_module(self) -> nn.Module:
 
-        return SimpleCNNModel(
+        return SimpleLinearModel(
             window_hist_size=self.window_hist_size,
             vocab_size=self.vocab_size,
             metadata_size=self.metadata_size,
@@ -88,7 +82,6 @@ class TrivagoModelTraining(
     TrivagoModelTrainingMixin,
     BaseTorchModelWithAgentTraining,
 ):
-
     def requires(self):
         required_tasks = [super().requires()]
         required_tasks.append(self.policy_estimator)

@@ -34,7 +34,7 @@ from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from tqdm import tqdm
 
-from mars_gym.data.data import (
+from mars_gym.data.dataset import (
     preprocess_interactions_data_frame,
     preprocess_metadata_data_frame,
     literal_eval_array_columns,
@@ -60,9 +60,9 @@ from mars_gym.model.agent import BanditAgent
 from mars_gym.model.bandit import BANDIT_POLICIES
 from mars_gym.utils.plot import plot_history
 from mars_gym.torch.summary import summary
-from mars_gym.task.config import PROJECTS, ProjectConfig
-from mars_gym.task.cuda import CudaRepository
-from mars_gym.task.meta_config import Column, IOType
+from mars_gym.config import PROJECTS, ProjectConfig
+from mars_gym.cuda import CudaRepository
+from mars_gym.meta_config import Column, IOType
 from mars_gym.torch.data import NoAutoCollationDataLoader, FasterBatchSampler
 from mars_gym.torch.optimizer import RAdam
 from mars_gym.torch.init import lecun_normal_init, he_init
@@ -637,7 +637,7 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
             model_output, torch.Tensor
         ) else model_output[0][0]
         scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
-        
+
         return scores
 
     def _create_ob_dataset(self, ob: dict, arm_indices: List[int]) -> Dataset:
@@ -757,7 +757,7 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
 
 
 class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
-    model_module: str = luigi.Parameter(default="mars_gym.task.model.interaction")
+    model_module: str = luigi.Parameter(default="mars_gym.task.simulation.interaction")
     model_cls: str = luigi.Parameter(default="InteractionTraining")
     model_task_id: str = luigi.Parameter()
     no_offpolicy_eval: bool = luigi.BoolParameter(default=False)

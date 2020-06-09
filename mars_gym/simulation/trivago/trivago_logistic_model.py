@@ -1,28 +1,7 @@
-from typing import List
-import functools
-from itertools import starmap
-
-import json
-
-import luigi
-import torch
 import torch.nn as nn
-from torchbearer import Trial
-import torchbearer
-import numpy as np
-from mars_gym.model.trivago.trivago_models import (
-    TestModel,
-    SimpleLinearModel
-)
-from mars_gym.task.model.base import (
-    TORCH_ACTIVATION_FUNCTIONS,
-    TORCH_DROPOUT_MODULES,
-)
-from mars_gym.task.model.base import TORCH_WEIGHT_INIT
-from mars_gym.task.model.interaction import InteractionTraining
-from mars_gym.task.model.base import BaseTorchModelTraining
-from mars_gym.evaluation.rank_metrics import *
-from mars_gym.task.model.trivago.trivago_models import (
+from mars_gym.model.trivago.trivago_models import SimpleLinearModel
+from mars_gym.simulation.base import TORCH_DROPOUT_MODULES
+from mars_gym.simulation.trivago.trivago_models import (
     TrivagoModelTraining,
     TrivagoModelInteraction,
 )
