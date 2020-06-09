@@ -34,7 +34,7 @@ from mars_gym.evaluation.rank_metrics import (
 from mars_gym.task.model.base import BaseEvaluationTask, BaseTorchModelTraining
 from mars_gym.task.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.task.evaluation.propensity_score import FillPropensityScoreMixin
-from mars_gym.torch.torch import FasterBatchSampler, NoAutoCollationDataLoader
+from mars_gym.torch.data import FasterBatchSampler, NoAutoCollationDataLoader
 from mars_gym.utils.utils import parallel_literal_eval, JsonEncoder
 
 

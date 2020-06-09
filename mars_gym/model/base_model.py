@@ -4,7 +4,7 @@ from itertools import combinations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mars_gym.torch.torch import lecun_normal_init
+from mars_gym.torch.init import lecun_normal_init
 import numpy as np
 
 

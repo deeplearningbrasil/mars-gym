@@ -63,9 +63,9 @@ from mars_gym.torch.summary import summary
 from mars_gym.task.config import PROJECTS, ProjectConfig
 from mars_gym.task.cuda import CudaRepository
 from mars_gym.task.meta_config import Column, IOType
-from mars_gym.torch.torch import NoAutoCollationDataLoader, FasterBatchSampler
+from mars_gym.torch.data import NoAutoCollationDataLoader, FasterBatchSampler
 from mars_gym.torch.optimizer import RAdam
-from mars_gym.torch.torch import lecun_normal_init, he_init
+from mars_gym.torch.init import lecun_normal_init, he_init
 
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
