@@ -296,7 +296,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         metrics = {}
 
         if self.no_offpolicy_eval:
-            return metrics
+            return pd.DataFrame(), metrics
 
         df["rewards"] = df[self.model_training.project_config.output_column.name]
         #from IPython import embed; embed()

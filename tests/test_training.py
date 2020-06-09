@@ -13,6 +13,7 @@ import torch.nn as nn
 from mars_gym.model.base_model import LogisticRegression
 from mars_gym.data.dataset import RandomData
 from mars_gym.task.model.interaction import InteractionTraining
+from mars_gym.task.evaluation.evaluation import EvaluateTestSetPredictions 
 from mars_gym.task.data.base import (
     BasePySparkTask,
     BasePrepareDataFrames,
@@ -28,15 +29,20 @@ class UnitTestInteractionTraining(InteractionTraining):
         )  
 
 class TestInteractionTraining(unittest.TestCase):
-  def setUp(self): 
-    self._random_data = RandomData()
-    pass
-      
-  def test_training(self):
-    job = UnitTestInteractionTraining(project='unittest_interaction_training')
-    luigi.build([job], local_scheduler=True)
-    
-    #self.assertEqual(len(config.arms), 2)
+    def setUp(self): 
+        self._random_data = RandomData()
+        self.task_id = None
+
+    def test_training_and_evaluation(self):
+        # Training
+        job = UnitTestInteractionTraining(project='unittest_interaction_training', epochs=1, test_size=0.1, obs_batch_size=100)
+        luigi.build([job], local_scheduler=True)
+
+        # Evaluation
+        job = EvaluateTestSetPredictions(model_task_id=job.task_id, model_module="tests.test_training", model_cls='UnitTestInteractionTraining', fairness_columns=[], direct_estimator_module='tests.test_training', direct_estimator_cls='UnitTestInteractionTraining', no_offpolicy_eval=True)
+
+        luigi.build([job], local_scheduler=True)
+
 
 if __name__ == '__main__':
     unittest.main()
@@ -46,7 +52,7 @@ if __name__ == '__main__':
 
 # PYTHONPATH="." luigi --module mars_gym.task.model.trivago.trivago_logistic_model TrivagoLogisticModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Chicago, USA", "window_hist":10}' --epochs 1 --test-size 0.1
 
-# PYTHONPATH="." luigi --module tests.test_training UnitTestInteractionTraining --project unittest_interaction_training --epochs 1 --test-size 0.1
+# PYTHONPATH="." luigi --module tests.test_training UnitTestInteractionTraining --project unittest_interaction_training --epochs 1 --test-size 0.1 --obs-batch-size 100
 
 # PYTHONPATH="." luigi --module mars_gym.task.evaluation.evaluation EvaluateTestSetPredictions --model-module tests.test_training  \
-#  --model-cls UnitTestInteractionTraining --model-task-id UnitTestInteractionTraining____model____68f30a0e4b --fairness-columns "[]" --direct-estimator-module tests.test_training --direct-estimator-cls UnitTestInteractionTraining     
+#  --model-cls UnitTestInteractionTraining --model-task-id UnitTestInteractionTraining____model____009272fdcb --fairness-columns "[]" --direct-estimator-module tests.test_training --direct-estimator-cls UnitTestInteractionTraining     
