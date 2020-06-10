@@ -7,8 +7,7 @@ import luigi
 # import luigi.cmdline
 import torch.nn as nn
 from mars_gym.model.base_model import LogisticRegression
-from mars_gym.data.utils import RandomData
-from mars_gym.simulation import InteractionTraining
+from mars_gym.simulation.interaction import InteractionTraining
 from mars_gym.evaluation.task import EvaluateTestSetPredictions
 
 
@@ -22,9 +21,8 @@ class UnitTestInteractionTraining(InteractionTraining):
 
 class TestInteractionTraining(unittest.TestCase):
     def setUp(self): 
-        self._random_data = RandomData()
-        self.task_id = None
-
+        pass
+    
     def test_training_and_evaluation(self):
         # Training
         job = UnitTestInteractionTraining(project='unittest_interaction_training', epochs=1, test_size=0.1, obs_batch_size=100)
@@ -40,7 +38,7 @@ if __name__ == '__main__':
     unittest.main()
 
 
-# PYTHONPATH="." luigi --module mars_gym.task.simulation.trivago.trivago_logistic_model TrivagoLogisticModelTraining --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Chicago, USA", "window_hist":10}' --epochs 1
+# PYTHONPATH="." luigi --module mars_gym.simulation.trivago.trivago_logistic_model TrivagoLogisticModelTraining --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Chicago, USA", "window_hist":10}' --epochs 1
 
 # PYTHONPATH="." luigi --module mars_gym.task.simulation.trivago.trivago_logistic_model TrivagoLogisticModelInteraction --project trivago_contextual_bandit --data-frames-preparation-extra-params '{"filter_city": "Chicago, USA", "window_hist":10}' --epochs 1 --test-size 0.1
 

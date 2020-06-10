@@ -1,39 +1,73 @@
+import abc
+import luigi
+
 import pandas as pd
 import numpy as np
 import datetime
 import os
 from mars_gym.utils.utils import random_date
 from mars_gym.data.task import BasePrepareDataFrames
+from urllib.request import urlopen, urlretrieve
+from mars_gym.utils import files
+import requests
+from tqdm import tqdm
+import math
 
+DATASETS = dict(
+  random=['https://storage.googleapis.com/mars-gym-dataset/raw/random/dataset.csv'], 
+  trivago_rio=['https://storage.googleapis.com/mars-gym-dataset/raw/trivago/rio/train.csv',
+    'https://storage.googleapis.com/mars-gym-dataset/raw/trivago/rio/item_metadata.csv']
+)
 
-class RandomData:
-    def __init__(self, n_users: int = 10, n_items: int = 10, size=1000, seed: int = 42):
-        self.n_users = n_users
-        self.n_items = n_items
-        self.size = size
-        self.seed = seed
-        np.random.seed(seed)
+def load_dataset(name, cache=True, data_home=None, **kws):
+  results = []  
+  for url in DATASETS[name]:
 
-    def data(self):
-        users = np.random.randint(self.n_users, size=self.size)
-        items = np.random.randint(self.n_items, size=self.size)
-        start_date = datetime.datetime(2013, 9, 20, 13, 00)
-        timestamp = [
-            x.strftime("%d/%m/%y %H:%M") for x in random_date(start_date, self.size)
-        ]
+    output_path = os.path.join("output", name, os.path.basename(url))
+    
+    if not os.path.isfile(output_path) or not cache:
+        # Streaming, so we can iterate over the response.
+        r = requests.get(url, stream=True)
 
-        reward = np.random.randint(2, size=self.size)
+        # Total size in bytes.
+        total_size = int(r.headers.get('content-length', 0))
+        block_size = 1024
+        wrote = 0
+        os.makedirs(os.path.split(output_path)[0], exist_ok=True)
+        with open(output_path, 'wb') as f:
+            for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size // block_size), unit='KB',
+                            unit_scale=True):
+                wrote = wrote + len(data)
+                f.write(data)
+        if total_size != 0 and wrote != total_size:
+            raise ConnectionError("ERROR, something went wrong")
+    
+    df = pd.read_csv(output_path, **kws)
 
-        df = pd.DataFrame(
-            {"user": users, "item": items, "timestamp": timestamp, "reward": reward}
-        )
+    results.append(df)
+  return results
 
-        return df
+def get_data_home(data_home=None):
+  if data_home is None:
+      data_home = os.path.join(files.OUTPUT_PATH)
+  data_home = os.path.expanduser(data_home)
 
+  if not os.path.exists(data_home):
+      os.makedirs(data_home)
+  return data_home
+
+class DownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
+    dataset: str = luigi.ChoiceParameter(choices=DATASETS.keys())
+
+    def output(self):
+        return [luigi.LocalTarget(os.path.join("output", self.dataset, os.path.basename(p))) for p in DATASETS[self.dataset]]
+
+    def run(self):
+        load_dataset(self.dataset)
 
 class UnitTestDataFrames(BasePrepareDataFrames):
     def requires(self):
-        return []
+        return DownloadDataset(dataset='random')
 
     @property
     def timestamp_property(self) -> str:
@@ -48,7 +82,7 @@ class UnitTestDataFrames(BasePrepareDataFrames):
         return os.path.join("tests", "output", "test")
 
     def data_frame(self) -> pd.DataFrame:
-        return RandomData().data()
+        return pd.read_csv(self.input()[0].path)
 
     def read_data_frame(self) -> pd.DataFrame:
         return self.data_frame()
