@@ -238,6 +238,7 @@ class BaseModelTraining(luigi.Task):
                 literal_eval_array_columns(
                     self._metadata_data_frame, self.project_config.metadata_columns
                 )
+            transform_with_indexing(self._metadata_data_frame, self.index_mapping, self.project_config)
         return self._metadata_data_frame
 
     @property
@@ -319,15 +320,18 @@ class BaseModelTraining(luigi.Task):
                 self._index_mapping = {
                     column.name: create_index_mapping(df[column.name])
                     for column in self.project_config.all_columns
-                    if column.type == IOType.INDEXABLE
+                    if column.type == IOType.INDEXABLE and not column.same_index_as
                 }
                 self._index_mapping.update(
                     {
                         column.name: create_index_mapping_from_arrays(df[column.name])
                         for column in self.project_config.all_columns
-                        if column.type == IOType.INDEXABLE_ARRAY
+                        if column.type == IOType.INDEXABLE_ARRAY and not column.same_index_as
                     }
                 )
+                for column in self.project_config.all_columns:
+                    if column.same_index_as:
+                        self._index_mapping[column.name] = self._index_mapping[column.same_index_as]
                 with open(index_mapping_path, "wb") as f:
                     pickle.dump(self._index_mapping, f)
                 del self._creating_index_mapping

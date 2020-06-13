@@ -31,9 +31,10 @@ class RecommenderType(Enum):
 
 
 class Column(object):
-    def __init__(self, name: str, type: IOType) -> None:
+    def __init__(self, name: str, type: IOType, same_index_as: str = None) -> None:
         self.name = name
         self.type = type
+        self.same_index_as = same_index_as
 
 
 class ProjectConfig(object):

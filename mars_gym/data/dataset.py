@@ -1,4 +1,4 @@
-from typing import Tuple, List, Union, Optional, Dict
+from typing import Tuple, List, Union, Optional, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -43,21 +43,26 @@ def preprocess_interactions_data_frame(
 def preprocess_metadata_data_frame(
     metadata_data_frame: pd.DataFrame, project_config: ProjectConfig
 ) -> Dict[str, np.ndarray]:
+    metadata_data_frame = metadata_data_frame[metadata_data_frame[project_config.item_column.name] != 0] # Remove unkown
+
     metadata_data_frame = metadata_data_frame.set_index(
         project_config.item_column.name, drop=False
     ).sort_index()
 
     if not (
-        np.arange(0, len(metadata_data_frame.index)) == metadata_data_frame.index
+        np.arange(2, len(metadata_data_frame.index) + 2) == metadata_data_frame.index
     ).all():
         raise ValueError("The item index is not contiguous")
 
     embeddings_for_metadata: Dict[str, np.ndarray] = {}
     for metadata_column in project_config.metadata_columns:
         emb = metadata_data_frame[metadata_column.name].values.tolist()
-        embeddings_for_metadata[metadata_column.name] = np.array(
+        embedding = np.array(
             emb, dtype=metadata_column.type.dtype
         )
+        pad = np.zeros((2,) + embedding.shape[1:])
+        embedding = np.concatenate((pad, embedding))
+        embeddings_for_metadata[metadata_column.name] = embedding
 
     return embeddings_for_metadata
 
@@ -73,7 +78,7 @@ class InteractionsDataset(Dataset):
     def __init__(
         self,
         data_frame: pd.DataFrame,
-        embeddings_for_metadata: Optional[Dict[str, np.ndarray]],
+        embeddings_for_metadata: Optional[Dict[Any, np.ndarray]],
         project_config: ProjectConfig,
         *args,
         **kwargs
