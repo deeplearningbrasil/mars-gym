@@ -96,9 +96,16 @@ class ProjectConfig(object):
         input_columns.extend(self.other_input_columns)
         return input_columns
 
+    @property
+    def all_columns(self) -> List[Column]:
+        return [
+            self.user_column,
+            self.item_column,
+            *self.other_input_columns,
+        ]
+
     def get_column_by_name(self, name: str) -> Optional[Column]:
-        input_columns = self.input_columns
-        for column in input_columns:
+        for column in self.all_columns:
             if column.name == name:
                 return column
         return None

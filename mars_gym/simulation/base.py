@@ -64,7 +64,8 @@ from mars_gym.utils.files import (
     get_history_path,
     get_tensorboard_logdir,
     get_task_dir,
-    get_test_set_predictions_path, get_index_mapping_path,
+    get_test_set_predictions_path,
+    get_index_mapping_path,
 )
 from mars_gym.utils.index_mapping import (
     create_index_mapping,
@@ -309,15 +310,16 @@ class BaseModelTraining(luigi.Task):
         if not hasattr(self, "_index_mapping"):
             self._creating_index_mapping = True
             df = self.get_data_frame_for_indexing()
+
             self._index_mapping = {
                 column.name: create_index_mapping(df[column.name])
-                for column in self.project_config.input_columns
+                for column in self.project_config.all_columns
                 if column.type == IOType.INDEXABLE
             }
             self._index_mapping.update(
                 {
                     column.name: create_index_mapping_from_arrays(df[column.name])
-                    for column in self.project_config.input_columns
+                    for column in self.project_config.all_columns
                     if column.type == IOType.INDEXABLE_ARRAY
                 }
             )
@@ -368,16 +370,18 @@ class BaseModelTraining(luigi.Task):
     @property
     def n_users(self) -> int:
         if not hasattr(self, "_n_users"):
-            self._n_users = int(
-                self.train_data_frame.iloc[0][self.project_config.n_users_column]
+            self._n_users = (
+                max(self.index_mapping[self.project_config.user_column.name].values())
+                + 1
             )
         return self._n_users
 
     @property
     def n_items(self) -> int:
         if not hasattr(self, "_n_items"):
-            self._n_items = int(
-                self.train_data_frame.iloc[0][self.project_config.n_items_column]
+            self._n_items = (
+                max(self.index_mapping[self.project_config.item_column.name].values())
+                + 1
             )
         return self._n_items
 

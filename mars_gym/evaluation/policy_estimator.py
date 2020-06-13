@@ -38,7 +38,7 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
     def create_module(self) -> nn.Module:
         input_columns = self.project_config.input_columns
         num_elements_per_embeddings = [
-            np.max(self.train_data_frame[input_column.name].values.tolist()) + 1
+            max(self.index_mapping[input_column.name].values()) + 1
             for input_column in input_columns
             if input_column.type in (IOType.INDEXABLE, IOType.INDEXABLE_ARRAY)
         ]
