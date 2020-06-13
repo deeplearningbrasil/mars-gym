@@ -22,12 +22,6 @@ def preprocess_interactions_data_frame(
 ):
     if len(data_frame) == 0:
         return data_frame
-    data_frame[project_config.user_column.name] = data_frame[
-        project_config.user_column.name
-    ].astype(int)
-    data_frame[project_config.item_column.name] = data_frame[
-        project_config.item_column.name
-    ].astype(int)
     literal_eval_array_columns(
         data_frame,
         [
