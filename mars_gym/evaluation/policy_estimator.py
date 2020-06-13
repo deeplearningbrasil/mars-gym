@@ -40,7 +40,7 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
         num_elements_per_embeddings = [
             np.max(self.train_data_frame[input_column.name].values.tolist()) + 1
             for input_column in input_columns
-            if input_column.type in (IOType.INDEX, IOType.INDEX_ARRAY)
+            if input_column.type in (IOType.INDEXABLE, IOType.INDEXABLE_ARRAY)
         ]
         return PolicyEstimator(
             n_items=self.n_items,

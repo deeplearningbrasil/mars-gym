@@ -4,6 +4,7 @@ import importlib
 import json
 import logging
 import os
+import pickle
 import random
 import shutil
 from contextlib import redirect_stdout
@@ -34,12 +35,27 @@ from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from tqdm import tqdm
 
+from mars_gym.config import PROJECTS, ProjectConfig
+from mars_gym.cuda import CudaRepository
 from mars_gym.data.dataset import (
     preprocess_interactions_data_frame,
     preprocess_metadata_data_frame,
     literal_eval_array_columns,
     InteractionsDataset,
 )
+from mars_gym.gym.envs.recsys import ITEM_METADATA_KEY
+from mars_gym.meta_config import Column, IOType
+from mars_gym.model.agent import BanditAgent
+from mars_gym.model.bandit import BANDIT_POLICIES
+from mars_gym.torch.data import NoAutoCollationDataLoader, FasterBatchSampler
+from mars_gym.torch.init import lecun_normal_init, he_init
+from mars_gym.torch.loss import (
+    ImplicitFeedbackBCELoss,
+    CounterfactualRiskMinimization,
+    FocalLoss,
+)
+from mars_gym.torch.optimizer import RAdam
+from mars_gym.torch.summary import summary
 from mars_gym.utils.files import (
     get_params_path,
     get_weights_path,
@@ -48,24 +64,14 @@ from mars_gym.utils.files import (
     get_history_path,
     get_tensorboard_logdir,
     get_task_dir,
-    get_test_set_predictions_path,
+    get_test_set_predictions_path, get_index_mapping_path,
 )
-from mars_gym.gym.envs.recsys import ITEM_METADATA_KEY
-from mars_gym.torch.loss import (
-    ImplicitFeedbackBCELoss,
-    CounterfactualRiskMinimization,
-    FocalLoss,
+from mars_gym.utils.index_mapping import (
+    create_index_mapping,
+    create_index_mapping_from_arrays,
+    transform_with_indexing,
 )
-from mars_gym.model.agent import BanditAgent
-from mars_gym.model.bandit import BANDIT_POLICIES
 from mars_gym.utils.plot import plot_history
-from mars_gym.torch.summary import summary
-from mars_gym.config import PROJECTS, ProjectConfig
-from mars_gym.cuda import CudaRepository
-from mars_gym.meta_config import Column, IOType
-from mars_gym.torch.data import NoAutoCollationDataLoader, FasterBatchSampler
-from mars_gym.torch.optimizer import RAdam
-from mars_gym.torch.init import lecun_normal_init, he_init
 
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
@@ -251,6 +257,15 @@ class BaseModelTraining(luigi.Task):
             self._train_data_frame = preprocess_interactions_data_frame(
                 pd.read_csv(self.train_data_frame_path), self.project_config
             )
+
+        # Needed in case index_mapping was invoked before
+        if not hasattr(self, "_creating_index_mapping") and not hasattr(
+            self, "_train_data_frame_indexed"
+        ):
+            transform_with_indexing(
+                self._train_data_frame, self.index_mapping, self.project_config
+            )
+            self._train_data_frame_indexed = True
         return self._train_data_frame
 
     @property
@@ -259,6 +274,15 @@ class BaseModelTraining(luigi.Task):
             self._val_data_frame = preprocess_interactions_data_frame(
                 pd.read_csv(self.val_data_frame_path), self.project_config
             )
+
+        # Needed in case index_mapping was invoked before
+        if not hasattr(self, "_creating_index_mapping") and not hasattr(
+            self, "_val_data_frame_indexed"
+        ):
+            transform_with_indexing(
+                self._val_data_frame, self.index_mapping, self.project_config
+            )
+            self._val_data_frame_indexed = True
         return self._val_data_frame
 
     @property
@@ -267,7 +291,40 @@ class BaseModelTraining(luigi.Task):
             self._test_data_frame = preprocess_interactions_data_frame(
                 pd.read_csv(self.test_data_frame_path), self.project_config
             )
+        # Needed in case index_mapping was invoked before
+        if not hasattr(self, "_creating_index_mapping") and not hasattr(
+            self, "_test_data_frame_indexed"
+        ):
+            transform_with_indexing(
+                self._test_data_frame, self.index_mapping, self.project_config
+            )
+            self._test_data_frame_indexed = True
         return self._test_data_frame
+
+    def get_data_frame_for_indexing(self) -> pd.DataFrame:
+        return pd.concat([self.train_data_frame, self.val_data_frame])
+
+    @property
+    def index_mapping(self) -> Dict[str, Dict[Any, int]]:
+        if not hasattr(self, "_index_mapping"):
+            self._creating_index_mapping = True
+            df = self.get_data_frame_for_indexing()
+            self._index_mapping = {
+                column.name: create_index_mapping(df[column.name])
+                for column in self.project_config.input_columns
+                if column.type == IOType.INDEXABLE
+            }
+            self._index_mapping.update(
+                {
+                    column.name: create_index_mapping_from_arrays(df[column.name])
+                    for column in self.project_config.input_columns
+                    if column.type == IOType.INDEXABLE_ARRAY
+                }
+            )
+            with open(get_index_mapping_path(self.output().path), "wb") as f:
+                pickle.dump(self._index_mapping, f)
+            del self._creating_index_mapping
+        return self._index_mapping
 
     @property
     def train_dataset(self) -> Dataset:

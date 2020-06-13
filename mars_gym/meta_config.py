@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import List, Type, Dict
+from typing import List, Type, Dict, Optional
 
 from torch.utils.data import Dataset
 import numpy as np
@@ -8,16 +8,16 @@ from mars_gym.data.task import BasePrepareDataFrames
 
 
 class IOType(Enum):
-    INDEX = auto()
+    INDEXABLE = auto()
     NUMBER = auto()
-    INDEX_ARRAY = auto()
+    INDEXABLE_ARRAY = auto()
     FLOAT_ARRAY = auto()
     INT_ARRAY = auto()
 
     @property
     def dtype(self):
         return {
-            self.INDEX.name: np.int64,
+            self.INDEXABLE.name: np.int64,
             self.NUMBER.name: np.float32,
             self.FLOAT_ARRAY.name: np.float32,
             self.INT_ARRAY.name: np.int64,
@@ -86,7 +86,7 @@ class ProjectConfig(object):
         self.possible_negative_indices_columns = possible_negative_indices_columns
 
     @property
-    def input_columns(self):
+    def input_columns(self) -> List[Column]:
         input_columns: List[Column] = []
         if self.user_is_input:
             input_columns.append(self.user_column)
@@ -95,3 +95,10 @@ class ProjectConfig(object):
             input_columns.append(self.item_column)
         input_columns.extend(self.other_input_columns)
         return input_columns
+
+    def get_column_by_name(self, name: str) -> Optional[Column]:
+        input_columns = self.input_columns
+        for column in input_columns:
+            if column.name == name:
+                return column
+        return None

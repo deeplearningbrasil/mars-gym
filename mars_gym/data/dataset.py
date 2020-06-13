@@ -11,7 +11,7 @@ from mars_gym.utils.utils import parallel_literal_eval
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
         if (
-            column.type in (IOType.FLOAT_ARRAY, IOType.INT_ARRAY, IOType.INDEX_ARRAY)
+            column.type in (IOType.FLOAT_ARRAY, IOType.INT_ARRAY, IOType.INDEXABLE_ARRAY)
             and column.name in data_frame
         ):
             data_frame[column.name] = parallel_literal_eval(data_frame[column.name])
@@ -109,11 +109,11 @@ class InteractionsDataset(Dataset):
         return self._data_frame.shape[0]
 
     def _convert_dtype(self, value: np.ndarray, type: IOType) -> np.ndarray:
-        if type == IOType.INDEX:
+        if type == IOType.INDEXABLE:
             return value.astype(np.int64)
         if type == IOType.NUMBER:
             return value.astype(np.float64)
-        if type in (IOType.INT_ARRAY, IOType.INDEX_ARRAY):
+        if type in (IOType.INT_ARRAY, IOType.INDEXABLE_ARRAY):
             return np.array([np.array(v, dtype=np.int64) for v in value])
         if type == IOType.FLOAT_ARRAY:
             return np.array([np.array(v, dtype=np.float64) for v in value])

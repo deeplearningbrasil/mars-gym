@@ -78,6 +78,7 @@ class SimpleLinearModel(nn.Module):
         self,
         n_users: int,
         n_items: int,
+        n_action_types: int,
         n_factors: int,
         window_hist_size: int,
         metadata_size: int,
@@ -93,7 +94,7 @@ class SimpleLinearModel(nn.Module):
 
         self.user_embeddings = nn.Embedding(n_users, n_factors)
         self.item_embeddings = nn.Embedding(n_items, n_factors)
-        self.action_type_embeddings = nn.Embedding(11, n_factors)
+        self.action_type_embeddings = nn.Embedding(n_action_types, n_factors)
         # self.platform_embeddings    = nn.Embedding(36, n_factors)
 
         self.word_embeddings = nn.Embedding(vocab_size, n_factors)

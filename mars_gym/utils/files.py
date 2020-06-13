@@ -51,3 +51,7 @@ def get_ground_truth_datalog_path(task_dir: str) -> str:
 
 def get_test_set_predictions_path(task_dir: str) -> str:
     return os.path.join(task_dir, "test_set_predictions.csv")
+
+
+def get_index_mapping_path(task_dir: str) -> str:
+    return os.path.join(task_dir, "index_mapping.pkl")

@@ -20,6 +20,7 @@ from mars_gym.simulation.base import (
     TORCH_LOSS_FUNCTIONS,
     BaseTorchModelWithAgentTraining,
 )
+from mars_gym.utils.index_mapping import transform_with_indexing
 from mars_gym.utils.plot import plot_history, plot_scores
 
 tqdm.pandas()
@@ -325,6 +326,9 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
             os.path.join(self.output().path, "plot_history", "scores_{}.jpg".format(i))
         )
 
+    def get_data_frame_for_indexing(self) -> pd.DataFrame:
+        return self.interactions_data_frame
+
     @property
     def interactions_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_interactions_data_frame"):
@@ -342,6 +346,14 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
                 self.project_config.timestamp_column_name
             ).reset_index(drop=True)
 
+        # Needed in case index_mapping was invoked before
+        if not hasattr(self, "_creating_index_mapping") and not hasattr(
+            self, "_interactions_data_frame_indexed"
+        ):
+            transform_with_indexing(
+                self._interactions_data_frame, self.index_mapping, self.project_config
+            )
+            self._interactions_data_frame_indexed = True
         return self._interactions_data_frame
 
     @property

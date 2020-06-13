@@ -56,10 +56,10 @@ class PolicyEstimator(nn.Module):
             # if embeddings_idx == 0:
             #    embeddings_idx += 1
             #    continue
-            if input_column.type == IOType.INDEX:
+            if input_column.type == IOType.INDEXABLE:
                 transformed_inputs.append(self.embeddings[embeddings_idx](input))
                 embeddings_idx += 1
-            elif input_column.type == IOType.INDEX_ARRAY:
+            elif input_column.type == IOType.INDEXABLE_ARRAY:
                 transformed_inputs.append(
                     self.flatten(self.embeddings[embeddings_idx](input))
                 )
