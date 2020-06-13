@@ -308,25 +308,37 @@ class BaseModelTraining(luigi.Task):
     @property
     def index_mapping(self) -> Dict[str, Dict[Any, int]]:
         if not hasattr(self, "_index_mapping"):
-            self._creating_index_mapping = True
-            df = self.get_data_frame_for_indexing()
+            index_mapping_path = get_index_mapping_path(self.output().path)
+            if os.path.exists(index_mapping_path):
+                with open(index_mapping_path, "rb") as f:
+                    self._index_mapping = pickle.load(f)
+            else:
+                self._creating_index_mapping = True
+                df = self.get_data_frame_for_indexing()
 
-            self._index_mapping = {
-                column.name: create_index_mapping(df[column.name])
-                for column in self.project_config.all_columns
-                if column.type == IOType.INDEXABLE
-            }
-            self._index_mapping.update(
-                {
-                    column.name: create_index_mapping_from_arrays(df[column.name])
+                self._index_mapping = {
+                    column.name: create_index_mapping(df[column.name])
                     for column in self.project_config.all_columns
-                    if column.type == IOType.INDEXABLE_ARRAY
+                    if column.type == IOType.INDEXABLE
                 }
-            )
-            with open(get_index_mapping_path(self.output().path), "wb") as f:
-                pickle.dump(self._index_mapping, f)
-            del self._creating_index_mapping
+                self._index_mapping.update(
+                    {
+                        column.name: create_index_mapping_from_arrays(df[column.name])
+                        for column in self.project_config.all_columns
+                        if column.type == IOType.INDEXABLE_ARRAY
+                    }
+                )
+                with open(index_mapping_path, "wb") as f:
+                    pickle.dump(self._index_mapping, f)
+                del self._creating_index_mapping
         return self._index_mapping
+
+    @property
+    def reverse_index_mapping(self) -> Dict[str, Dict[int, Any]]:
+        return {
+            key: {value_: key_ for key_, value_ in mapping.items()}
+            for key, mapping in self.index_mapping.items()
+        }
 
     @property
     def train_dataset(self) -> Dataset:

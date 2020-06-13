@@ -120,18 +120,22 @@ class TrivagoModelTraining(
     @property
     def train_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_train_data_frame"):
+            self._train_data_frame_indexed = True  # To delay the index mapping
             self._train_data_frame = super().train_data_frame
             with Pool(max(os.cpu_count(), 10)) as p:
                 self.fill_ps(self._train_data_frame, p)
-        return self._train_data_frame
+            del self._train_data_frame_indexed
+        return super().train_data_frame  # To invoke the index mapping if necessary
 
     @property
     def val_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_val_data_frame"):
+            self._val_data_frame_indexed = True  # To delay the index mapping
             self._val_data_frame = super().val_data_frame
             with Pool(max(os.cpu_count(), 10)) as p:
                 self.fill_ps(self._val_data_frame, p)
-        return self._val_data_frame
+            del self._val_data_frame_indexed
+        return super().val_data_frame  # To invoke the index mapping if necessary
 
     @property
     def ps_base_df(self) -> pd.DataFrame:

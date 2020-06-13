@@ -12,6 +12,7 @@ from typing import List
 from mars_gym.data.dataset import InteractionsDataset
 from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.torch.data import FasterBatchSampler, NoAutoCollationDataLoader
+from mars_gym.utils.index_mapping import transform_with_indexing
 
 
 class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
@@ -36,7 +37,9 @@ class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
         pass
 
     def fill_ps(self, df: pd.DataFrame, pool: Pool):
-        dataset = InteractionsDataset(df, None, self.policy_estimator.project_config)
+        policy_estimator_df = df.copy()
+        transform_with_indexing(policy_estimator_df, self.policy_estimator.index_mapping, self.policy_estimator.project_config)
+        dataset = InteractionsDataset(policy_estimator_df, None, self.policy_estimator.project_config)
         batch_sampler = FasterBatchSampler(
             dataset, self.policy_estimator.batch_size, shuffle=False
         )
@@ -60,10 +63,10 @@ class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
             )
         probas: np.ndarray = torch.exp(log_probas).cpu().numpy()
 
-        item_indices = df[self.item_column]
+        item_indices = policy_estimator_df[self.item_column]
 
         params = (
-            zip(item_indices, probas, df[self.available_arms_column])
+            zip(item_indices, probas, policy_estimator_df[self.available_arms_column])
             if self.available_arms_column
             else zip(item_indices, probas)
         )

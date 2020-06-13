@@ -31,13 +31,13 @@ def create_index_mapping_from_arrays(
     return create_index_mapping(all_values, include_unkown, include_none)
 
 
-def _map_array(values: list, mapping: Dict[Any, int]) -> List[int]:
+def _map_array(values: list, mapping: dict) -> List[int]:
     return [mapping[value] for value in values]
 
 
 def transform_with_indexing(
     df: pd.DataFrame,
-    index_mapping: Dict[str, Dict[Any, int]],
+    index_mapping: Dict[str, dict],
     project_config: ProjectConfig,
 ):
     for key, mapping in index_mapping.items():
