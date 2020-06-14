@@ -82,6 +82,26 @@ def literal_eval_if_str(element):
     return element
 
 
+def _pad_sequence(seq, pad) -> np.ndarray:
+    if seq is None:
+        return None
+    else:
+        return (([0] * pad) + seq)[-pad:]
+
+def to_array(xs):
+    return (
+        [
+            literal_eval_if_str(c)
+            if isinstance(literal_eval_if_str(c), int)
+            else literal_eval_if_str(c)[0]
+            for c in literal_eval_if_str(xs)
+        ]
+        if xs is not None
+        else None
+    )
+
+
+
 def _parallel_literal_eval(
     series: Union[pd.Series, np.ndarray], pool: Pool, use_tqdm: bool = True
 ) -> list:

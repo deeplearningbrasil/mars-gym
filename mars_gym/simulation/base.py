@@ -238,12 +238,14 @@ class BaseModelTraining(luigi.Task):
                 literal_eval_array_columns(
                     self._metadata_data_frame, self.project_config.metadata_columns
                 )
+            #   
             transform_with_indexing(self._metadata_data_frame, self.index_mapping, self.project_config)
         return self._metadata_data_frame
 
     @property
     def embeddings_for_metadata(self) -> Optional[Dict[str, np.ndarray]]:
         if not hasattr(self, "_embeddings_for_metadata"):
+            #from IPython import embed; embed()
             self._embeddings_for_metadata = (
                 preprocess_metadata_data_frame(
                     self.metadata_data_frame, self.project_config

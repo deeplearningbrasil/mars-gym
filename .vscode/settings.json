@@ -1,4 +1,15 @@
 {
   "python.formatting.provider": "black",
-  "python.pythonPath": "python"
+  "python.pythonPath": "/home/marlesson/anaconda3/envs/mars-gym/bin/python",
+  "python.testing.unittestEnabled": true,
+  "python.testing.unittestArgs": [
+    "-v",
+    "-s",
+    "./tests",
+    "-p",
+    "test_*.py"
+  ],
+  "python.testing.pytestEnabled": false,
+  "python.testing.nosetestsEnabled": false,
+      
 }

@@ -44,7 +44,7 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
     loss_function: str = luigi.ChoiceParameter(
         choices=TORCH_LOSS_FUNCTIONS.keys(), default="crm"
     )
-    test_size: float = luigi.FloatParameter(default=0.0)
+    test_size: float = luigi.FloatParameter(default=0.2)
     test_split_type: str = luigi.ChoiceParameter(
         choices=["random", "time"], default="time"
     )

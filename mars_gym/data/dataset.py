@@ -22,6 +22,12 @@ def preprocess_interactions_data_frame(
 ):
     if len(data_frame) == 0:
         return data_frame
+    data_frame[project_config.user_column.name] = data_frame[
+        project_config.user_column.name
+    ].astype(str)
+    data_frame[project_config.item_column.name] = data_frame[
+        project_config.item_column.name
+    ].astype(str)
     literal_eval_array_columns(
         data_frame,
         [
@@ -43,12 +49,13 @@ def preprocess_interactions_data_frame(
 def preprocess_metadata_data_frame(
     metadata_data_frame: pd.DataFrame, project_config: ProjectConfig
 ) -> Dict[str, np.ndarray]:
+    #from IPython import embed; embed()
     metadata_data_frame = metadata_data_frame[metadata_data_frame[project_config.item_column.name] != 0] # Remove unkown
 
     metadata_data_frame = metadata_data_frame.set_index(
         project_config.item_column.name, drop=False
     ).sort_index()
-
+    
     if not (
         np.arange(2, len(metadata_data_frame.index) + 2) == metadata_data_frame.index
     ).all():
@@ -56,14 +63,16 @@ def preprocess_metadata_data_frame(
 
     embeddings_for_metadata: Dict[str, np.ndarray] = {}
     for metadata_column in project_config.metadata_columns:
+        
         emb = metadata_data_frame[metadata_column.name].values.tolist()
         embedding = np.array(
             emb, dtype=metadata_column.type.dtype
         )
         pad = np.zeros((2,) + embedding.shape[1:])
+        #
         embedding = np.concatenate((pad, embedding))
         embeddings_for_metadata[metadata_column.name] = embedding
-
+        #from IPython import embed; embed()
     return embeddings_for_metadata
 
 
@@ -103,7 +112,8 @@ class InteractionsDataset(Dataset):
             ).intersection(data_frame.columns)
         ]
         self._embeddings_for_metadata = embeddings_for_metadata
-
+        #from IPython import embed; embed()
+        
     def __len__(self) -> int:
         return self._data_frame.shape[0]
 
@@ -148,6 +158,7 @@ class InteractionsDataset(Dataset):
                 self._convert_dtype(rows[column.name].values, column.type)
                 for column in self._project_config.auxiliar_output_columns
             )
+        #print(inputs)
         return inputs, output
 
 
