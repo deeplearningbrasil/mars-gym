@@ -31,14 +31,16 @@ from pyspark.sql.types import ArrayType, FloatType
 
 import exp_trivago_rio
 
+
+OUTPUT_PATH: str = os.path.join("output")
 BASE_DIR: str = os.path.join("output", "trivago_rio")
 DATASET_DIR: str = os.path.join("output", "trivago_rio", "dataset")
 
-os.makedirs(DATASET_DIR, exist_ok=True)
+#os.makedirs(DATASET_DIR, exist_ok=True)
 
 class PrepareMetaData(luigi.Task):
     def requires(self):
-        return DownloadDataset(dataset='trivago_rio')
+        return DownloadDataset(dataset='trivago_rio', output_path=OUTPUT_PATH)
 
     def output(self):
         return luigi.LocalTarget(
@@ -58,6 +60,8 @@ class PrepareMetaData(luigi.Task):
         return tf_df.astype("uint8")
 
     def run(self):
+        os.makedirs(DATASET_DIR, exist_ok=True)
+
         df_meta = pd.read_csv(self.input()[1].path)
         #print(df_meta)
         # Split feature columns
@@ -73,7 +77,7 @@ class PrepareHistoryInteractionData(BasePySparkTask):
     window_hist: int = luigi.IntParameter(default=5)
 
     def requires(self):
-        return DownloadDataset(dataset='trivago_rio'), PrepareMetaData()
+        return DownloadDataset(dataset='trivago_rio', output_path=OUTPUT_PATH), PrepareMetaData()
 
     def output(self):
         return luigi.LocalTarget(
@@ -134,7 +138,6 @@ class PrepareHistoryInteractionData(BasePySparkTask):
         )
 
         return df
-
 
     def main(self, sc: SparkContext, *args):
         os.makedirs(DATASET_DIR, exist_ok=True)

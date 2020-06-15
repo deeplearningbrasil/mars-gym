@@ -73,7 +73,7 @@ from mars_gym.utils.index_mapping import (
     transform_with_indexing,
 )
 from mars_gym.utils.plot import plot_history
-
+from mars_gym.utils import files
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
 )
@@ -874,7 +874,7 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     def output(self):
         return luigi.LocalTarget(
             os.path.join(
-                "output",
+                files.OUTPUT_PATH,
                 "evaluation",
                 self.__class__.__name__,
                 "results",
