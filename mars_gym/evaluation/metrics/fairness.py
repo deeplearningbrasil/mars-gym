@@ -22,8 +22,7 @@ def calculate_fairness_metrics(
         for sub in subs:
             sub_df = df[df[sub_key] == sub]
 
-            y_true, y_pred = sub_df[ground_truth_key], sub_df[prediction_key]
-
+            y_true, y_pred = sub_df[ground_truth_key].astype(int), sub_df[prediction_key].astype(int)
             cnf_matrix = confusion_matrix(y_true, y_pred)
 
             num_positives = np.sum(np.diag(cnf_matrix))

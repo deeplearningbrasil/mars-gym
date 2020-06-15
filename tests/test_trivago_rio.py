@@ -29,7 +29,7 @@ class TestTrivagoRio(unittest.TestCase):
     luigi.build([job], local_scheduler=True)
 
   def test_interactive(self):
-    job = TrivagoModelInteraction(project='trivago_rio', obs_batch_size=1000, bandit_policy='epsilon_greedy')
+    job = TrivagoModelInteraction(project='trivago_rio', obs_batch_size=10000, bandit_policy='epsilon_greedy')
     luigi.build([job], local_scheduler=True)
 
 

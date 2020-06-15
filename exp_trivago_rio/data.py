@@ -13,7 +13,7 @@ from mars_gym.data.task import (
     BasePrepareDataFrames,
 )
 from pyspark.sql.window import Window
-from pyspark.sql.functions import udf
+#from pyspark.sql.functions import udf
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType
 from pyspark.sql.functions import (
     when,
@@ -25,9 +25,10 @@ from pyspark.sql.functions import (
 from tqdm import tqdm
 from sklearn.feature_extraction.text import CountVectorizer
 from mars_gym.data.utils import DownloadDataset
-from mars_gym.utils.utils import _pad_sequence, to_array
-
+from mars_gym.utils.utils import _pad_sequence, to_array, array_index_udf
+#from mars_gym.
 from pyspark.sql.types import ArrayType, FloatType
+
 import exp_trivago_rio
 
 BASE_DIR: str = os.path.join("output", "trivago_rio")
@@ -58,13 +59,10 @@ class PrepareMetaData(luigi.Task):
 
     def run(self):
         df_meta = pd.read_csv(self.input()[1].path)
-
+        #print(df_meta)
         # Split feature columns
         tf_prop_meta = self.split_df_columns(df_meta, "properties")
         df_meta      = df_meta.join(tf_prop_meta).drop(["properties"], axis=1).astype(int)
-
-        # Add Unknown Item
-        #df_meta      = df_meta.append({"item_id": 0}, ignore_index=True).fillna(0)  
 
         df_meta["list_metadata"] = df_meta.drop("item_id", 1).values.tolist()
         
@@ -89,6 +87,7 @@ class PrepareHistoryInteractionData(BasePySparkTask):
         df_meta = spark.read.csv(self.input()[1].path, header=True, inferSchema=True)
 
         df = df.filter(df.action_type.isin(["interaction item info", "clickout item"]))
+        df = df.dropna(subset=['reference'])
         df = df.join(df_meta.select("item_id"), df.reference == df_meta.item_id)
         df = df.select("session_id", "user_id", "timestamp", "action_type", "reference", "impressions")
 
@@ -123,14 +122,12 @@ class PrepareHistoryInteractionData(BasePySparkTask):
             "impressions", F.split(df.impressions, "\|")
         )
 
-
-        df = df.withColumn(
-            "pos_item_id", lit(1)
-        )
-
         df = df.withColumnRenamed("reference", "item_id")
 
-        #.cast(StringType())
+        df = df.withColumn(
+            "pos_item_id", array_index_udf(df.impressions, df.item_id)
+        )
+        
         df = df.withColumn(
             "clicked",
             when(df.action_type == "clickout item", 1.0).otherwise(0.0),

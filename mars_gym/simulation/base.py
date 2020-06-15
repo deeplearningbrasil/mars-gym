@@ -804,10 +804,15 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
                 ob[ITEM_METADATA_KEY] = None
 
             if self.project_config.available_arms_column_name:
+                available_arms = ob[self.project_config.available_arms_column_name]
+                #TODO
+                if len(available_arms) == 0:
+                    available_arms = [ob[self.project_config.item_column.name]]
+
                 items = np.zeros(
-                    np.max(ob[self.project_config.available_arms_column_name]) + 1
+                    np.max(available_arms) + 1
                 )
-                items[ob[self.project_config.available_arms_column_name]] = 1
+                items[available_arms] = 1
                 ob[self.project_config.available_arms_column_name] = items
 
             sorted_actions, prob_actions, action_scores = self._rank(agent, ob)

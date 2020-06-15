@@ -298,8 +298,8 @@ def display_compare_results():
         st.dataframe(df_metrics)
         st.dataframe(confidence_metrics)
         st.dataframe(df_metrics)
-        df_metrics.to_csv("df_metric.csv")
-        df_metrics.to_csv("confidence_metrics.csv")
+        #df_metrics.to_csv("df_metric.csv")
+        #df_metrics.to_csv("confidence_metrics.csv")
 
         if df_train_params is not None:
             st.markdown("## Params (Train)")

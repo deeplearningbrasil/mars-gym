@@ -13,6 +13,7 @@ from math import sqrt
 from tqdm import tqdm
 import shutil
 from random import randrange
+from pyspark.sql.functions import udf
 
 from mars_gym.utils.files import get_params, get_task_dir
 
@@ -26,13 +27,26 @@ valid_filename_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
 char_limit = 255
 
 
+# UDF Spark similar to array_position
+def array_index(x, y):
+    if x is None:
+        return -1
+
+    idxs = [i for i, e in enumerate(x) if e==y ]
+
+    if len(idxs) == 0:
+        return -1
+    
+    return idxs[0]
+array_index_udf = udf(array_index)
+#array_index_udf = udf(lambda x,y: [i for i, e in enumerate(x) if e==y ])
+
 def random_date(start, l):
     current = start
     while l > 0:
         curr = current + timedelta(minutes=randrange(60))
         yield curr
         l -= 1
-
 
 def clean_filename(filename, whitelist=valid_filename_chars, replace=" "):
     # replace spaces

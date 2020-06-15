@@ -138,6 +138,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             ),
             self.model_training.project_config,
         )  # .sample(10000)
+        df[self.model_training.project_config.item_column.name] = df[self.model_training.project_config.item_column.name].astype(int)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
         df["prob_actions"] = parallel_literal_eval(df["prob_actions"])
@@ -148,6 +149,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
         with Pool(self.num_processes) as p:
             print("Creating the relevance lists...")
+            #from IPython import embed; embed()
             df["relevance_list"] = list(
                 tqdm(
                     p.starmap(
@@ -201,7 +203,9 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         df_offpolicy.to_csv(
             os.path.join(self.output().path, "df_offpolicy.csv"), index=False
         )
-
+        df_rank.to_csv(
+            os.path.join(self.output().path, "rank_metrics.csv"), index=False
+        )
         df_fairness_metrics.to_csv(
             os.path.join(self.output().path, "fairness_metrics.csv"), index=False
         )
@@ -259,8 +263,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                     total=len(df),
                 )
             )
-
-        catalog = list(range(df.iloc[0]["n_items"]))
+        #
+        catalog = list(range(self.model_training.n_items))
 
         metrics = {
             "model_task": self.model_task_id,
