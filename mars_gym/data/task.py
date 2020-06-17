@@ -21,6 +21,7 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 from tqdm import tqdm
 import mars_gym
 
+
 class BaseDownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def output(self) -> luigi.LocalTarget:
@@ -364,31 +365,37 @@ class BasePySparkTask(PySparkTask):
 
     def _get_available_memory(self) -> str:
         return f"{int(psutil.virtual_memory().available / (1024 * 1024 * 1024))}g"
-    
-    #FIX https://github.com/spotify/luigi/pull/2502/files
+
+    # FIX https://github.com/spotify/luigi/pull/2502/files
     def run(self):
-        path_name_fragment = re.sub(r'[^\w]', '_', self.name)
+        path_name_fragment = re.sub(r"[^\w]", "_", self.name)
         self.run_path = tempfile.mkdtemp(prefix=path_name_fragment)
-        self.run_pickle = os.path.join(self.run_path, '.'.join([path_name_fragment, 'pickle']))
-        with open(self.run_pickle, 'wb') as fd:
+        self.run_pickle = os.path.join(
+            self.run_path, ".".join([path_name_fragment, "pickle"])
+        )
+        with open(self.run_pickle, "wb") as fd:
             # Copy module file to run path.
             module_file_path = os.path.abspath(inspect.getfile(self.__class__))
-            base_module = self.__class__.__module__.split('.')[0]
-            module_folder_path = module_file_path[:module_file_path.find(base_module) + len(base_module)]
-           # from IPython import embed; embed()
-            
+            base_module = self.__class__.__module__.split(".")[0]
+            module_folder_path = module_file_path[
+                : module_file_path.find(base_module) + len(base_module)
+            ]
+            # from IPython import embed; embed()
+
             # Copy MARS
-            #mars_module_folder_path = os.path.join(os.path.abspath(inspect.getfile(mars_gym))[:-11], 'mars_gym')
-            shutil.copytree(os.path.abspath(inspect.getfile(mars_gym))[:-11], os.path.join(self.run_path, 'mars_gym'))
-            
-            shutil.copytree(module_folder_path, os.path.join(self.run_path, base_module))
-            shutil.copy(module_file_path, os.path.join(self.run_path, '.'))
+            # mars_module_folder_path = os.path.join(os.path.abspath(inspect.getfile(mars_gym))[:-11], 'mars_gym')
+            shutil.copytree(
+                os.path.abspath(inspect.getfile(mars_gym))[:-11],
+                os.path.join(self.run_path, "mars_gym"),
+            )
+
+            shutil.copytree(
+                module_folder_path, os.path.join(self.run_path, base_module)
+            )
+            shutil.copy(module_file_path, os.path.join(self.run_path, "."))
 
             self._dump(fd)
         try:
             super(PySparkTask, self).run()
         finally:
             shutil.rmtree(self.run_path)
-
-        
-

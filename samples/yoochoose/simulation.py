@@ -16,26 +16,23 @@ from mars_gym.simulation.base import (
     TORCH_DROPOUT_MODULES,
     TORCH_LOSS_FUNCTIONS,
     TORCH_WEIGHT_INIT,
-    BaseTorchModelWithAgentTraining
+    BaseTorchModelWithAgentTraining,
 )
 from mars_gym.simulation.interaction import InteractionTraining
 
 
 class SimpleLinearModel(nn.Module):
     def __init__(
-        self,
-        n_users: int,
-        n_items: int,
-        n_factors: int,
+        self, n_users: int, n_items: int, n_factors: int,
     ):
         super(SimpleLinearModel, self).__init__()
 
         self.user_embeddings = nn.Embedding(n_users, n_factors)
         self.item_embeddings = nn.Embedding(n_items, n_factors)
-        self.dayofweek_embeddings       = nn.Embedding(7, n_factors)
+        self.dayofweek_embeddings = nn.Embedding(7, n_factors)
 
-        num_dense  = n_factors * (2 + 5) + 1 
-        
+        num_dense = n_factors * (2 + 5) + 1
+
         self.dense = nn.Sequential(
             nn.Linear(num_dense, int(num_dense / 2)),
             nn.SELU(),
@@ -45,14 +42,7 @@ class SimpleLinearModel(nn.Module):
     def flatten(self, input):
         return input.view(input.size(0), -1)
 
-    def forward(
-        self,
-        session_ids,
-        item_ids,
-        dayofweek,
-        step,
-        item_history_ids
-      ):
+    def forward(self, session_ids, item_ids, dayofweek, step, item_history_ids):
         # Item emb
         item_emb = self.item_embeddings(item_ids)
 
@@ -63,12 +53,7 @@ class SimpleLinearModel(nn.Module):
         dayofweek_emb = self.dayofweek_embeddings(dayofweek.long())
 
         x = torch.cat(
-            (
-                item_emb,
-                interaction_item_emb,
-                dayofweek_emb,
-                step.float().unsqueeze(1),
-            ),
+            (item_emb, interaction_item_emb, dayofweek_emb, step.float().unsqueeze(1),),
             dim=1,
         )
 
@@ -86,15 +71,16 @@ class YoochoseModelTrainingMixin(object):
 
     def create_module(self) -> nn.Module:
         return SimpleLinearModel(
-            n_users=self.n_users,
-            n_items=self.n_items,
-            n_factors=self.n_factors
+            n_users=self.n_users, n_items=self.n_items, n_factors=self.n_factors
         )
 
 
 class YoochoseModelInteraction(YoochoseModelTrainingMixin, InteractionTraining):
     pass
 
-class YoochoseModelTraining(YoochoseModelTrainingMixin, BaseTorchModelWithAgentTraining):
+
+class YoochoseModelTraining(
+    YoochoseModelTrainingMixin, BaseTorchModelWithAgentTraining
+):
     negative_proportion: int = luigi.FloatParameter(0.8)
     pass

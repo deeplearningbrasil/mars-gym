@@ -74,6 +74,7 @@ from mars_gym.utils.index_mapping import (
 )
 from mars_gym.utils.plot import plot_history
 from mars_gym.utils import files
+
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
 )
@@ -238,14 +239,16 @@ class BaseModelTraining(luigi.Task):
                 literal_eval_array_columns(
                     self._metadata_data_frame, self.project_config.metadata_columns
                 )
-            #   
-            transform_with_indexing(self._metadata_data_frame, self.index_mapping, self.project_config)
+            #
+            transform_with_indexing(
+                self._metadata_data_frame, self.index_mapping, self.project_config
+            )
         return self._metadata_data_frame
 
     @property
     def embeddings_for_metadata(self) -> Optional[Dict[str, np.ndarray]]:
         if not hasattr(self, "_embeddings_for_metadata"):
-            #from IPython import embed; embed()
+            # from IPython import embed; embed()
             self._embeddings_for_metadata = (
                 preprocess_metadata_data_frame(
                     self.metadata_data_frame, self.project_config
@@ -328,12 +331,15 @@ class BaseModelTraining(luigi.Task):
                     {
                         column.name: create_index_mapping_from_arrays(df[column.name])
                         for column in self.project_config.all_columns
-                        if column.type == IOType.INDEXABLE_ARRAY and not column.same_index_as
+                        if column.type == IOType.INDEXABLE_ARRAY
+                        and not column.same_index_as
                     }
                 )
                 for column in self.project_config.all_columns:
                     if column.same_index_as:
-                        self._index_mapping[column.name] = self._index_mapping[column.same_index_as]
+                        self._index_mapping[column.name] = self._index_mapping[
+                            column.same_index_as
+                        ]
                 with open(index_mapping_path, "wb") as f:
                     pickle.dump(self._index_mapping, f)
                 del self._creating_index_mapping
@@ -500,7 +506,6 @@ class BaseTorchModelTraining(BaseModelTraining):
         sample_data = self.train_data_frame.sample(100)
         sample_data.to_csv(os.path.join(self.output().path, "sample_train.csv"))
 
-
         trial = self.create_trial(module)
 
         try:
@@ -510,8 +515,8 @@ class BaseTorchModelTraining(BaseModelTraining):
         except KeyboardInterrupt:
             print("Finishing the training at the request of the user...")
 
-        history_df  = pd.read_csv(get_history_path(self.output().path))
-        
+        history_df = pd.read_csv(get_history_path(self.output().path))
+
         plot_history(history_df).savefig(
             os.path.join(self.output().path, "history.jpg")
         )
@@ -809,13 +814,11 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
 
             if self.project_config.available_arms_column_name:
                 available_arms = ob[self.project_config.available_arms_column_name]
-                #TODO
+                # TODO
                 if len(available_arms) == 0:
                     available_arms = [ob[self.project_config.item_column.name]]
 
-                items = np.zeros(
-                    np.max(available_arms) + 1
-                )
+                items = np.zeros(np.max(available_arms) + 1)
                 items[available_arms] = 1
                 ob[self.project_config.available_arms_column_name] = items
 

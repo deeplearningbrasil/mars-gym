@@ -138,7 +138,9 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             ),
             self.model_training.project_config,
         )  # .sample(10000)
-        df[self.model_training.project_config.item_column.name] = df[self.model_training.project_config.item_column.name].astype(int)
+        df[self.model_training.project_config.item_column.name] = df[
+            self.model_training.project_config.item_column.name
+        ].astype(int)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
         df["prob_actions"] = parallel_literal_eval(df["prob_actions"])
@@ -149,7 +151,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
         with Pool(self.num_processes) as p:
             print("Creating the relevance lists...")
-            #from IPython import embed; embed()
+            # from IPython import embed; embed()
             df["relevance_list"] = list(
                 tqdm(
                     p.starmap(

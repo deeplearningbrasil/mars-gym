@@ -11,7 +11,7 @@ from mars_gym.meta_config import ProjectConfig, IOType
 def create_index_mapping(
     indexable_values: Iterable, include_unkown: bool = True, include_none: bool = True
 ) -> Dict[Any, int]:
-    
+
     indexable_values = list(sorted(set(indexable_values)))
     if include_none:
         indexable_values = [None] + indexable_values
@@ -37,12 +37,10 @@ def _map_array(values: list, mapping: dict) -> List[int]:
 
 
 def transform_with_indexing(
-    df: pd.DataFrame,
-    index_mapping: Dict[str, dict],
-    project_config: ProjectConfig,
+    df: pd.DataFrame, index_mapping: Dict[str, dict], project_config: ProjectConfig,
 ):
     if df is None:
-        return None 
+        return None
 
     for key, mapping in index_mapping.items():
         column = project_config.get_column_by_name(key)
@@ -51,10 +49,17 @@ def transform_with_indexing(
                 df[key] = df[key].astype(str).map(mapping).astype(int)
             elif column.type == IOType.INDEXABLE_ARRAY:
                 df[key] = df[key].map(functools.partial(_map_array, mapping=mapping))
-    
-    if project_config.available_arms_column_name in df and project_config.item_column.name in index_mapping:
-        df[project_config.available_arms_column_name] = df[project_config.available_arms_column_name].fillna('').map(
-            functools.partial(
-                _map_array, mapping=index_mapping[project_config.item_column.name]
+
+    if (
+        project_config.available_arms_column_name in df
+        and project_config.item_column.name in index_mapping
+    ):
+        df[project_config.available_arms_column_name] = (
+            df[project_config.available_arms_column_name]
+            .fillna("")
+            .map(
+                functools.partial(
+                    _map_array, mapping=index_mapping[project_config.item_column.name]
+                )
             )
         )

@@ -11,14 +11,19 @@ import torch.nn as nn
 from torchbearer import Trial
 
 from mars_gym.data.dataset import InteractionsDataset
-from mars_gym.evaluation.metrics.rank import mean_reciprocal_rank, ndcg_at_k, reciprocal_rank_at_k, precision_at_k
+from mars_gym.evaluation.metrics.rank import (
+    mean_reciprocal_rank,
+    ndcg_at_k,
+    reciprocal_rank_at_k,
+    precision_at_k,
+)
 from mars_gym.model.trivago.trivago_models import SimpleLinearModel
 from mars_gym.simulation.base import (
     TORCH_ACTIVATION_FUNCTIONS,
     TORCH_DROPOUT_MODULES,
     TORCH_LOSS_FUNCTIONS,
     TORCH_WEIGHT_INIT,
-    BaseTorchModelWithAgentTraining
+    BaseTorchModelWithAgentTraining,
 )
 from mars_gym.simulation.interaction import InteractionTraining
 from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining

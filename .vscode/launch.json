@@ -4,13 +4,19 @@
   // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
-
     {
       "name": "Python: unittest test_trivago_rio",
       "type": "python",
       "request": "launch",
       "program": "-m unittest tests/test_trivago_rio.py",
       "console": "integratedTerminal"
-    }
+    },
+    {
+      "name": "Python: unittest test_yoochose_rio",
+      "type": "python",
+      "request": "launch",
+      "program": "python -m unittest tests/test_sample_yoochose.py",
+      "console": "integratedTerminal"
+    }    
   ]
 }

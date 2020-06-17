@@ -20,6 +20,6 @@ PROJECTS: Dict[str, ProjectConfig] = {
         ],
         metadata_columns=[Column("list_metadata", IOType.INT_ARRAY),],
         output_column=Column("clicked", IOType.NUMBER),
-        auxiliar_output_columns=[]
+        auxiliar_output_columns=[],
     )
 }

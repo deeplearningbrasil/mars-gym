@@ -317,18 +317,17 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
     def interactions_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_interactions_data_frame"):
             data = pd.concat(
-                    [
-                        pd.read_csv(self.train_data_frame_path),
-                        pd.read_csv(self.val_data_frame_path),
-                    ],
-                    ignore_index=True,
-                )
+                [
+                    pd.read_csv(self.train_data_frame_path),
+                    pd.read_csv(self.val_data_frame_path),
+                ],
+                ignore_index=True,
+            )
             if self.sample_size > 0:
-                data = data[-self.sample_size:]
+                data = data[-self.sample_size :]
 
             self._interactions_data_frame = preprocess_interactions_data_frame(
-                data,
-                self.project_config,
+                data, self.project_config,
             )
             self._interactions_data_frame.sort_values(
                 self.project_config.timestamp_column_name
@@ -410,21 +409,30 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
         return self._env_data_frame
 
     def _print_hist(self):
-        stats = pd.concat([self.known_observations_data_frame[
-                            [self.project_config.output_column.name]
-                        ].describe().transpose(),
-                        self._train_data_frame[
-                            [self.project_config.output_column.name]
-                        ].describe().transpose(),
-                        self._val_data_frame[
-                            [self.project_config.output_column.name]
-                        ].describe().transpose()])
-        stats['dataset'] = ['all', 'train', 'valid']
-        stats = stats.set_index('dataset')
-        
-        print("Interaction Stats")
-        print(stats[['count', 'mean', 'std']], "\n")
+        stats = pd.concat(
+            [
+                self.known_observations_data_frame[
+                    [self.project_config.output_column.name]
+                ]
+                .describe()
+                .transpose(),
+                self._train_data_frame[[self.project_config.output_column.name]]
+                .describe()
+                .transpose(),
+                self._val_data_frame[[self.project_config.output_column.name]]
+                .describe()
+                .transpose(),
+            ]
+        )
+        stats["dataset"] = ["all", "train", "valid"]
+        stats = stats.set_index("dataset")
 
+        percent = len(self.known_observations_data_frame) / len(
+            self.interactions_data_frame
+        )
+
+        print("\nInteraction Stats ({}%)".format(np.round(percent * 100, 2)))
+        print(stats[["count", "mean", "std"]], "\n")
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)

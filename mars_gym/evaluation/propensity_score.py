@@ -38,8 +38,14 @@ class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
 
     def fill_ps(self, df: pd.DataFrame, pool: Pool):
         policy_estimator_df = df.copy()
-        transform_with_indexing(policy_estimator_df, self.policy_estimator.index_mapping, self.policy_estimator.project_config)
-        dataset = InteractionsDataset(policy_estimator_df, None, self.policy_estimator.project_config)
+        transform_with_indexing(
+            policy_estimator_df,
+            self.policy_estimator.index_mapping,
+            self.policy_estimator.project_config,
+        )
+        dataset = InteractionsDataset(
+            policy_estimator_df, None, self.policy_estimator.project_config
+        )
         batch_sampler = FasterBatchSampler(
             dataset, self.policy_estimator.batch_size, shuffle=False
         )

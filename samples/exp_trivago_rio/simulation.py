@@ -16,7 +16,7 @@ from mars_gym.simulation.base import (
     TORCH_DROPOUT_MODULES,
     TORCH_LOSS_FUNCTIONS,
     TORCH_WEIGHT_INIT,
-    BaseTorchModelWithAgentTraining
+    BaseTorchModelWithAgentTraining,
 )
 from mars_gym.simulation.interaction import InteractionTraining
 
@@ -36,10 +36,7 @@ class SimpleLinearModel(nn.Module):
         self.item_embeddings = nn.Embedding(n_items, n_factors)
 
         num_dense = (
-            n_factors
-            + window_hist_size
-            + 1
-            + metadata_size
+            n_factors + window_hist_size + 1 + metadata_size
         )  # + n_factors * n_factors
 
         self.dense = nn.Sequential(
@@ -62,13 +59,8 @@ class SimpleLinearModel(nn.Module):
         return self.flatten(dot)
 
     def forward(
-        self,
-        user_ids,
-        item_ids,
-        pos_item_id,
-        list_reference_item,
-        list_metadata,
-      ):
+        self, user_ids, item_ids, pos_item_id, list_reference_item, list_metadata,
+    ):
         # Geral embs
         user_emb = self.user_embeddings(user_ids)
         item_emb = self.item_embeddings(item_ids)
@@ -77,8 +69,10 @@ class SimpleLinearModel(nn.Module):
         interaction_item_emb = self.item_embeddings(list_reference_item)
 
         # Dot Item X History
-        item_dot_interaction_item_emb = self.item_dot_history(item_emb, interaction_item_emb)
-        #raise(Exception(user_emb.shape, interaction_item_emb.shape, item_dot_interaction_item_emb.shape))
+        item_dot_interaction_item_emb = self.item_dot_history(
+            item_emb, interaction_item_emb
+        )
+        # raise(Exception(user_emb.shape, interaction_item_emb.shape, item_dot_interaction_item_emb.shape))
         x = torch.cat(
             (
                 item_emb,
@@ -89,24 +83,33 @@ class SimpleLinearModel(nn.Module):
             dim=1,
         )
 
-        x   = self.dense(x)
+        x = self.dense(x)
         out = torch.sigmoid(x)
         return out
+
 
 class TrivagoModelTrainingMixin(object):
     n_factors: int = luigi.IntParameter(default=128)
 
     def create_module(self) -> nn.Module:
         return SimpleLinearModel(
-            n_users=max(self.index_mapping[self.project_config.user_column.name].values()) + 1,
-            n_items=max(self.index_mapping[self.project_config.item_column.name].values()) + 1,
+            n_users=max(
+                self.index_mapping[self.project_config.user_column.name].values()
+            )
+            + 1,
+            n_items=max(
+                self.index_mapping[self.project_config.item_column.name].values()
+            )
+            + 1,
             n_factors=self.n_factors,
             metadata_size=148,
             window_hist_size=5,
         )
 
+
 class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
     pass
+
 
 class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelWithAgentTraining):
     pass

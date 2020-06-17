@@ -32,14 +32,17 @@ def array_index(x, y):
     if x is None:
         return -1
 
-    idxs = [i for i, e in enumerate(x) if e==y ]
+    idxs = [i for i, e in enumerate(x) if e == y]
 
     if len(idxs) == 0:
         return -1
-    
+
     return idxs[0]
+
+
 array_index_udf = udf(array_index)
-#array_index_udf = udf(lambda x,y: [i for i, e in enumerate(x) if e==y ])
+# array_index_udf = udf(lambda x,y: [i for i, e in enumerate(x) if e==y ])
+
 
 def random_date(start, l):
     current = start
@@ -47,6 +50,7 @@ def random_date(start, l):
         curr = current + timedelta(minutes=randrange(60))
         yield curr
         l -= 1
+
 
 def clean_filename(filename, whitelist=valid_filename_chars, replace=" "):
     # replace spaces
@@ -102,6 +106,7 @@ def _pad_sequence(seq, pad) -> np.ndarray:
     else:
         return (([0] * pad) + seq)[-pad:]
 
+
 def to_array(xs):
     return (
         [
@@ -113,7 +118,6 @@ def to_array(xs):
         if xs is not None
         else None
     )
-
 
 
 def _parallel_literal_eval(
