@@ -13,12 +13,12 @@ from torchbearer import Trial
 from mars_gym.data.dataset import InteractionsDataset
 from mars_gym.evaluation.metrics.rank import mean_reciprocal_rank, ndcg_at_k, reciprocal_rank_at_k, precision_at_k
 from mars_gym.model.trivago.trivago_models import SimpleLinearModel
-from mars_gym.simulation.base import (
+from mars_gym.simulation.training import (
     TORCH_ACTIVATION_FUNCTIONS,
     TORCH_DROPOUT_MODULES,
     TORCH_LOSS_FUNCTIONS,
     TORCH_WEIGHT_INIT,
-    BaseTorchModelWithAgentTraining
+    TorchModelWithAgentTraining
 )
 from mars_gym.simulation.interaction import InteractionTraining
 from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
@@ -26,6 +26,9 @@ from mars_gym.evaluation.propensity_score import FillPropensityScoreMixin
 
 
 class TrivagoModelTrainingMixin(object):
+    recommender_module_class: str = None
+    recommender_extra_params: dict = None
+
     loss_function: str = luigi.ChoiceParameter(
         choices=TORCH_LOSS_FUNCTIONS.keys(), default="crm"
     )
@@ -60,12 +63,11 @@ class TrivagoModelTrainingMixin(object):
     def create_module(self) -> nn.Module:
 
         return SimpleLinearModel(
+            project_config=self.project_config,
+            index_mapping=self.index_mapping,
             window_hist_size=self.window_hist_size,
             vocab_size=self.vocab_size,
             metadata_size=self.metadata_size,
-            n_users=self.n_users,
-            n_items=self.n_items,
-            n_action_types=max(self.index_mapping["list_action_type_idx"].values()) + 1,
             n_factors=self.n_factors,
             filter_sizes=self.filter_sizes,
             num_filters=self.num_filters,
@@ -81,7 +83,7 @@ class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
 class TrivagoModelTraining(
     FillPropensityScoreMixin,
     TrivagoModelTrainingMixin,
-    BaseTorchModelWithAgentTraining,
+    TorchModelWithAgentTraining,
 ):
     def requires(self):
         required_tasks = [super().requires()]

@@ -11,12 +11,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchbearer import Trial
 
-from mars_gym.simulation.base import (
+from mars_gym.simulation.training import (
     TORCH_ACTIVATION_FUNCTIONS,
     TORCH_DROPOUT_MODULES,
     TORCH_LOSS_FUNCTIONS,
     TORCH_WEIGHT_INIT,
-    BaseTorchModelWithAgentTraining
+    TorchModelWithAgentTraining
 )
 from mars_gym.simulation.interaction import InteractionTraining
 
@@ -110,5 +110,5 @@ class TrivagoModelTrainingMixin(object):
 class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
     pass
 
-class TrivagoModelTraining(TrivagoModelTrainingMixin, BaseTorchModelWithAgentTraining):
+class TrivagoModelTraining(TrivagoModelTrainingMixin, TorchModelWithAgentTraining):
     pass

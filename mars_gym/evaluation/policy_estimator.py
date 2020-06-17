@@ -1,16 +1,20 @@
 from copy import deepcopy
-from typing import List
+from typing import List, Type
 
 import luigi
 import numpy as np
 from torch import nn as nn
 
+from mars_gym.model.abstract import RecommenderModule
 from mars_gym.model.policy_estimator import PolicyEstimator
 from mars_gym.meta_config import ProjectConfig, IOType
-from mars_gym.simulation.base import BaseTorchModelTraining, TORCH_WEIGHT_INIT
+from mars_gym.simulation.training import TorchModelTraining, TORCH_WEIGHT_INIT
 
 
-class PolicyEstimatorTraining(BaseTorchModelTraining):
+class PolicyEstimatorTraining(TorchModelTraining):
+    recommender_module_class: str = None
+    recommender_extra_params: dict = None
+
     val_size = 0.0
     test_size = 0.0
     monitor_metric = "loss"
@@ -35,18 +39,15 @@ class PolicyEstimatorTraining(BaseTorchModelTraining):
             self._project_config = project_config
         return self._project_config
 
+    @property
+    def module_class(self) -> Type[RecommenderModule]:
+        return PolicyEstimator
+
     def create_module(self) -> nn.Module:
-        input_columns = self.project_config.input_columns
-        num_elements_per_embeddings = [
-            max(self.index_mapping[input_column.name].values()) + 1
-            for input_column in input_columns
-            if input_column.type in (IOType.INDEXABLE, IOType.INDEXABLE_ARRAY)
-        ]
         return PolicyEstimator(
-            n_items=self.n_items,
+            index_mapping=self.index_mapping,
+            project_config=self.project_config,
             embedding_dim=self.embedding_dim,
-            input_columns=input_columns,
-            num_elements_per_embeddings=num_elements_per_embeddings,
             layers=self.layers,
             sample_batch=self.get_sample_batch(),
             weight_init=TORCH_WEIGHT_INIT[self.weight_init],

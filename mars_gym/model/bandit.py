@@ -714,19 +714,3 @@ class SoftmaxExplorer(BanditPolicy):
         arm_probs = self._compute_prob(arm_scores)
 
         return self._rng.choice(a=len(arm_scores), p=arm_probs)
-
-
-BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
-    epsilon_greedy=EpsilonGreedy,
-    lin_ucb=LinUCB,
-    custom_lin_ucb=CustomRewardModelLinUCB,
-    lin_ts=LinThompsonSampling,
-    random=RandomPolicy,
-    percentile_adaptive=PercentileAdaptiveGreedy,
-    adaptive=AdaptiveGreedy,
-    model=ModelPolicy,
-    softmax_explorer=SoftmaxExplorer,
-    explore_then_exploit=ExploreThenExploit,
-    fixed=FixedPolicy,
-    none=None,
-)

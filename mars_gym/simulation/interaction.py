@@ -1,6 +1,6 @@
 import abc
 import os
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Type
 
 import gym
 import luigi
@@ -16,16 +16,17 @@ import pickle
 import gc
 from mars_gym.data.dataset import preprocess_interactions_data_frame
 from mars_gym.model.agent import BanditAgent
-from mars_gym.simulation.base import (
+from mars_gym.model.bandit import BanditPolicy
+from mars_gym.simulation.training import (
     TORCH_LOSS_FUNCTIONS,
-    BaseTorchModelWithAgentTraining,
+    TorchModelWithAgentTraining,
 )
 from mars_gym.utils.index_mapping import transform_with_indexing
 from mars_gym.utils.plot import plot_history, plot_scores
+from mars_gym.utils.reflection import load_attr
 
 tqdm.pandas()
 from mars_gym.gym.envs import RecSysEnv
-from mars_gym.model.bandit import BANDIT_POLICIES
 from mars_gym.utils.files import (
     get_interaction_dir,
     get_history_path,
@@ -40,7 +41,7 @@ from mars_gym.utils.utils import save_trained_data
 # from IPython import embed; embed()
 
 
-class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta):
+class InteractionTraining(TorchModelWithAgentTraining, metaclass=abc.ABCMeta):
     loss_function: str = luigi.ChoiceParameter(
         choices=TORCH_LOSS_FUNCTIONS.keys(), default="crm"
     )
@@ -61,7 +62,8 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
     output_model_dir: str = luigi.Parameter(default="")
 
     def create_agent(self) -> BanditAgent:
-        bandit = BANDIT_POLICIES[self.bandit_policy](
+        bandit_class = load_attr(self.bandit_policy_class, Type[BanditPolicy])
+        bandit = bandit_class(
             reward_model=self.create_module(), **self.bandit_policy_params
         )
         return BanditAgent(bandit)

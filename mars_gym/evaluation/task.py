@@ -1,11 +1,11 @@
 import functools
-import importlib
-import inspect
 import json
 import os
 from multiprocessing.pool import Pool
 from typing import List, Tuple, Type
 import pprint
+
+import abc
 import luigi
 import numpy as np
 import pandas as pd
@@ -20,7 +20,8 @@ from mars_gym.data.dataset import (
 )
 from mars_gym.evaluation.propensity_score import FillPropensityScoreMixin
 from mars_gym.evaluation.metrics.fairness import calculate_fairness_metrics
-from mars_gym.utils.files import get_test_set_predictions_path
+from mars_gym.utils import files
+from mars_gym.utils.files import get_test_set_predictions_path, get_params_path
 from mars_gym.evaluation.metrics.offpolicy import (
     eval_IPS,
     eval_CIPS,
@@ -34,11 +35,64 @@ from mars_gym.evaluation.metrics.rank import (
     prediction_coverage_at_k,
     personalization_at_k,
 )
-from mars_gym.simulation.base import BaseEvaluationTask, BaseTorchModelTraining
+from mars_gym.simulation.training import TorchModelTraining, \
+    load_torch_model_training_from_task_id
 from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.torch.data import FasterBatchSampler, NoAutoCollationDataLoader
 from mars_gym.utils.reflection import load_attr, get_attribute_names
 from mars_gym.utils.utils import parallel_literal_eval, JsonEncoder
+
+
+class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
+    model_task_class: str = luigi.Parameter(default="mars_gym.simulation.interaction.InteractionTraining")
+    model_task_id: str = luigi.Parameter()
+    no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
+    task_hash: str = luigi.Parameter(default="none")
+
+    @property
+    def cache_attr(self):
+        return [""]
+
+    @property
+    def task_name(self):
+        return self.model_task_id + "_" + self.task_id.split("_")[-1]
+
+    @property
+    def model_training(self) -> TorchModelTraining:
+        if not hasattr(self, "_model_training"):
+            class_ = load_attr(self.model_task_class, Type[TorchModelTraining])
+
+            self._model_training = load_torch_model_training_from_task_id(
+                class_, self.model_task_id
+            )
+
+        return self._model_training
+
+    @property
+    def n_items(self):
+        return self.model_training.n_items
+
+    def output(self):
+        return luigi.LocalTarget(
+            os.path.join(
+                files.OUTPUT_PATH,
+                "evaluation",
+                self.__class__.__name__,
+                "results",
+                self.task_name,
+            )
+        )
+
+    def cache_cleanup(self):
+        for a in self.cache_attrs:
+            if hasattr(self, a):
+                delattr(self, a)
+
+    def _save_params(self):
+        with open(get_params_path(self.output().path), "w") as params_file:
+            json.dump(
+                self.param_kwargs, params_file, default=lambda o: dict(o), indent=4
+            )
 
 
 class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
@@ -54,9 +108,9 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
     fairness_columns: List[str] = luigi.ListParameter()
 
-    def get_direct_estimator(self, extra_params: dict) -> BaseTorchModelTraining:
+    def get_direct_estimator(self, extra_params: dict) -> TorchModelTraining:
         assert self.direct_estimator_class is not None
-        estimator_class = load_attr(self.direct_estimator_class, Type[BaseTorchModelTraining])
+        estimator_class = load_attr(self.direct_estimator_class, Type[TorchModelTraining])
 
         attribute_names = get_attribute_names(estimator_class)
 
