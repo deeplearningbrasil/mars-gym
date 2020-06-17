@@ -55,8 +55,9 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
         choices=["bandit", "dataset"], default="bandit"
     )
 
-    obs_batch_size: int = luigi.IntParameter(default=10000)
+    obs_batch_size: int = luigi.IntParameter(default=1000)
     num_episodes: int = luigi.IntParameter(default=1)
+    sample_size: int = luigi.IntParameter(default=-1)
     full_refit: bool = luigi.BoolParameter(default=False)
     output_model_dir: str = luigi.Parameter(default="")
 
@@ -200,34 +201,17 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
         hist_output_column = self.project_config.hist_output_column_name
         ps_column = self.project_config.propensity_score_column_name
 
-        # Method 1
-        # df[hist_view_column]   = 1
-        # user_views             = df.groupby([user_column])[hist_view_column].transform("cumsum")
-        # df[hist_view_column]   = df.groupby([user_column, item_column])[hist_view_column].transform("cumsum")
-        # df[hist_output_column] = df.groupby([user_column, item_column])[output_column].transform("cumsum")
-        # ps_value               = df[hist_view_column] / user_views
-
-        # Method 2
-        # ground_truth_df = df[df[self.project_config.output_column.name] == 1]
-        # ps_per_pos_item_idx: Dict[int, float] = {
-        #     pos_item_idx: np.sum(ground_truth_df["pos_item_idx"] == pos_item_idx) / len(ground_truth_df)
-        #     for pos_item_idx in df["pos_item_idx"].unique()
-        # }
-        # ps_value = df["pos_item_idx"].apply(lambda pos_item_idx: ps_per_pos_item_idx[pos_item_idx] + 0.01)
-        # from IPython import embed; embed()
-
         # ----
         df[ps_column] = ps_value
 
     # def _calcule_propensity_score(self, df) -> None:
-
     def _save_result(self) -> None:
         print("Saving logs...")
 
         self._save_params()
         self._save_log()
         self._save_metrics()
-        # self._save_bandit_model()
+        self._save_bandit_model()
 
         if self.test_size > 0:
             self._save_test_set_predictions(self.agent)
@@ -332,14 +316,18 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
     @property
     def interactions_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_interactions_data_frame"):
-            self._interactions_data_frame = preprocess_interactions_data_frame(
-                pd.concat(
+            data = pd.concat(
                     [
                         pd.read_csv(self.train_data_frame_path),
                         pd.read_csv(self.val_data_frame_path),
                     ],
                     ignore_index=True,
-                ),
+                )
+            if self.sample_size > 0:
+                data = data[-self.sample_size:]
+
+            self._interactions_data_frame = preprocess_interactions_data_frame(
+                data,
                 self.project_config,
             )
             self._interactions_data_frame.sort_values(
@@ -421,6 +409,23 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
             ]
         return self._env_data_frame
 
+    def _print_hist(self):
+        stats = pd.concat([self.known_observations_data_frame[
+                            [self.project_config.output_column.name]
+                        ].describe().transpose(),
+                        self._train_data_frame[
+                            [self.project_config.output_column.name]
+                        ].describe().transpose(),
+                        self._val_data_frame[
+                            [self.project_config.output_column.name]
+                        ].describe().transpose()])
+        stats['dataset'] = ['all', 'train', 'valid']
+        stats = stats.set_index('dataset')
+        
+        print("Interaction Stats")
+        print(stats[['count', 'mean', 'std']], "\n")
+
+
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
         self.start_time = time.time()
@@ -481,34 +486,7 @@ class InteractionTraining(BaseTorchModelWithAgentTraining, metaclass=abc.ABCMeta
                         self.epochs,
                     )
                     self._save_trial_log(interactions, trial)
-
-                    print("\n", k, ": Interaction Stats")
-                    print(
-                        self.known_observations_data_frame[
-                            [self.project_config.output_column.name]
-                        ]
-                        .describe()
-                        .transpose(),
-                        "\n",
-                    )
-                    if hasattr(self, "train_data_frame"):
-                        print(
-                            self._train_data_frame[
-                                [self.project_config.output_column.name]
-                            ]
-                            .describe()
-                            .transpose(),
-                            "\n",
-                        )
-                    if hasattr(self, "val_data_frame"):
-                        print(
-                            self._val_data_frame[
-                                [self.project_config.output_column.name]
-                            ]
-                            .describe()
-                            .transpose(),
-                            "\n",
-                        )
+                    self._print_hist()
 
                     # print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
                     k += 1

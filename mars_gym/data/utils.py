@@ -16,6 +16,8 @@ from mars_gym.utils import files
 
 DATASETS = dict(
   random=['https://storage.googleapis.com/mars-gym-dataset/raw/random/dataset.csv'], 
+  yoochoose=['https://storage.googleapis.com/mars-gym-dataset/raw/yoochoose/yoochoose-buys.dat'],
+  processed_yoochoose=['https://storage.googleapis.com/mars-gym-dataset/process/yoochoose/dataset.csv'],
   trivago_rio=['https://storage.googleapis.com/mars-gym-dataset/raw/trivago/rio/train.csv',
     'https://storage.googleapis.com/mars-gym-dataset/raw/trivago/rio/item_metadata.csv']
 )

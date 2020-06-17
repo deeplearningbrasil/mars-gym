@@ -497,6 +497,10 @@ class BaseTorchModelTraining(BaseModelTraining):
                 summary(module, sample_input)
             summary(module, sample_input)
 
+        sample_data = self.train_data_frame.sample(100)
+        sample_data.to_csv(os.path.join(self.output().path, "sample_train.csv"))
+
+
         trial = self.create_trial(module)
 
         try:
@@ -506,8 +510,8 @@ class BaseTorchModelTraining(BaseModelTraining):
         except KeyboardInterrupt:
             print("Finishing the training at the request of the user...")
 
-        history_df = pd.read_csv(get_history_path(self.output().path))
-
+        history_df  = pd.read_csv(get_history_path(self.output().path))
+        
         plot_history(history_df).savefig(
             os.path.join(self.output().path, "history.jpg")
         )
@@ -844,7 +848,7 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     model_module: str = luigi.Parameter(default="mars_gym.task.simulation.interaction")
     model_cls: str = luigi.Parameter(default="InteractionTraining")
     model_task_id: str = luigi.Parameter()
-    no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
+    offpolicy_eval: bool = luigi.BoolParameter(default=False)
     task_hash: str = luigi.Parameter(default="none")
 
     @property

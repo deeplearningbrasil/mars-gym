@@ -4,7 +4,7 @@ from mars_gym.data.dataset import (
     InteractionsWithNegativeItemGenerationDataset,
 )
 from mars_gym.meta_config import *
-from exp_trivago_rio import data as exp_trivago_data
+from samples.exp_trivago_rio import data as exp_trivago_data
 
 PROJECTS: Dict[str, ProjectConfig] = {
     "trivago_rio": ProjectConfig(

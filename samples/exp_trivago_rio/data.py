@@ -29,7 +29,7 @@ from mars_gym.utils.utils import _pad_sequence, to_array, array_index_udf
 #from mars_gym.
 from pyspark.sql.types import ArrayType, FloatType
 
-import exp_trivago_rio
+import samples.exp_trivago_rio
 
 
 OUTPUT_PATH: str = os.path.join("output")

@@ -93,7 +93,6 @@ class SimpleLinearModel(nn.Module):
         out = torch.sigmoid(x)
         return out
 
-
 class TrivagoModelTrainingMixin(object):
     n_factors: int = luigi.IntParameter(default=128)
 
@@ -105,7 +104,6 @@ class TrivagoModelTrainingMixin(object):
             metadata_size=148,
             window_hist_size=5,
         )
-
 
 class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
     pass

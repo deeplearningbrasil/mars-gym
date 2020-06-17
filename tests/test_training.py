@@ -35,7 +35,7 @@ class TestInteractionTraining(unittest.TestCase):
         # Evaluation
         job = EvaluateTestSetPredictions(model_task_id=job.task_id, model_module="tests.test_training", 
         model_cls='UnitTestInteractionTraining', fairness_columns=[], direct_estimator_module='tests.test_training', 
-        direct_estimator_cls='UnitTestInteractionTraining', no_offpolicy_eval=True)
+        direct_estimator_cls='UnitTestInteractionTraining')
 
         luigi.build([job], local_scheduler=True)
 

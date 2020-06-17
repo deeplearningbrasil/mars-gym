@@ -52,7 +52,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
-    fairness_columns: List[str] = luigi.ListParameter()
+    fairness_columns: List[str] = luigi.ListParameter(default=[])
 
     def get_direct_estimator(self, extra_params: dict) -> BaseTorchModelTraining:
         assert self.direct_estimator_module is not None
@@ -113,7 +113,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         return self._policy_estimator
 
     def requires(self):
-        if not self.no_offpolicy_eval:
+        if self.offpolicy_eval:
             return [self.direct_estimator, self.policy_estimator]
         return []
 
@@ -276,24 +276,24 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             "ndcg_at_15": df["ndcg_at_15"].mean(),
             "ndcg_at_20": df["ndcg_at_20"].mean(),
             "ndcg_at_50": df["ndcg_at_50"].mean(),
-            "coverage_at_5": prediction_coverage_at_k(df["sorted_actions"], catalog, 5),
-            "coverage_at_10": prediction_coverage_at_k(
-                df["sorted_actions"], catalog, 10
-            ),
-            "coverage_at_15": prediction_coverage_at_k(
-                df["sorted_actions"], catalog, 15
-            ),
-            "coverage_at_20": prediction_coverage_at_k(
-                df["sorted_actions"], catalog, 20
-            ),
-            "coverage_at_50": prediction_coverage_at_k(
-                df["sorted_actions"], catalog, 50
-            ),
-            "personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
-            "personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
-            "personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
-            "personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
-            "personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
+            # "coverage_at_5": prediction_coverage_at_k(df["sorted_actions"], catalog, 5),
+            # "coverage_at_10": prediction_coverage_at_k(
+            #     df["sorted_actions"], catalog, 10
+            # ),
+            # "coverage_at_15": prediction_coverage_at_k(
+            #     df["sorted_actions"], catalog, 15
+            # ),
+            # "coverage_at_20": prediction_coverage_at_k(
+            #     df["sorted_actions"], catalog, 20
+            # ),
+            # "coverage_at_50": prediction_coverage_at_k(
+            #     df["sorted_actions"], catalog, 50
+            # ),
+            # "personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
+            # "personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
+            # "personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
+            # "personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
+            # "personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
         }
 
         return df, metrics
@@ -301,7 +301,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def offpolice_metrics(self, df: pd.DataFrame):
         metrics = {}
 
-        if self.no_offpolicy_eval:
+        if not self.offpolicy_eval:
             return pd.DataFrame(), metrics
 
         df["rewards"] = df[self.model_training.project_config.output_column.name]
