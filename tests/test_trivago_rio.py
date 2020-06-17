@@ -55,7 +55,7 @@ class TestTrivagoRio(unittest.TestCase):
     luigi.build([job_train], local_scheduler=True)
     
     ## PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-module exp_trivago_rio.simulation  --model-cls TrivagoModelInteraction --model-task-id TrivagoModelInteraction____epsilon_greedy___epsilon___0_1__d4bfd68660 --fairness-columns "[\"hotel\"]" --no-offpolicy
-    job_eval = EvaluateTestSetPredictions(model_module='exp_trivago_rio.simulation', model_cls='TrivagoModelInteraction', 
+    job_eval = EvaluateTestSetPredictions(model_task_class='exp_trivago_rio.simulation.TrivagoModelInteraction',
           model_task_id=job_train.task_id, fairness_columns=["pos_item_id"], no_offpolicy_eval=True)
     luigi.build([job_eval], local_scheduler=True)
 

@@ -74,6 +74,8 @@ from mars_gym.utils.index_mapping import (
 )
 from mars_gym.utils.plot import plot_history
 from mars_gym.utils import files
+from mars_gym.utils.reflection import load_attr
+
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
 )
@@ -238,14 +240,16 @@ class BaseModelTraining(luigi.Task):
                 literal_eval_array_columns(
                     self._metadata_data_frame, self.project_config.metadata_columns
                 )
-            #   
-            transform_with_indexing(self._metadata_data_frame, self.index_mapping, self.project_config)
+            #
+            transform_with_indexing(
+                self._metadata_data_frame, self.index_mapping, self.project_config
+            )
         return self._metadata_data_frame
 
     @property
     def embeddings_for_metadata(self) -> Optional[Dict[str, np.ndarray]]:
         if not hasattr(self, "_embeddings_for_metadata"):
-            #from IPython import embed; embed()
+            # from IPython import embed; embed()
             self._embeddings_for_metadata = (
                 preprocess_metadata_data_frame(
                     self.metadata_data_frame, self.project_config
@@ -328,12 +332,15 @@ class BaseModelTraining(luigi.Task):
                     {
                         column.name: create_index_mapping_from_arrays(df[column.name])
                         for column in self.project_config.all_columns
-                        if column.type == IOType.INDEXABLE_ARRAY and not column.same_index_as
+                        if column.type == IOType.INDEXABLE_ARRAY
+                        and not column.same_index_as
                     }
                 )
                 for column in self.project_config.all_columns:
                     if column.same_index_as:
-                        self._index_mapping[column.name] = self._index_mapping[column.same_index_as]
+                        self._index_mapping[column.name] = self._index_mapping[
+                            column.same_index_as
+                        ]
                 with open(index_mapping_path, "wb") as f:
                     pickle.dump(self._index_mapping, f)
                 del self._creating_index_mapping
@@ -440,6 +447,11 @@ class BaseModelTraining(luigi.Task):
 class BaseTorchModelTraining(BaseModelTraining):
     __metaclass__ = abc.ABCMeta
 
+    torch_module_class: str = luigi.Parameter(
+        default=None,
+        description="Should be like mars_gym.model.trivago.trivago_models.SimpleLinearModel",
+    )
+
     device: str = luigi.ChoiceParameter(choices=["cpu", "cuda"], default=DEFAULT_DEVICE)
 
     batch_size: int = luigi.IntParameter(default=500)
@@ -480,7 +492,10 @@ class BaseTorchModelTraining(BaseModelTraining):
 
     @abc.abstractmethod
     def create_module(self) -> nn.Module:
-        pass
+        splitted_torch_module_class = self.torch_module_class.split(".")
+        module_str = ".".join(splitted_torch_module_class[:-1])
+        class_sr = splitted_torch_module_class[-1]
+
 
     def train(self):
         if self.device == "cuda":
@@ -805,13 +820,11 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
 
             if self.project_config.available_arms_column_name:
                 available_arms = ob[self.project_config.available_arms_column_name]
-                #TODO
+                # TODO
                 if len(available_arms) == 0:
                     available_arms = [ob[self.project_config.item_column.name]]
 
-                items = np.zeros(
-                    np.max(available_arms) + 1
-                )
+                items = np.zeros(np.max(available_arms) + 1)
                 items[available_arms] = 1
                 ob[self.project_config.available_arms_column_name] = items
 
@@ -841,8 +854,7 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
 
 
 class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
-    model_module: str = luigi.Parameter(default="mars_gym.task.simulation.interaction")
-    model_cls: str = luigi.Parameter(default="InteractionTraining")
+    model_task_class: str = luigi.Parameter(default="mars_gym.simulation.interaction.InteractionTraining")
     model_task_id: str = luigi.Parameter()
     no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
     task_hash: str = luigi.Parameter(default="none")
@@ -858,8 +870,7 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     @property
     def model_training(self) -> BaseTorchModelTraining:
         if not hasattr(self, "_model_training"):
-            module = importlib.import_module(self.model_module)
-            class_ = getattr(module, self.model_cls)
+            class_ = load_attr(self.model_task_class, Type[BaseTorchModelTraining])
 
             self._model_training = load_torch_model_training_from_task_id(
                 class_, self.model_task_id

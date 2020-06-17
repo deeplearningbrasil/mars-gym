@@ -4,7 +4,7 @@ import inspect
 import json
 import os
 from multiprocessing.pool import Pool
-from typing import List, Tuple
+from typing import List, Tuple, Type
 import pprint
 import luigi
 import numpy as np
@@ -37,12 +37,12 @@ from mars_gym.evaluation.metrics.rank import (
 from mars_gym.simulation.base import BaseEvaluationTask, BaseTorchModelTraining
 from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.torch.data import FasterBatchSampler, NoAutoCollationDataLoader
+from mars_gym.utils.reflection import load_attr, get_attribute_names
 from mars_gym.utils.utils import parallel_literal_eval, JsonEncoder
 
 
 class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
-    direct_estimator_module: str = luigi.Parameter(default=None)
-    direct_estimator_cls: str = luigi.Parameter(default=None)
+    direct_estimator_class: str = luigi.Parameter(default=None)
     direct_estimator_negative_proportion: int = luigi.FloatParameter(0.8)
     direct_estimator_batch_size: int = luigi.IntParameter(default=500)
     direct_estimator_epochs: int = luigi.IntParameter(default=50)
@@ -55,23 +55,10 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     fairness_columns: List[str] = luigi.ListParameter()
 
     def get_direct_estimator(self, extra_params: dict) -> BaseTorchModelTraining:
-        assert self.direct_estimator_module is not None
-        assert self.direct_estimator_cls is not None
+        assert self.direct_estimator_class is not None
+        estimator_class = load_attr(self.direct_estimator_class, Type[BaseTorchModelTraining])
 
-        estimator_module = importlib.import_module(self.direct_estimator_module)
-        estimator_class = getattr(estimator_module, self.direct_estimator_cls)
-
-        attribute_names = set(
-            list(
-                zip(
-                    *(
-                        inspect.getmembers(
-                            estimator_class, lambda a: not (inspect.isroutine(a))
-                        )
-                    )
-                )
-            )[0]
-        )
+        attribute_names = get_attribute_names(estimator_class)
 
         params = {
             key: value
