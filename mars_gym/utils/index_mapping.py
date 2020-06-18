@@ -22,7 +22,7 @@ def create_index_mapping(
         indices = np.arange(0, len(indexable_values))
         mapping = dict(zip(indexable_values, indices))
     if include_none:
-        mapping[np.nan] = 0  # Both None and nan are treated the same
+        mapping[np.nan] = 1  # Both None and nan are treated the same
     return mapping
 
 
