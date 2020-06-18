@@ -25,5 +25,7 @@ def load_attr(attr_path: str, expected_type: Type[T]) -> T:
 
 def get_attribute_names(class_: Type) -> Set[str]:
     return set(
-        list(zip(*(inspect.getmembers(class_, lambda a: not (inspect.isroutine(a))))))[0]
+        list(zip(*(inspect.getmembers(class_, lambda a: not (inspect.isroutine(a))))))[
+            0
+        ]
     )

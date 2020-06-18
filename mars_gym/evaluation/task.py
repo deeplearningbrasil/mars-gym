@@ -35,8 +35,10 @@ from mars_gym.evaluation.metrics.rank import (
     prediction_coverage_at_k,
     personalization_at_k,
 )
-from mars_gym.simulation.training import TorchModelTraining, \
-    load_torch_model_training_from_task_id
+from mars_gym.simulation.training import (
+    TorchModelTraining,
+    load_torch_model_training_from_task_id,
+)
 from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.torch.data import FasterBatchSampler, NoAutoCollationDataLoader
 from mars_gym.utils.reflection import load_attr, get_attribute_names
@@ -44,7 +46,9 @@ from mars_gym.utils.utils import parallel_literal_eval, JsonEncoder
 
 
 class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
-    model_task_class: str = luigi.Parameter(default="mars_gym.simulation.interaction.InteractionTraining")
+    model_task_class: str = luigi.Parameter(
+        default="mars_gym.simulation.interaction.InteractionTraining"
+    )
     model_task_id: str = luigi.Parameter()
     offpolicy_eval: bool = luigi.BoolParameter(default=False)
     task_hash: str = luigi.Parameter(default="none")
@@ -109,7 +113,9 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
     def get_direct_estimator(self, extra_params: dict) -> TorchModelTraining:
         assert self.direct_estimator_class is not None
-        estimator_class = load_attr(self.direct_estimator_class, Type[TorchModelTraining])
+        estimator_class = load_attr(
+            self.direct_estimator_class, Type[TorchModelTraining]
+        )
 
         attribute_names = get_attribute_names(estimator_class)
 

@@ -75,4 +75,3 @@ class DownloadDataset(luigi.Task, metaclass=abc.ABCMeta):
 
     def run(self):
         load_dataset(self.dataset, output_path=self.output_path)
-

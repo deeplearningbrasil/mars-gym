@@ -37,7 +37,9 @@ class PolicyEstimator(RecommenderModule):
                 for i, layer_size in enumerate(layers)
             ]
         )
-        self.output = nn.Linear(layers[-1] if len(layers) > 0 else input_dim, self._n_items)
+        self.output = nn.Linear(
+            layers[-1] if len(layers) > 0 else input_dim, self._n_items
+        )
 
         self.weight_init = weight_init
         self.apply(self.init_weights)

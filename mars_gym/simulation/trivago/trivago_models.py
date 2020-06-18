@@ -23,7 +23,7 @@ from mars_gym.simulation.training import (
     TORCH_DROPOUT_MODULES,
     TORCH_LOSS_FUNCTIONS,
     TORCH_WEIGHT_INIT,
-    TorchModelWithAgentTraining
+    TorchModelWithAgentTraining,
 )
 from mars_gym.simulation.interaction import InteractionTraining
 from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
@@ -86,9 +86,7 @@ class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
 
 
 class TrivagoModelTraining(
-    FillPropensityScoreMixin,
-    TrivagoModelTrainingMixin,
-    TorchModelWithAgentTraining,
+    FillPropensityScoreMixin, TrivagoModelTrainingMixin, TorchModelWithAgentTraining,
 ):
     def requires(self):
         required_tasks = [super().requires()]

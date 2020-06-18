@@ -32,10 +32,13 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
     ) -> Union[int, Tuple[int, float]]:
         pass
 
-    @abc.abstractmethod
     def _compute_prob(self, arm_scores: List[float]) -> List[float]:
-        pass
-
+        n_arms = len(arm_scores)
+        arms_probs = np.zeros(n_arms)
+        argmax = int(np.argmax(arm_scores))
+        arms_probs[argmax] = 1.0
+        return arms_probs.tolist()
+        
     def calculate_scores(self, arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
         if self.reward_model:
             inputs: torch.Tensor = default_convert(arm_contexts)
@@ -186,12 +189,6 @@ class ModelPolicy(BanditPolicy):
         super().__init__(reward_model)
         self._rng = RandomState(seed)
 
-    def _compute_prob(self, arm_scores) -> List[float]:
-        n_arms = len(arm_scores)
-        arms_probs = np.zeros(n_arms)
-        argmax = int(np.argmax(arm_scores))
-        arms_probs[argmax] = 1.0
-        return arms_probs.tolist()
 
     def _select_idx(
         self,

@@ -1,5 +1,5 @@
 from multiprocessing import Pool
-from typing import Union, Tuple, Optional, List
+from typing import Tuple, Callable, Union, Type, List, Dict, Any
 import os
 import json
 
@@ -10,25 +10,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchbearer import Trial
+from mars_gym.meta_config import ProjectConfig, IOType, Column
 
-from mars_gym.simulation.base import (
-    TORCH_ACTIVATION_FUNCTIONS,
-    TORCH_DROPOUT_MODULES,
-    TORCH_LOSS_FUNCTIONS,
-    TORCH_WEIGHT_INIT,
-    BaseTorchModelWithAgentTraining,
-)
-from mars_gym.simulation.interaction import InteractionTraining
+from mars_gym.model.abstract import RecommenderModule
 
 
-class SimpleLinearModel(nn.Module):
+class SimpleLinearModel(RecommenderModule):
     def __init__(
-        self, n_users: int, n_items: int, n_factors: int,
+        self,
+        project_config: ProjectConfig,
+        index_mapping: Dict[str, Dict[Any, int]],
+        n_factors: int,
     ):
-        super(SimpleLinearModel, self).__init__()
+        super().__init__(project_config, index_mapping)
 
-        self.user_embeddings = nn.Embedding(n_users, n_factors)
-        self.item_embeddings = nn.Embedding(n_items, n_factors)
+        self.user_embeddings = nn.Embedding(self._n_users, n_factors)
+        self.item_embeddings = nn.Embedding(self._n_items, n_factors)
         self.dayofweek_embeddings = nn.Embedding(7, n_factors)
 
         num_dense = n_factors * (2 + 5) + 1
@@ -61,26 +58,26 @@ class SimpleLinearModel(nn.Module):
         return out
 
 
-class YoochoseModelTrainingMixin(object):
-    n_factors: int = luigi.IntParameter(default=128)
-    learning_rate: float = luigi.FloatParameter(1e-4)
-    test_size: float = luigi.FloatParameter(default=0.1)
-    loss_function: str = luigi.ChoiceParameter(
-        choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce"
-    )
+# class YoochoseModelTrainingMixin(object):
+#     n_factors: int = luigi.IntParameter(default=128)
+#     learning_rate: float = luigi.FloatParameter(1e-4)
+#     test_size: float = luigi.FloatParameter(default=0.1)
+#     loss_function: str = luigi.ChoiceParameter(
+#         choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce"
+#     )
 
-    def create_module(self) -> nn.Module:
-        return SimpleLinearModel(
-            n_users=self.n_users, n_items=self.n_items, n_factors=self.n_factors
-        )
-
-
-class YoochoseModelInteraction(YoochoseModelTrainingMixin, InteractionTraining):
-    pass
+#     def create_module(self) -> nn.Module:
+#         return SimpleLinearModel(
+#             n_users=self.n_users, n_items=self.n_items, n_factors=self.n_factors
+#         )
 
 
-class YoochoseModelTraining(
-    YoochoseModelTrainingMixin, BaseTorchModelWithAgentTraining
-):
-    negative_proportion: int = luigi.FloatParameter(0.8)
-    pass
+# class YoochoseModelInteraction(YoochoseModelTrainingMixin, InteractionTraining):
+#     pass
+
+
+# class YoochoseModelTraining(
+#     YoochoseModelTrainingMixin, BaseTorchModelWithAgentTraining
+# ):
+#     negative_proportion: int = luigi.FloatParameter(0.8)
+#     pass

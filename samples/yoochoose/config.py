@@ -4,22 +4,38 @@ from mars_gym.data.dataset import (
     InteractionsWithNegativeItemGenerationDataset,
 )
 from mars_gym.meta_config import *
-from samples.exp_trivago_rio import data as exp_trivago_data
+from samples.yoochoose import data
 
-PROJECTS: Dict[str, ProjectConfig] = {
-    "trivago_rio": ProjectConfig(
-        base_dir=exp_trivago_data.BASE_DIR,
-        prepare_data_frames_task=exp_trivago_data.PrepareTrivagoSessionsDataFrames,
-        dataset_class=InteractionsDataset,
-        user_column=Column("user_id", IOType.INDEXABLE),
-        item_column=Column("item_id", IOType.INDEXABLE),
-        available_arms_column_name="impressions",
-        other_input_columns=[
-            Column("pos_item_id", IOType.NUMBER),
-            Column("list_reference_item", IOType.INDEXABLE_ARRAY),
-        ],
-        metadata_columns=[Column("list_metadata", IOType.INT_ARRAY),],
-        output_column=Column("clicked", IOType.NUMBER),
-        auxiliar_output_columns=[],
-    )
-}
+sample_yoochoose = ProjectConfig(
+    base_dir=data.BASE_DIR,
+    prepare_data_frames_task=data.InteractionDataFrame,
+    dataset_class=InteractionsDataset,
+    user_column=Column("SessionID", IOType.INDEXABLE),
+    item_column=Column("ItemID", IOType.INDEXABLE),
+    timestamp_column_name="Timestamp",
+    available_arms_column_name="available_items",
+    other_input_columns=[
+        Column("Timestamp_dayofweek", IOType.NUMBER),
+        Column("Step", IOType.NUMBER),
+        Column("ItemID_history", IOType.INDEXABLE_ARRAY, same_index_as="ItemID"),
+    ],
+    output_column=Column("buy", IOType.NUMBER),
+    recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+)
+
+sample_yoochoose_with_negative_sample = ProjectConfig(
+    base_dir=data.BASE_DIR,
+    prepare_data_frames_task=data.InteractionDataFrame,
+    dataset_class=InteractionsWithNegativeItemGenerationDataset,
+    user_column=Column("SessionID", IOType.INDEXABLE),
+    item_column=Column("ItemID", IOType.INDEXABLE),
+    timestamp_column_name="Timestamp",
+    available_arms_column_name="available_items",
+    other_input_columns=[
+        Column("Timestamp_dayofweek", IOType.NUMBER),
+        Column("Step", IOType.NUMBER),
+        Column("ItemID_history", IOType.INDEXABLE_ARRAY, same_index_as="ItemID"),
+    ],
+    output_column=Column("buy", IOType.NUMBER),
+    recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+)

@@ -1,5 +1,5 @@
 from multiprocessing import Pool
-from typing import Union, Tuple, Optional, List
+from typing import Tuple, Callable, Union, Type, List, Dict, Any
 import os
 import json
 
@@ -10,34 +10,26 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchbearer import Trial
+from mars_gym.meta_config import ProjectConfig, IOType, Column
 
-from mars_gym.simulation.training import (
-    TORCH_ACTIVATION_FUNCTIONS,
-    TORCH_DROPOUT_MODULES,
-    TORCH_LOSS_FUNCTIONS,
-    TORCH_WEIGHT_INIT,
-    TorchModelWithAgentTraining
-)
-from mars_gym.simulation.interaction import InteractionTraining
+from mars_gym.model.abstract import RecommenderModule
 
 
-class SimpleLinearModel(nn.Module):
+class SimpleLinearModel(RecommenderModule):
     def __init__(
         self,
-        n_users: int,
-        n_items: int,
+        project_config: ProjectConfig,
+        index_mapping: Dict[str, Dict[Any, int]],
         n_factors: int,
         metadata_size: int,
         window_hist_size: int,
     ):
-        super(SimpleLinearModel, self).__init__()
+        super().__init__(project_config, index_mapping)
 
-        self.user_embeddings = nn.Embedding(n_users, n_factors)
-        self.item_embeddings = nn.Embedding(n_items, n_factors)
+        self.user_embeddings = nn.Embedding(self._n_users, n_factors)
+        self.item_embeddings = nn.Embedding(self._n_items, n_factors)
 
-        num_dense = (
-            n_factors + window_hist_size + 1 + metadata_size
-        )  # + n_factors * n_factors
+        num_dense = n_factors + window_hist_size + 1 + metadata_size
 
         self.dense = nn.Sequential(
             nn.Linear(num_dense, int(num_dense / 2)),
@@ -88,27 +80,20 @@ class SimpleLinearModel(nn.Module):
         return out
 
 
-class TrivagoModelTrainingMixin(object):
-    n_factors: int = luigi.IntParameter(default=128)
+# class TrivagoModelTrainingMixin(object):
+#     n_factors: int = luigi.IntParameter(default=128)
 
-    def create_module(self) -> nn.Module:
-        return SimpleLinearModel(
-            n_users=max(
-                self.index_mapping[self.project_config.user_column.name].values()
-            )
-            + 1,
-            n_items=max(
-                self.index_mapping[self.project_config.item_column.name].values()
-            )
-            + 1,
-            n_factors=self.n_factors,
-            metadata_size=148,
-            window_hist_size=5,
-        )
-
-
-class TrivagoModelInteraction(TrivagoModelTrainingMixin, InteractionTraining):
-    pass
-
-class TrivagoModelTraining(TrivagoModelTrainingMixin, TorchModelWithAgentTraining):
-    pass
+#     def create_module(self) -> nn.Module:
+#         return SimpleLinearModel(
+#             n_users=max(
+#                 self.index_mapping[self.project_config.user_column.name].values()
+#             )
+#             + 1,
+#             n_items=max(
+#                 self.index_mapping[self.project_config.item_column.name].values()
+#             )
+#             + 1,
+#             n_factors=self.n_factors,
+#             metadata_size=148,
+#             window_hist_size=5,
+#         )

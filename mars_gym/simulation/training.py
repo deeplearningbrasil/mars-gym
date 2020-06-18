@@ -120,7 +120,7 @@ class BaseModelTraining(luigi.Task):
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     session_test_size: float = luigi.FloatParameter(default=0.10)
-    test_size: float = luigi.FloatParameter(default=0.0)
+    test_size: float = luigi.FloatParameter(default=0.2)
     dataset_split_method: str = luigi.ChoiceParameter(
         choices=["holdout", "column", "time", "k_fold"], default="time"
     )
@@ -880,7 +880,7 @@ def load_torch_model_training_from_task_dir(
 def load_torch_model_training_from_task_id(
     model_cls: Type[TorchModelTraining], task_id: str
 ) -> TorchModelTraining:
-    
+
     task_dir = get_task_dir(model_cls, task_id)
     if not os.path.exists(task_dir):
         task_dir = get_interaction_dir(model_cls, task_id)

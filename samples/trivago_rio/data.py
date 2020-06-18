@@ -26,18 +26,14 @@ from tqdm import tqdm
 from sklearn.feature_extraction.text import CountVectorizer
 from mars_gym.data.utils import DownloadDataset
 from mars_gym.utils.utils import _pad_sequence, to_array, array_index_udf
-
-# from mars_gym.
 from pyspark.sql.types import ArrayType, FloatType
 
-import samples.exp_trivago_rio
 
-
-OUTPUT_PATH: str = os.path.join("output")
+OUTPUT_PATH: str = os.environ[
+    "OUTPUT_PATH"
+] if "OUTPUT_PATH" in os.environ else os.path.join("output")
 BASE_DIR: str = os.path.join("output", "trivago_rio")
 DATASET_DIR: str = os.path.join("output", "trivago_rio", "dataset")
-
-# os.makedirs(DATASET_DIR, exist_ok=True)
 
 
 class PrepareMetaData(luigi.Task):

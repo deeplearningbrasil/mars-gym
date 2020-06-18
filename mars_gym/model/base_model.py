@@ -14,7 +14,7 @@ class LogisticRegression(RecommenderModule):
     def __init__(
         self,
         project_config: ProjectConfig,
-        index_mapping: Dict[str, Dict[Any, int]],        
+        index_mapping: Dict[str, Dict[Any, int]],
         n_factors: int,
         weight_init: Callable = lecun_normal_init,
     ):

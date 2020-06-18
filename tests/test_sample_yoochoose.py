@@ -1,7 +1,9 @@
 import sys, os
+
+os.environ["OUTPUT_PATH"] = "tests/output"
+
 import unittest
 from unittest.mock import patch
-
 import pandas as pd
 from unittest.mock import Mock
 from mars_gym.data import utils
@@ -11,8 +13,9 @@ from samples.yoochoose.data import (
     LoadAndPrepareDataset,
     InteractionDataFrame,
 )  # , PrepareHistoryInteractionData, PrepareInteractionDataFrame
-from samples.yoochoose.simulation import YoochoseModelTraining, YoochoseModelInteraction
 from mars_gym.evaluation.task import EvaluateTestSetPredictions
+from mars_gym.simulation.interaction import InteractionTraining
+from mars_gym.simulation.training import TorchModelWithAgentTraining
 import numpy as np
 import json
 import os
@@ -20,15 +23,12 @@ import mars_gym
 from mars_gym.utils import files
 from unittest.mock import patch
 import shutil
+from unittest import mock
 
 
-# @patch("samples.yoochoose.data.BASE_DIR", 'tests/output/trivago_rio')
-# @patch("samples.yoochoose.data.DATASET_DIR", 'tests/output/yoochoose/dataset')
-# @patch("samples.yoochoose.data.OUTPUT_PATH", 'tests/output')
-# @patch("mars_gym.utils.files.OUTPUT_PATH", 'tests/output')
 class TestYoochoose(unittest.TestCase):
-    # def setUp(self):
-    #   shutil.rmtree('tests/output', ignore_errors=True)
+    def setUp(self):
+        shutil.rmtree("tests/output", ignore_errors=True)
 
     # Data Engineer
     def test_prepare_dataset(self):
@@ -41,15 +41,21 @@ class TestYoochoose(unittest.TestCase):
 
     # Data Simulation
     def test_training_and_evaluation(self):
-        ## PYTHONPATH="." luigi --module samples.yoochoose.simulation YoochoseModelTraining --project test_yoochoose
-        job_train = YoochoseModelTraining(project="test_yoochoose", epochs=1)
+        ## PYTHONPATH="." luigi --module mars_gym.simulation.training TorchModelWithAgentTraining --project samples.yoochoose.config.sample_yoochoose_with_negative_sample
+        job_train = TorchModelWithAgentTraining(
+            project="samples.yoochoose.config.sample_yoochoose_with_negative_sample",
+            recommender_module_class="samples.yoochoose.simulation.SimpleLinearModel",
+            recommender_extra_params={"n_factors": 10},
+            epochs=1,
+            negative_proportion=0.2,
+            test_size=0.1,
+        )
         luigi.build([job_train], local_scheduler=True)
 
         ## PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-module samples.yoochoose.simulation  --model-cls YoochoseModelTraining --model-task-id YoochoseModelTraining____model____70b1aa0735 --fairness-columns "[]" --no-offpolicy
         job_eval = EvaluateTestSetPredictions(
-            model_module="samples.yoochoose.simulation",
-            model_cls="YoochoseModelTraining",
             model_task_id=job_train.task_id,
+            model_task_class="mars_gym.simulation.training.TorchModelWithAgentTraining",
         )
         luigi.build([job_eval], local_scheduler=True)
 
@@ -64,21 +70,22 @@ class TestYoochoose(unittest.TestCase):
     # Data Evaluation
     def test_interactive_and_evaluation(self):
         ## PYTHONPATH="." luigi --module samples.yoochoose.simulation YoochoseModelInteraction --project test_yoochoose --obs-batch-size 500 --num-episodes 1 --full-refit --bandit-policy random --epochs 100 --sample-size 10000 --seed 47
-        job_train = YoochoseModelInteraction(
-            project="test_yoochoose",
-            batch_size=200,
+        job_train = InteractionTraining(
+            project="samples.yoochoose.config.sample_yoochoose",
+            recommender_module_class="samples.yoochoose.simulation.SimpleLinearModel",
+            recommender_extra_params={"n_factors": 10},
+            batch_size=1,
             epochs=1,
             obs_batch_size=10,
-            bandit_policy="epsilon_greedy",
             sample_size=100,
+            test_size=0.1,
         )
         luigi.build([job_train], local_scheduler=True)
 
         ## PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-module samples.yoochoose.simulation  --model-cls YoochoseModelTraining --model-task-id YoochoseModelTraining____model____70b1aa0735 --fairness-columns "[]" --no-offpolicy
         job_eval = EvaluateTestSetPredictions(
-            model_module="samples.yoochoose.simulation",
-            model_cls="YoochoseModelInteraction",
             model_task_id=job_train.task_id,
+            model_task_class="mars_gym.simulation.interaction.InteractionTraining",
         )
         luigi.build([job_eval], local_scheduler=True)
 

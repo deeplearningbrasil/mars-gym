@@ -14,9 +14,11 @@ from mars_gym.data.utils import DownloadDataset
 from mars_gym.utils.utils import _pad_sequence, to_array, array_index_udf
 import random
 
-OUTPUT_PATH: str = os.path.join("output")
-BASE_DIR: str = os.path.join("output", "yoochoose")
-DATASET_DIR: str = os.path.join("output", "yoochoose", "dataset")
+OUTPUT_PATH: str = os.environ[
+    "OUTPUT_PATH"
+] if "OUTPUT_PATH" in os.environ else os.path.join("output")
+BASE_DIR: str = os.path.join(OUTPUT_PATH, "yoochoose")
+DATASET_DIR: str = os.path.join(OUTPUT_PATH, "yoochoose", "dataset")
 
 
 class PrepareDataset(luigi.Task):

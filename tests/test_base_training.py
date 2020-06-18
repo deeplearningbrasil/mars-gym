@@ -1,11 +1,9 @@
-# sys.path.insert(0, os.path.dirname(__file__))
+import sys, os
+
+os.environ["OUTPUT_PATH"] = "tests/output"
 
 import unittest
 import luigi
-
-# from luigi import scheduler
-# from luigi import server
-# import luigi.cmdline
 import torch.nn as nn
 from mars_gym.model.base_model import LogisticRegression
 from mars_gym.simulation.interaction import InteractionTraining
@@ -19,7 +17,6 @@ class TestTraining(unittest.TestCase):
     def setUp(self):
         shutil.rmtree("tests/output", ignore_errors=True)
 
-    @patch("mars_gym.utils.files.OUTPUT_PATH", "tests/output")
     def test_Interaction_training_and_evaluation(self):
         # Training
         job = InteractionTraining(
@@ -35,11 +32,11 @@ class TestTraining(unittest.TestCase):
         # Evaluation
         job = EvaluateTestSetPredictions(
             model_task_id=job.task_id,
-            model_task_class='mars_gym.simulation.interaction.InteractionTraining')
+            model_task_class="mars_gym.simulation.interaction.InteractionTraining",
+        )
 
         luigi.build([job], local_scheduler=True)
 
-    @patch("mars_gym.utils.files.OUTPUT_PATH", "tests/output")
     def test_batch_training_and_evaluation(self):
         # Training
         job = TorchModelWithAgentTraining(
@@ -54,9 +51,11 @@ class TestTraining(unittest.TestCase):
         # Evaluation
         job = EvaluateTestSetPredictions(
             model_task_id=job.task_id,
-            model_task_class='mars_gym.simulation.interaction.TorchModelWithAgentTraining')
+            model_task_class="mars_gym.simulation.training.TorchModelWithAgentTraining",
+        )
 
         luigi.build([job], local_scheduler=True)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
