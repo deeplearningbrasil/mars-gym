@@ -1,25 +1,29 @@
 import torch
 from torch import nn as nn
-from typing import List, Callable
+from typing import List, Callable, Dict, Any
 
-from mars_gym.meta_config import Column, IOType
+from mars_gym.meta_config import Column, IOType, ProjectConfig
+from mars_gym.model.abstract import RecommenderModule
 from mars_gym.torch.init import lecun_normal_init
 
 
-class PolicyEstimator(nn.Module):
+class PolicyEstimator(RecommenderModule):
     def __init__(
         self,
-        n_items: int,
+        project_config: ProjectConfig,
+        index_mapping: Dict[str, Dict[Any, int]],
         embedding_dim: int,
-        input_columns: List[Column],
-        num_elements_per_embeddings: List[int],
         layers: List[int],
         sample_batch: List[torch.Tensor],
         weight_init: Callable = lecun_normal_init,
     ) -> None:
-        super().__init__()
+        super().__init__(project_config, index_mapping)
 
-        self.input_columns = input_columns
+        num_elements_per_embeddings = [
+            max(self._index_mapping[input_column.name].values()) + 1
+            for input_column in self._project_config.input_columns
+            if input_column.type in (IOType.INDEXABLE, IOType.INDEXABLE_ARRAY)
+        ]
         self.embeddings = nn.ModuleList(
             [nn.Embedding(n, embedding_dim) for n in num_elements_per_embeddings]
         )
@@ -33,7 +37,7 @@ class PolicyEstimator(nn.Module):
                 for i, layer_size in enumerate(layers)
             ]
         )
-        self.output = nn.Linear(layers[-1] if len(layers) > 0 else input_dim, n_items)
+        self.output = nn.Linear(layers[-1] if len(layers) > 0 else input_dim, self._n_items)
 
         self.weight_init = weight_init
         self.apply(self.init_weights)
@@ -51,7 +55,7 @@ class PolicyEstimator(nn.Module):
     def transform_inputs(self, inputs: List[torch.Tensor]) -> torch.Tensor:
         transformed_inputs: List[torch.Tensor] = []
         embeddings_idx = 0
-        for input, input_column in zip(inputs, self.input_columns):
+        for input, input_column in zip(inputs, self._project_config.input_columns):
             # from IPython import embed; embed()
             # if embeddings_idx == 0:
             #    embeddings_idx += 1

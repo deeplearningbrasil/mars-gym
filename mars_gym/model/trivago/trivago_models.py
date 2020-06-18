@@ -1,9 +1,12 @@
-from typing import Tuple, Callable, Union, Type, List
+from typing import Tuple, Callable, Union, Type, List, Dict, Any
 from itertools import combinations
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from mars_gym.meta_config import ProjectConfig
+from mars_gym.model.abstract import RecommenderModule
 from mars_gym.torch.init import lecun_normal_init
 import numpy as np
 import copy
@@ -73,12 +76,11 @@ class TestModel(nn.Module):
         return output
 
 
-class SimpleLinearModel(nn.Module):
+class SimpleLinearModel(RecommenderModule):
     def __init__(
         self,
-        n_users: int,
-        n_items: int,
-        n_action_types: int,
+        project_config: ProjectConfig,
+        index_mapping: Dict[str, Dict[Any, int]],
         n_factors: int,
         window_hist_size: int,
         metadata_size: int,
@@ -90,10 +92,12 @@ class SimpleLinearModel(nn.Module):
         weight_init: Callable = lecun_normal_init,
     ):
 
-        super(SimpleLinearModel, self).__init__()
+        super(SimpleLinearModel, self).__init__(project_config, index_mapping)
 
-        self.user_embeddings = nn.Embedding(n_users, n_factors)
-        self.item_embeddings = nn.Embedding(n_items, n_factors)
+        n_action_types = max(self._index_mapping["list_action_type_idx"].values()) + 1
+
+        self.user_embeddings = nn.Embedding(self._n_users, n_factors)
+        self.item_embeddings = nn.Embedding(self._n_items, n_factors)
         self.action_type_embeddings = nn.Embedding(n_action_types, n_factors)
         # self.platform_embeddings    = nn.Embedding(36, n_factors)
 

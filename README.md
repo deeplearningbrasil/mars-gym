@@ -65,10 +65,9 @@ PYTHONPATH="." luigi --module MODULE --project PROJECT \
 
 ```bash
 
-PYTHONPATH="." luigi --module MODULE --model-module MODEL_MODULE \
- --model-cls MODEL_CLS --model-task-id MODEL_TASK_ID --fairness-columns "[]" \
- --direct-estimator-module DE_MODULE \
- --direct-estimator-cls DE_CLS
+PYTHONPATH="." luigi --module MODULE --model-task-class MODEL_CLASS \
+ --model-task-id MODEL_TASK_ID --fairness-columns "[]" \
+ --direct-estimator-class DE_CLASS
 ```
 
 #### Evaluation Module

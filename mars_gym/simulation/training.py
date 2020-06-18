@@ -1,6 +1,5 @@
 import abc
 import gc
-import importlib
 import json
 import logging
 import os
@@ -35,7 +34,6 @@ from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from tqdm import tqdm
 
-from mars_gym.config import PROJECTS, ProjectConfig
 from mars_gym.cuda import CudaRepository
 from mars_gym.data.dataset import (
     preprocess_interactions_data_frame,
@@ -44,9 +42,10 @@ from mars_gym.data.dataset import (
     InteractionsDataset,
 )
 from mars_gym.gym.envs.recsys import ITEM_METADATA_KEY
-from mars_gym.meta_config import Column, IOType
+from mars_gym.meta_config import Column, IOType, ProjectConfig
+from mars_gym.model.abstract import RecommenderModule
 from mars_gym.model.agent import BanditAgent
-from mars_gym.model.bandit import BANDIT_POLICIES
+from mars_gym.model.bandit import BanditPolicy
 from mars_gym.torch.data import NoAutoCollationDataLoader, FasterBatchSampler
 from mars_gym.torch.init import lecun_normal_init, he_init
 from mars_gym.torch.loss import (
@@ -74,6 +73,7 @@ from mars_gym.utils.index_mapping import (
 )
 from mars_gym.utils.plot import plot_history
 from mars_gym.utils import files
+from mars_gym.utils.reflection import load_attr
 
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
@@ -113,7 +113,9 @@ DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 class BaseModelTraining(luigi.Task):
     __metaclass__ = abc.ABCMeta
 
-    project: str = luigi.ChoiceParameter(choices=PROJECTS.keys())
+    project: str = luigi.Parameter(
+        description="Should be like config.trivago_contextual_bandit",
+    )
 
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
@@ -188,7 +190,7 @@ class BaseModelTraining(luigi.Task):
     @property
     def project_config(self) -> ProjectConfig:
         if not hasattr(self, "_project_config"):
-            self._project_config = deepcopy(PROJECTS[self.project])
+            self._project_config = deepcopy(load_attr(self.project, ProjectConfig))
             if (
                 self.loss_function == "crm"
                 and self.project_config.propensity_score_column_name
@@ -443,8 +445,13 @@ class BaseModelTraining(luigi.Task):
                 CudaRepository.put_available_device(self.device_id)
 
 
-class BaseTorchModelTraining(BaseModelTraining):
+class TorchModelTraining(BaseModelTraining):
     __metaclass__ = abc.ABCMeta
+
+    recommender_module_class: str = luigi.Parameter(
+        description="Should be like mars_gym.model.trivago.trivago_models.SimpleLinearModel",
+    )
+    recommender_extra_params: Dict[str, Any] = luigi.DictParameter(default={})
 
     device: str = luigi.ChoiceParameter(choices=["cpu", "cuda"], default=DEFAULT_DEVICE)
 
@@ -484,9 +491,24 @@ class BaseTorchModelTraining(BaseModelTraining):
                 self._device_id = None
         return self._device_id
 
-    @abc.abstractmethod
+    @property
+    def module_class(self) -> Type[RecommenderModule]:
+        if not hasattr(self, "_module_class"):
+            self._module_class = load_attr(
+                self.recommender_module_class, Type[RecommenderModule]
+            )
+        return self._module_class
+
+    @property
+    def all_recommender_extra_params(self) -> Dict[str, Any]:
+        return self.recommender_extra_params
+
     def create_module(self) -> nn.Module:
-        pass
+        return self.module_class(
+            project_config=self.project_config,
+            index_mapping=self.index_mapping,
+            **self.all_recommender_extra_params,
+        )
 
     def train(self):
         if self.device == "cuda":
@@ -657,14 +679,16 @@ class BaseTorchModelTraining(BaseModelTraining):
         )
 
 
-class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
-    bandit_policy: str = luigi.ChoiceParameter(
-        choices=BANDIT_POLICIES.keys(), default="model"
+class TorchModelWithAgentTraining(TorchModelTraining):
+    bandit_policy_class: str = luigi.Parameter(
+        default="mars_gym.model.bandit.ModelPolicy",
+        description="Should be like mars_gym.model.bandit.EpsilonGreedy",
     )
     bandit_policy_params: Dict[str, Any] = luigi.DictParameter(default={})
 
     def create_agent(self) -> BanditAgent:
-        bandit = BANDIT_POLICIES[self.bandit_policy](
+        bandit_class = load_attr(self.bandit_policy_class, Type[BanditPolicy])
+        bandit = bandit_class(
             reward_model=self.get_trained_module(), **self.bandit_policy_params
         )
         return BanditAgent(bandit)
@@ -847,69 +871,15 @@ class BaseTorchModelWithAgentTraining(BaseTorchModelTraining):
             self._save_test_set_predictions(self.create_agent())
 
 
-class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
-    model_module: str = luigi.Parameter(default="mars_gym.task.simulation.interaction")
-    model_cls: str = luigi.Parameter(default="InteractionTraining")
-    model_task_id: str = luigi.Parameter()
-    offpolicy_eval: bool = luigi.BoolParameter(default=False)
-    task_hash: str = luigi.Parameter(default="none")
-
-    @property
-    def cache_attr(self):
-        return [""]
-
-    @property
-    def task_name(self):
-        return self.model_task_id + "_" + self.task_id.split("_")[-1]
-
-    @property
-    def model_training(self) -> BaseTorchModelTraining:
-        if not hasattr(self, "_model_training"):
-            module = importlib.import_module(self.model_module)
-            class_ = getattr(module, self.model_cls)
-
-            self._model_training = load_torch_model_training_from_task_id(
-                class_, self.model_task_id
-            )
-
-        return self._model_training
-
-    @property
-    def n_items(self):
-        return self.model_training.n_items
-
-    def output(self):
-        return luigi.LocalTarget(
-            os.path.join(
-                files.OUTPUT_PATH,
-                "evaluation",
-                self.__class__.__name__,
-                "results",
-                self.task_name,
-            )
-        )
-
-    def cache_cleanup(self):
-        for a in self.cache_attrs:
-            if hasattr(self, a):
-                delattr(self, a)
-
-    def _save_params(self):
-        with open(get_params_path(self.output().path), "w") as params_file:
-            json.dump(
-                self.param_kwargs, params_file, default=lambda o: dict(o), indent=4
-            )
-
-
 def load_torch_model_training_from_task_dir(
-    model_cls: Type[BaseTorchModelTraining], task_dir: str
-) -> BaseTorchModelTraining:
+    model_cls: Type[TorchModelTraining], task_dir: str
+) -> TorchModelTraining:
     return model_cls(**get_params(task_dir))
 
 
 def load_torch_model_training_from_task_id(
-    model_cls: Type[BaseTorchModelTraining], task_id: str
-) -> BaseTorchModelTraining:
+    model_cls: Type[TorchModelTraining], task_id: str
+) -> TorchModelTraining:
     task_dir = get_task_dir(model_cls, task_id)
     if not os.path.exists(task_dir):
         task_dir = get_interaction_dir(model_cls, task_id)
