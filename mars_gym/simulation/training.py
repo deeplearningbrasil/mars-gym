@@ -696,7 +696,7 @@ class TorchModelWithAgentTraining(TorchModelTraining):
     @property
     def unique_items(self) -> List[int]:
         if not hasattr(self, "_unique_items"):
-            self._unique_items = self.interactions_data_frame[
+            self._unique_items = self.get_data_frame_for_indexing()[
                 self.project_config.item_column.name
             ].unique()
         return self._unique_items
@@ -880,6 +880,7 @@ def load_torch_model_training_from_task_dir(
 def load_torch_model_training_from_task_id(
     model_cls: Type[TorchModelTraining], task_id: str
 ) -> TorchModelTraining:
+    
     task_dir = get_task_dir(model_cls, task_id)
     if not os.path.exists(task_dir):
         task_dir = get_interaction_dir(model_cls, task_id)

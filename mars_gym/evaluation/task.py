@@ -46,7 +46,7 @@ from mars_gym.utils.utils import parallel_literal_eval, JsonEncoder
 class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     model_task_class: str = luigi.Parameter(default="mars_gym.simulation.interaction.InteractionTraining")
     model_task_id: str = luigi.Parameter()
-    no_offpolicy_eval: bool = luigi.BoolParameter(default=False)
+    offpolicy_eval: bool = luigi.BoolParameter(default=False)
     task_hash: str = luigi.Parameter(default="none")
 
     @property
@@ -61,7 +61,6 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     def model_training(self) -> TorchModelTraining:
         if not hasattr(self, "_model_training"):
             class_ = load_attr(self.model_task_class, Type[TorchModelTraining])
-
             self._model_training = load_torch_model_training_from_task_id(
                 class_, self.model_task_id
             )
