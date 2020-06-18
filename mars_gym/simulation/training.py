@@ -325,13 +325,13 @@ class BaseModelTraining(luigi.Task):
                 df = self.get_data_frame_for_indexing()
 
                 self._index_mapping = {
-                    column.name: create_index_mapping(df[column.name])
+                    column.name: create_index_mapping(df[column.name].values)
                     for column in self.project_config.all_columns
                     if column.type == IOType.INDEXABLE and not column.same_index_as
                 }
                 self._index_mapping.update(
                     {
-                        column.name: create_index_mapping_from_arrays(df[column.name])
+                        column.name: create_index_mapping_from_arrays(df[column.name].values)
                         for column in self.project_config.all_columns
                         if column.type == IOType.INDEXABLE_ARRAY
                         and not column.same_index_as

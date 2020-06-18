@@ -11,16 +11,23 @@ from mars_gym.meta_config import ProjectConfig, IOType
 def create_index_mapping(
     indexable_values: Iterable, include_unkown: bool = True, include_none: bool = True
 ) -> Dict[Any, int]:
+<<<<<<< HEAD
 
     indexable_values = list(sorted(set(indexable_values)))
+=======
+    indexable_values = list(sorted(set(value for value in indexable_values if not pd.isnull(value))))
+>>>>>>> 60d0db9abfd3089bfe91bf86a4443372c8e8dc0c
     if include_none:
         indexable_values = [None] + indexable_values
     if include_unkown:
         indices = np.arange(1, len(indexable_values) + 1)
-        return defaultdict(int, zip(indexable_values, indices))  # Unkown = 0
+        mapping = defaultdict(int, zip(indexable_values, indices))  # Unkown = 0
     else:
         indices = np.arange(0, len(indexable_values))
-        return dict(zip(indexable_values, indices))
+        mapping = dict(zip(indexable_values, indices))
+    if include_none:
+        mapping[np.nan] = 1  # Both None and nan are treated the same
+    return mapping
 
 
 def create_index_mapping_from_arrays(
