@@ -1,8 +1,5 @@
-from multiprocessing import Pool
-from typing import Tuple, Callable, Union, Type, List, Dict, Any
+from typing import Dict, Any, List, Tuple, Union
 import os
-import json
-
 import luigi
 import pandas as pd
 import numpy as np
@@ -10,10 +7,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchbearer import Trial
-from mars_gym.meta_config import ProjectConfig, IOType, Column
-
+from mars_gym.meta_config import ProjectConfig
 from mars_gym.model.abstract import RecommenderModule
-
+from mars_gym.model.bandit import BanditPolicy
+from numpy.random.mtrand import RandomState
 
 class SimpleLinearModel(RecommenderModule):
     def __init__(
@@ -58,26 +55,23 @@ class SimpleLinearModel(RecommenderModule):
         return out
 
 
-# class YoochoseModelTrainingMixin(object):
-#     n_factors: int = luigi.IntParameter(default=128)
-#     learning_rate: float = luigi.FloatParameter(1e-4)
-#     test_size: float = luigi.FloatParameter(default=0.1)
-#     loss_function: str = luigi.ChoiceParameter(
-#         choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce"
-#     )
+class RandomPolicy(BanditPolicy):
+    def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
+        super().__init__(None)
+        self._rng = RandomState(seed)
 
-#     def create_module(self) -> nn.Module:
-#         return SimpleLinearModel(
-#             n_users=self.n_users, n_items=self.n_items, n_factors=self.n_factors
-#         )
+    def _select_idx(
+        self,
+        arm_indices: List[int],
+        arm_contexts: Tuple[np.ndarray, ...] = None,
+        arm_scores: List[float] = None,
+        pos: int = 0,
+    ) -> Union[int, Tuple[int, float]]:
 
+        n_arms = len(arm_indices)
 
-# class YoochoseModelInteraction(YoochoseModelTrainingMixin, InteractionTraining):
-#     pass
+        arm_probas = np.ones(n_arms) / n_arms
 
+        action = self._rng.choice(n_arms, p=arm_probas)
 
-# class YoochoseModelTraining(
-#     YoochoseModelTrainingMixin, BaseTorchModelWithAgentTraining
-# ):
-#     negative_proportion: int = luigi.FloatParameter(0.8)
-#     pass
+        return action        

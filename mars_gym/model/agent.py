@@ -36,7 +36,7 @@ class BanditAgent(object):
 
         if with_probs:
             arm_idx = self.bandit.select_idx(arm_indices, arm_contexts, arm_scores)
-            prob = self.bandit._compute_prob(arm_scores)
+            prob = self.bandit._compute_prob(arm_indices, arm_scores)
             return arm_indices[arm_idx], prob[arm_idx]
         else:
             return self.bandit.select(

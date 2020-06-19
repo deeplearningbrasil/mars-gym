@@ -28,7 +28,7 @@ from unittest import mock
 
 class TestYoochoose(unittest.TestCase):
     def setUp(self):
-        shutil.rmtree("tests/output", ignore_errors=True)
+       shutil.rmtree("tests/output", ignore_errors=True)
 
     # Data Engineer
     def test_prepare_dataset(self):
@@ -74,6 +74,8 @@ class TestYoochoose(unittest.TestCase):
             project="samples.yoochoose.config.sample_yoochoose",
             recommender_module_class="samples.yoochoose.simulation.SimpleLinearModel",
             recommender_extra_params={"n_factors": 10},
+            bandit_policy_class="samples.yoochoose.simulation.RandomPolicy",
+            bandit_policy_params={"seed": 42},
             batch_size=1,
             epochs=1,
             obs_batch_size=10,
@@ -95,7 +97,7 @@ class TestYoochoose(unittest.TestCase):
 
         self.assertEqual(metrics["model_task"], job_train.task_id)
         self.assertEqual(metrics["count"], 30643)
-        self.assertEqual(np.round(metrics["precision_at_1"], 2), 0.36)
+        self.assertEqual(np.round(metrics["precision_at_1"], 2), 0.48)
 
 
 if __name__ == "__main__":

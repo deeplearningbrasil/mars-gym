@@ -1,17 +1,11 @@
 import luigi
 import pandas as pd
 import numpy as np
-import datetime
 import os
-from typing import List, Tuple, Dict, Optional
 from mars_gym.data.task import (
-    BasePySparkTask,
     BasePrepareDataFrames,
 )
-from tqdm import tqdm
-from sklearn.feature_extraction.text import CountVectorizer
 from mars_gym.data.utils import DownloadDataset
-from mars_gym.utils.utils import _pad_sequence, to_array, array_index_udf
 import random
 
 OUTPUT_PATH: str = os.environ[

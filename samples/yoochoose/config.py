@@ -1,4 +1,3 @@
-import os
 from mars_gym.data.dataset import (
     InteractionsDataset,
     InteractionsWithNegativeItemGenerationDataset,

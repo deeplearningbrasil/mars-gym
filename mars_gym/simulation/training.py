@@ -789,7 +789,7 @@ class TorchModelWithAgentTraining(TorchModelTraining):
         arm_scores = (
             self._get_arm_scores(agent, ob_dataset)
             if agent.bandit.reward_model
-            else agent.bandit.calculate_scores(arm_contexts)
+            else agent.bandit.calculate_scores(arm_indices, arm_contexts)
         )
         return arm_contexts, arm_indices, arm_scores
 
