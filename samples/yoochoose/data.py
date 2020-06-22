@@ -2,9 +2,7 @@ import luigi
 import pandas as pd
 import numpy as np
 import os
-from mars_gym.data.task import (
-    BasePrepareDataFrames,
-)
+from mars_gym.data.task import BasePrepareDataFrames
 from mars_gym.data.utils import DownloadDataset
 import random
 
@@ -174,8 +172,9 @@ class InteractionDataFrame(BasePrepareDataFrames):
     def dataset_dir(self) -> str:
         return DATASET_DIR
 
-    def read_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input().path)
+    @property
+    def read_data_frame_path(self) -> pd.DataFrame:
+        return self.input().path
 
     def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
         return df

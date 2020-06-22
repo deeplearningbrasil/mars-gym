@@ -13,7 +13,6 @@ from mars_gym.data.task import (
 )
 from pyspark.sql.window import Window
 
-# from pyspark.sql.functions import udf
 from pyspark.sql.types import ArrayType, FloatType, IntegerType, StringType
 from pyspark.sql.functions import (
     when,
@@ -32,8 +31,8 @@ from pyspark.sql.types import ArrayType, FloatType
 OUTPUT_PATH: str = os.environ[
     "OUTPUT_PATH"
 ] if "OUTPUT_PATH" in os.environ else os.path.join("output")
-BASE_DIR: str = os.path.join("output", "trivago_rio")
-DATASET_DIR: str = os.path.join("output", "trivago_rio", "dataset")
+BASE_DIR: str = os.path.join(OUTPUT_PATH, "trivago_rio")
+DATASET_DIR: str = os.path.join(OUTPUT_PATH, "trivago_rio", "dataset")
 
 
 class PrepareMetaData(luigi.Task):
@@ -172,8 +171,9 @@ class PrepareTrivagoDataFrame(BasePrepareDataFrames):
     def metadata_data_frame_path(self) -> Optional[str]:
         return self.input()[1].path
 
-    def read_data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
+    @property
+    def read_data_frame_path(self) -> pd.DataFrame:
+        return self.input()[0].path
 
     def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
         return df

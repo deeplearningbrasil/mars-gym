@@ -11,7 +11,9 @@ from mars_gym.meta_config import ProjectConfig, IOType
 def create_index_mapping(
     indexable_values: Iterable, include_unkown: bool = True, include_none: bool = True
 ) -> Dict[Any, int]:
-    indexable_values = list(sorted(set(value for value in indexable_values if not pd.isnull(value))))
+    indexable_values = list(
+        sorted(set(value for value in indexable_values if not pd.isnull(value)))
+    )
     if include_none:
         indexable_values = [None] + indexable_values
     if include_unkown:

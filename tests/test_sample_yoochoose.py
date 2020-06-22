@@ -28,7 +28,7 @@ from unittest import mock
 
 class TestYoochoose(unittest.TestCase):
     def setUp(self):
-       shutil.rmtree("tests/output", ignore_errors=True)
+        shutil.rmtree("tests/output", ignore_errors=True)
 
     # Data Engineer
     def test_prepare_dataset(self):

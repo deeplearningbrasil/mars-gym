@@ -30,6 +30,7 @@ class TestTraining(unittest.TestCase):
         luigi.build([job], local_scheduler=True)
 
         # Evaluation
+        #PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d --model-task-class "mars_gym.simulation.interaction.InteractionTraining"
         job = EvaluateTestSetPredictions(
             model_task_id=job.task_id,
             model_task_class="mars_gym.simulation.interaction.InteractionTraining",
@@ -49,6 +50,7 @@ class TestTraining(unittest.TestCase):
         luigi.build([job], local_scheduler=True)
 
         # Evaluation
+        
         job = EvaluateTestSetPredictions(
             model_task_id=job.task_id,
             model_task_class="mars_gym.simulation.training.TorchModelWithAgentTraining",

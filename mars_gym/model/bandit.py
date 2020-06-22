@@ -32,13 +32,17 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
     ) -> Union[int, Tuple[int, float]]:
         pass
 
-    def _compute_prob(self, arm_indices: List[int], arm_scores: List[float]) -> List[float]:
+    def _compute_prob(
+        self, arm_indices: List[int], arm_scores: List[float]
+    ) -> List[float]:
         n_arms = len(arm_indices)
         arms_probs = np.zeros(n_arms)
         arms_probs[0] = 1.0
         return arms_probs.tolist()
-        
-    def calculate_scores(self,  arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+
+    def calculate_scores(
+        self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]
+    ) -> List[float]:
         if self.reward_model:
             inputs: torch.Tensor = default_convert(arm_contexts)
             scores: torch.Tensor = self.reward_model(*inputs)
@@ -57,7 +61,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
         if arm_scores is None:
             arm_scores = self.calculate_scores(arm_indices, arm_contexts)
-            
+
         return self._select_idx(arm_indices, arm_contexts, arm_scores, pos)
 
     def select(
@@ -82,7 +86,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
             arm_scores = self.calculate_scores(arm_indices, arm_contexts)
 
         assert len(arm_indices) == len(arm_scores)
-        
+
         self._limit = limit
         ranked_arms = []
         arm_indices = list(arm_indices)
@@ -140,13 +144,17 @@ class FixedPolicy(BanditPolicy):
         self._arg = arg
         self._arm_index = 1
 
-    def calculate_scores(self,  arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+    def calculate_scores(
+        self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]
+    ) -> List[float]:
         X, arms = self._flatten_input_and_extract_arms(arm_contexts)
         arm_scores = [int(x[self._arg] == arm) for x, arm in zip(X, arms)]
 
         return arm_scores
 
-    def _compute_prob(self, arm_indices: List[int], arm_scores: List[float]) -> List[float]:
+    def _compute_prob(
+        self, arm_indices: List[int], arm_scores: List[float]
+    ) -> List[float]:
         n_arms = len(arm_scores)
         arms_probs = np.zeros(n_arms)
         argmax = int(np.argmax(arm_scores))
@@ -181,7 +189,6 @@ class ModelPolicy(BanditPolicy):
     def __init__(self, reward_model: nn.Module, seed: int = 42) -> None:
         super().__init__(reward_model)
         self._rng = RandomState(seed)
-
 
     def _select_idx(
         self,
@@ -237,7 +244,9 @@ class ExploreThenExploit(BanditPolicy):
     def decay(self, init, decay_rate, t):
         return init * (1 - decay_rate) ** t
 
-    def _compute_prob(self, arm_indices: List[int], arm_scores: List[float]) -> List[float]:
+    def _compute_prob(
+        self, arm_indices: List[int], arm_scores: List[float]
+    ) -> List[float]:
         n_arms = len(arm_scores)
         arm_probs = np.zeros(len(arm_scores))
         max_score = max(arm_scores)
@@ -286,7 +295,9 @@ class EpsilonGreedy(BanditPolicy):
         self._rng = RandomState(seed)
         self._epsilon_decay = epsilon_decay
 
-    def _compute_prob(self, arm_indices: List[int], arm_scores: List[float]) -> List[float]:
+    def _compute_prob(
+        self, arm_indices: List[int], arm_scores: List[float]
+    ) -> List[float]:
         n_arms = len(arm_scores)
         arms_probs = self._epsilon * np.ones(n_arms) / n_arms
 
@@ -335,7 +346,9 @@ class AdaptiveGreedy(BanditPolicy):
         self._rng = RandomState(seed)
         self._t = 0
 
-    def _compute_prob(self, arm_indices: List[int], arm_scores: List[float]) -> List[float]:
+    def _compute_prob(
+        self, arm_indices: List[int], arm_scores: List[float]
+    ) -> List[float]:
         n_arms = len(arm_scores)
         arm_probs = np.zeros(len(arm_scores))
         max_score = max(arm_scores)
@@ -397,7 +410,9 @@ class PercentileAdaptiveGreedy(BanditPolicy):
         self._percentile = percentile
         self._t = 0
 
-    def _compute_prob(self, arm_indices: List[int], arm_scores: List[float]) -> List[float]:
+    def _compute_prob(
+        self, arm_indices: List[int], arm_scores: List[float]
+    ) -> List[float]:
         n_arms = len(arm_scores)
         max_score = max(arm_scores)
 
@@ -523,7 +538,9 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
     ) -> float:
         pass
 
-    def _compute_prob(self, arm_indices: List[int], arm_scores: List[float]) -> List[float]:
+    def _compute_prob(
+        self, arm_indices: List[int], arm_scores: List[float]
+    ) -> List[float]:
         # In this case, we expected arm_scores to be arms_scores_with_cb
         n_arms = len(arm_scores)
         arms_probs = np.zeros(n_arms)
@@ -573,7 +590,6 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
             self._calculate_score(arm_score, x, arm)
             for x, arm, arm_score in zip(X, arms, arm_scores)
         ]
-    
 
         ranked_arms = [
             arm_id for _, arm_id in sorted(zip(arm_scores, arm_indices), reverse=True)
@@ -618,7 +634,9 @@ class LinUCB(CustomRewardModelLinUCB):
         super().__init__(None, arm_index)
         self._alpha = alpha
 
-    def calculate_scores(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+    def calculate_scores(
+        self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]
+    ) -> List[float]:
         X, arms = self._flatten_input_and_extract_arms(arm_contexts)
         scores: List[float] = []
 
@@ -656,7 +674,9 @@ class LinThompsonSampling(_LinBanditPolicy):
         mu = np.random.multivariate_normal(mu, self._v_sq * Ainv)
         return x.dot(mu)
 
-    def calculate_scores(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]) -> List[float]:
+    def calculate_scores(
+        self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]
+    ) -> List[float]:
         X, arms = self._flatten_input_and_extract_arms(arm_contexts)
         scores: List[float] = []
 
@@ -683,7 +703,9 @@ class SoftmaxExplorer(BanditPolicy):
     def _softmax(self, x: np.ndarray) -> np.ndarray:
         return np.exp(x) / np.sum(np.exp(x), axis=0)
 
-    def _compute_prob(self, arm_indices: List[int], arm_scores: List[float]) -> List[float]:
+    def _compute_prob(
+        self, arm_indices: List[int], arm_scores: List[float]
+    ) -> List[float]:
         arm_scores = np.array(arm_scores)
 
         if self._reverse_sigmoid:

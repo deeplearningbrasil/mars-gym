@@ -64,7 +64,7 @@ class SimpleLinearModel(RecommenderModule):
         item_dot_interaction_item_emb = self.item_dot_history(
             item_emb, interaction_item_emb
         )
-        # raise(Exception(user_emb.shape, interaction_item_emb.shape, item_dot_interaction_item_emb.shape))
+
         x = torch.cat(
             (
                 item_emb,
@@ -78,22 +78,3 @@ class SimpleLinearModel(RecommenderModule):
         x = self.dense(x)
         out = torch.sigmoid(x)
         return out
-
-
-# class TrivagoModelTrainingMixin(object):
-#     n_factors: int = luigi.IntParameter(default=128)
-
-#     def create_module(self) -> nn.Module:
-#         return SimpleLinearModel(
-#             n_users=max(
-#                 self.index_mapping[self.project_config.user_column.name].values()
-#             )
-#             + 1,
-#             n_items=max(
-#                 self.index_mapping[self.project_config.item_column.name].values()
-#             )
-#             + 1,
-#             n_factors=self.n_factors,
-#             metadata_size=148,
-#             window_hist_size=5,
-#         )

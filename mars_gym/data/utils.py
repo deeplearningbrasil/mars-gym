@@ -26,10 +26,18 @@ DATASETS = dict(
         "https://storage.googleapis.com/mars-gym-dataset/raw/trivago/rio/train.csv",
         "https://storage.googleapis.com/mars-gym-dataset/raw/trivago/rio/item_metadata.csv",
     ],
+    processed_trivago_rio=[
+        "https://storage.googleapis.com/mars-gym-dataset/process/trivago/rio/interaction_dataset.csv",
+        "https://storage.googleapis.com/mars-gym-dataset/process/trivago/rio/item_metadata_transform.csv",
+    ],
 )
 
 
-def load_dataset(name, cache=True, output_path=None, **kws):
+def datasets():
+    return list(DATASETS.keys())
+
+
+def load_dataset(name, cache=True, output_path=".", **kws):
     results = []
     for url in DATASETS[name]:
 

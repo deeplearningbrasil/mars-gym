@@ -331,7 +331,9 @@ class BaseModelTraining(luigi.Task):
                 }
                 self._index_mapping.update(
                     {
-                        column.name: create_index_mapping_from_arrays(df[column.name].values)
+                        column.name: create_index_mapping_from_arrays(
+                            df[column.name].values
+                        )
                         for column in self.project_config.all_columns
                         if column.type == IOType.INDEXABLE_ARRAY
                         and not column.same_index_as

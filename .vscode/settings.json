@@ -11,5 +11,6 @@
   ],
   "python.testing.pytestEnabled": false,
   "python.testing.nosetestsEnabled": false,
+  "restructuredtext.confPath": "${workspaceFolder}/docs/source",
       
 }

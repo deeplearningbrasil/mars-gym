@@ -25,17 +25,15 @@ class UnitTestDataFrames(BasePrepareDataFrames):
     def dataset_dir(self) -> str:
         return os.path.join(files.OUTPUT_PATH, "dataset")
 
-    def data_frame(self) -> pd.DataFrame:
-        return pd.read_csv(self.input()[0].path)
-
-    def read_data_frame(self) -> pd.DataFrame:
-        return self.data_frame()
+    @property
+    def read_data_frame_path(self) -> pd.DataFrame:
+        return self.input()[0].path
 
     def metadata_data_frame(self) -> pd.DataFrame:
         return None
 
     def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
-        df["n_users"] = len(self.data_frame().user.unique())
-        df["n_items"] = len(self.data_frame().item.unique())
+        df["n_users"] = len(self.read_data_frame().user.unique())
+        df["n_items"] = len(self.read_data_frame().item.unique())
 
         return df

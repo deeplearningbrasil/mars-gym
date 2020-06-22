@@ -12,6 +12,7 @@ from mars_gym.model.abstract import RecommenderModule
 from mars_gym.model.bandit import BanditPolicy
 from numpy.random.mtrand import RandomState
 
+
 class SimpleLinearModel(RecommenderModule):
     def __init__(
         self,
@@ -74,4 +75,4 @@ class RandomPolicy(BanditPolicy):
 
         action = self._rng.choice(n_arms, p=arm_probas)
 
-        return action        
+        return action

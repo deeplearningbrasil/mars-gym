@@ -90,9 +90,13 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     def dataset_dir(self) -> str:
         pass
 
+    @property
     @abc.abstractmethod
-    def read_data_frame(self) -> pd.DataFrame:
+    def read_data_frame_path(self) -> Optional[str]:
         pass
+
+    def read_data_frame(self) -> pd.DataFrame:
+        return pd.read_csv(self.read_data_frame_path)
 
     @property
     def stratification_property(self) -> str:
