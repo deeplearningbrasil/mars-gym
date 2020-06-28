@@ -50,7 +50,7 @@ class TestTraining(unittest.TestCase):
         luigi.build([job], local_scheduler=True)
 
         # Evaluation
-        
+
         job = EvaluateTestSetPredictions(
             model_task_id=job.task_id,
             model_task_class="mars_gym.simulation.training.TorchModelWithAgentTraining",

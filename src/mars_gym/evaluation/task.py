@@ -32,8 +32,6 @@ from mars_gym.evaluation.metrics.rank import (
     average_precision,
     precision_at_k,
     ndcg_at_k,
-    prediction_coverage_at_k,
-    personalization_at_k,
 )
 from mars_gym.simulation.training import (
     TorchModelTraining,

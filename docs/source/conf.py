@@ -19,14 +19,11 @@
 
 # -- Project information -----------------------------------------------------
 
-project = "MARS"
-copyright = "2020, Marlesson Santana"
-author = "Marlesson Santana"
-
-# The short X.Y version
-version = ""
-# The full version, including alpha/beta/rc tags
-release = "0.0.1"
+project = 'mars-gym'
+year = '2020'
+author = 'TODO authors'
+copyright = '{0}, {1}'.format(year, author)
+version = release = '0.0.0'
 
 
 # -- General configuration ---------------------------------------------------
@@ -38,7 +35,18 @@ release = "0.0.1"
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ["sphinx.ext.autodoc", "recommonmark"]
+extensions = [
+    'sphinx.ext.autodoc',
+    'sphinx.ext.autosummary',
+    'sphinx.ext.coverage',
+    'sphinx.ext.doctest',
+    'sphinx.ext.extlinks',
+    'sphinx.ext.ifconfig',
+    'sphinx.ext.napoleon',
+    'sphinx.ext.todo',
+    'sphinx.ext.viewcode',
+    "recommonmark"
+]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["ntemplates"]
