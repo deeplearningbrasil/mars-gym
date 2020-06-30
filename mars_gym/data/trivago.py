@@ -1304,6 +1304,10 @@ class PrepareTrivagoSessionsDataFrames(BasePrepareDataFrames):
             self._read_data_frame = pd.read_csv(self.input()[0].path)
 
         return self._read_data_frame
+    
+    @property
+    def read_data_frame_path(self) -> str:
+        return self.input()[0].path
 
     @property
     def metadata_data_frame_path(self) -> str:

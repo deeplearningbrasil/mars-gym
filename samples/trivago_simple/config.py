@@ -9,7 +9,7 @@ from samples.trivago_simple import data
 trivago_rio = ProjectConfig(
     base_dir=data.BASE_DIR,
     prepare_data_frames_task=data.PrepareTrivagoDataFrame,
-    dataset_class=InteractionsDataset,
+    dataset_class=InteractionsWithNegativeItemGenerationDataset,
     user_column=Column("user_id", IOType.INDEXABLE),
     item_column=Column("item_id", IOType.INDEXABLE),
     available_arms_column_name="impressions",

@@ -146,6 +146,12 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
 
 
+* DATASET_DIR/train_cc25c002c7.csv
+* DATASET_DIR/val_cc25c002c7.csv
+* DATASET_DIR/test_cc25c002c7.csv
+* DATASET_DIR/metadata.csv
+
+
 Configuration
 *************
 
@@ -174,7 +180,6 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
   )
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
-
 
 .. note::
   Lorem ipsum dolor sit amet, consectetur adipiscing elit.
@@ -343,7 +348,8 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
 
 
 .. code-block:: python
-
+  >>> from mars_gym.simulation.training import InteractionTraining
+  >>>
   >>> job_train = InteractionTraining(
   >>>     project="samples.trivago_simple.config.trivago_rio",
   >>>     recommender_module_class="samples.trivago_simple.simulation.SimpleLinearModel",
@@ -439,6 +445,63 @@ The best way to run is in **Script Mode:**:
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
 
+
+* TASK_DIR/params.json
+* TASK_DIR/sim-datalog.csv
+* TASK_DIR/index_mapping.pkl
+* TASK_DIR/bandit.pkl
+* TASK_DIR/weights.pt
+* TASK_DIR/test_set_predictions.csv
+
+Supervised Learning
+*******************
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+
+
+.. code-block:: console
+
+  $ PYTHONPATH="." luigi --module mars_gym.simulation.training TorchModelWithAgentTraining \
+  --project samples.trivago_simple.config.trivago_rio\
+  --recommender-module-class samples.trivago_simple.simulation.SimpleLinearModel\
+  --recommender-extra-params '{"n_factors": 10, "metadata_size": 148, "window_hist_size": 5}'\
+  --early-stopping-min-delta 0.0001 --negative-proportion 0.8\
+  --learning-rate 0.0001 --epochs 50 --batch-size 100 --metrics='["loss"]'
+  
+  ...
+  ...
+  DEBUG: Checking if TorchModelWithAgentTraining(project=samples.trivago_simple.config.trivago_rio, 
+  sample_size=-1, minimum_interactions=5, session_test_size=0.1, test_size=0.2, 
+  dataset_split_method=time, test_split_type=random, val_size=0.2, n_splits=5, 
+  split_index=0, data_frames_preparation_extra_params={}, sampling_strategy=none, 
+  balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, 
+  neq_filters={}, isin_filters={}, seed=42, observation=, negative_proportion=0.8, 
+  recommender_module_class=samples.trivago_simple.simulation.SimpleLinearModel, 
+  recommender_extra_params={"n_factors": 10, "metadata_size": 148, "window_hist_size": 5}, 
+  device=cuda, batch_size=100, epochs=50, optimizer=adam, optimizer_params={}, 
+  learning_rate=0.0001, loss_function=mse, loss_function_params={}, gradient_norm_clipping=0.0, 
+  gradient_norm_clipping_type=2, early_stopping_patience=5, early_stopping_min_delta=0.0001, 
+  monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False, 
+  policy_estimator_extra_params={}, metrics=["loss"], bandit_policy_class=mars_gym.model.bandit.ModelPolicy, 
+  bandit_policy_params={}) is complete
+  ...
+  20/50(t): 100%|████████████████████████████████████████████████████████████████| 388/388 [00:01<00:00, 242.70it/s, loss=0.129, running_loss=0.1277]
+  20/50(v): 100%|███████████████████████████████████████████████████████████████████████████████████| 97/97 [00:00<00:00, 323.86it/s, val_loss=0.125]
+  21/50(t): 100%|████████████████████████████████████████████████████████████████| 388/388 [00:01<00:00, 201.85it/s, loss=0.1291, running_loss=0.129]
+  21/50(v): 100%|██████████████████████████████████████████████████████████████████████████████████| 97/97 [00:00<00:00, 323.73it/s, val_loss=0.1252]
+  Saving test set predictions...
+  100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 2422/2422 [00:00<00:00, 3655489.13it/s]
+  100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 2422/2422 [00:00<00:00, 3219842.88it/s]
+  100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 2422/2422 [00:13<00:00, 181.27it/s]
+  ...
+
+
+.. image:: ../../images/supervised_learning/history.jpg
+  :width: 400
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+
+
 Evaluation
 **********
 
@@ -472,6 +535,14 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
   Offpolice Metrics
   2020-06-22 09:36:43,525 : INFO : Informed scheduler that task   EvaluateTestSetPredictions_500_None_50_61a88a638d   has status   DONE
 
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+
+* EVALUATION_DIR/metrics.json
+* EVALUATION_DIR/rank_metrics.csv
+* EVALUATION_DIR/df_offpolicy.csv
+* EVALUATION_DIR/fairness_df.csv
+* EVALUATION_DIR/fairness_metrics.csv
+
 **Evaluation Platform**
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
@@ -490,6 +561,3 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
 
-
-Configuration
-*************

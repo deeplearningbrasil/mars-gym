@@ -91,8 +91,8 @@
 <li class="toctree-l2"><a class="reference internal" href="#prepare-data">Prepare data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#configuration">Configuration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#model-and-simulation">Model and Simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#supervised-learning">Supervised Learning</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#evaluation">Evaluation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id1">Configuration</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="dataviz.html">Evaluation Plaftform</a></li>
@@ -302,6 +302,12 @@
 </pre></div>
 </div>
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.</p>
+<ul class="simple">
+<li><p>DATASET_DIR/train_cc25c002c7.csv</p></li>
+<li><p>DATASET_DIR/val_cc25c002c7.csv</p></li>
+<li><p>DATASET_DIR/test_cc25c002c7.csv</p></li>
+<li><p>DATASET_DIR/metadata.csv</p></li>
+</ul>
 </div>
 <div class="section" id="configuration">
 <h2>Configuration<a class="headerlink" href="#configuration" title="Permalink to this headline">¶</a></h2>
@@ -570,6 +576,42 @@
 </pre></div>
 </div>
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.</p>
+<ul class="simple">
+<li><p>TASK_DIR/params.json</p></li>
+<li><p>TASK_DIR/sim-datalog.csv</p></li>
+<li><p>TASK_DIR/index_mapping.pkl</p></li>
+<li><p>TASK_DIR/bandit.pkl</p></li>
+<li><p>TASK_DIR/weights.pt</p></li>
+<li><p>TASK_DIR/test_set_predictions.csv</p></li>
+</ul>
+</div>
+<div class="section" id="supervised-learning">
+<h2>Supervised Learning<a class="headerlink" href="#supervised-learning" title="Permalink to this headline">¶</a></h2>
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$</span> <span class="nv">PYTHONPATH</span><span class="o">=</span><span class="s2">&quot;.&quot;</span> luigi --module mars_gym.simulation.training TorchModelWithAgentTraining <span class="se">\</span>
+--project samples.trivago_simple.config.trivago_rio<span class="se">\</span>
+--recommender-module-class samples.trivago_simple.simulation.SimpleLinearModel<span class="se">\</span>
+--recommender-extra-params <span class="s1">&#39;{&quot;n_factors&quot;: 10, &quot;metadata_size&quot;: 148, &quot;window_hist_size&quot;: 5}&#39;</span><span class="se">\</span>
+--early-stopping-min-delta <span class="m">0</span>.0001 --negative-proportion <span class="m">0</span>.8<span class="se">\</span>
+--learning-rate <span class="m">0</span>.0001 --epochs <span class="m">50</span> --batch-size <span class="m">100</span>
+
+
+<span class="go">...</span>
+<span class="go">...</span>
+<span class="go">DEBUG: Checking if TorchModelWithAgentTraining(project=samples.trivago_simple.config.trivago_rio, sample_size=-1, minimum_interactions=5, session_test_size=0.1, test_size=0.2, dataset_split_method=time, test_split_type=random, val_size=0.2, n_splits=5, split_index=0, data_frames_preparation_extra_params={}, sampling_strategy=none, balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={}, seed=42, observation=, negative_proportion=0.8, recommender_module_class=samples.trivago_simple.simulation.SimpleLinearModel, recommender_extra_params={&quot;n_factors&quot;: 10, &quot;metadata_size&quot;: 148, &quot;window_hist_size&quot;: 5}, device=cuda, batch_size=100, epochs=50, optimizer=adam, optimizer_params={}, learning_rate=0.0001, loss_function=mse, loss_function_params={}, gradient_norm_clipping=0.0, gradient_norm_clipping_type=2, early_stopping_patience=5, early_stopping_min_delta=0.0001, monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False, policy_estimator_extra_params={}, metrics=[&quot;loss&quot;], bandit_policy_class=mars_gym.model.bandit.ModelPolicy, bandit_policy_params={}) is complete</span>
+<span class="go">...</span>
+<span class="go">20/50(t): 100%|████████████████████████████████████████████████████████████████| 388/388 [00:01&lt;00:00, 242.70it/s, loss=0.129, running_loss=0.1277]</span>
+<span class="go">20/50(v): 100%|███████████████████████████████████████████████████████████████████████████████████| 97/97 [00:00&lt;00:00, 323.86it/s, val_loss=0.125]</span>
+<span class="go">21/50(t): 100%|████████████████████████████████████████████████████████████████| 388/388 [00:01&lt;00:00, 201.85it/s, loss=0.1291, running_loss=0.129]</span>
+<span class="go">21/50(v): 100%|██████████████████████████████████████████████████████████████████████████████████| 97/97 [00:00&lt;00:00, 323.73it/s, val_loss=0.1252]</span>
+<span class="go">Saving test set predictions...</span>
+<span class="go">100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 2422/2422 [00:00&lt;00:00, 3655489.13it/s]</span>
+<span class="go">100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 2422/2422 [00:00&lt;00:00, 3219842.88it/s]</span>
+<span class="go">100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 2422/2422 [00:13&lt;00:00, 181.27it/s]</span>
+<span class="go">...</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_images/history.jpg"><img alt="_images/history.jpg" src="_images/history.jpg" style="width: 700px;" /></a>
 </div>
 <div class="section" id="evaluation">
 <h2>Evaluation<a class="headerlink" href="#evaluation" title="Permalink to this headline">¶</a></h2>
@@ -601,6 +643,14 @@
 <span class="go">2020-06-22 09:36:43,525 : INFO : Informed scheduler that task   EvaluateTestSetPredictions_500_None_50_61a88a638d   has status   DONE</span>
 </pre></div>
 </div>
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.</p>
+<ul class="simple">
+<li><p>EVALUATION_DIR/metrics.json</p></li>
+<li><p>EVALUATION_DIR/rank_metrics.csv</p></li>
+<li><p>EVALUATION_DIR/df_offpolicy.csv</p></li>
+<li><p>EVALUATION_DIR/fairness_df.csv</p></li>
+<li><p>EVALUATION_DIR/fairness_metrics.csv</p></li>
+</ul>
 <p><strong>Evaluation Platform</strong></p>
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$</span> streamlit run tools/eval_viz/app.py
@@ -612,9 +662,6 @@
 </div>
 <a class="reference internal image-reference" href="_images/image2.png"><img alt="_images/image2.png" src="_images/image2.png" style="width: 700px;" /></a>
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.</p>
-</div>
-<div class="section" id="id1">
-<h2>Configuration<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h2>
 </div>
 </div>
 
