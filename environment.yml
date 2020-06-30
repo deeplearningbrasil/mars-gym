@@ -1,39 +1,8 @@
 name: mars-gym
 channels:
 - anaconda
-- conda-forge
-- pytorch
 dependencies:
-- python=3.6.7
-- pandas=0.25.1
-- pyarrow=0.15.0
-- matplotlib=2.2.2
-- scipy=1.3.1
-- numpy=1.17.0
-- seaborn=0.8.1
-- scikit-learn=0.21.2
-- pytorch=1.2.0
-- tensorboardx=1.6
-- luigi=2.8.13
-- tqdm=4.33
-- requests=2.18.4
-- jupyterlab=1.0.2
-- ipywidgets=7.5.1
-- diskcache=3.0.6
-- pyspark=2.4.3
-- psutil=5.2.2
+- python=3.6
+- cudatoolkit=10.1
+- cudnn=7.6
 - pip
-- category_encoders
-- plotly=4.4.1
-- pip:
-  - imbalanced-learn==0.4.3
-  - torchbearer==0.5.1
-  - pytorch-nlp==0.4.1
-  - unidecode==1.1.1
-  - streamlit==0.52.2
-  - dask[dataframe]==2.12.0
-  - gym==0.15.4
-  - google-cloud-storage==1.26.0
-  - sphinx-rtd-theme==0.5.0
-  - recommonmark==0.6.0
-
