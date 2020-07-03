@@ -412,7 +412,6 @@ We compute the reward by comparing the agent’s selected action and the partner
 
 For simulation, we use :code:`InteractionTraining` class. This class is a Gym implementation and receives as parameters the information about the project (:code:`ProjectConfig`), reward estimator (:code:`RecommenderModule`), bandit policy (:code:`BanditPolicy`) and other training parameters.
 
-
 .. code-block:: python
 
   >>> from mars_gym.simulation.training import InteractionTraining
@@ -569,7 +568,7 @@ It is also possible to use MARS-gym for supervised learning. It is useful for va
 Evaluation
 **********
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+We have a specific task for evaluation. The Mars fitness provider has three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is necessary to run a simulation or supervised training, after this we will use the :code:`task_id` for evaluation. For evaluation, we use :code:`EvaluateTestSetPredictions` class. 
 
 .. code-block:: console
 
@@ -599,7 +598,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
   Offpolice Metrics
   2020-06-22 09:36:43,525 : INFO : Informed scheduler that task   EvaluateTestSetPredictions_500_None_50_61a88a638d   has status   DONE
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+Each evaluation generates many artifacts with metrics and metadata as can be used into Evaluation Platform.
 
 * EVALUATION_DIR/metrics.json
 * EVALUATION_DIR/rank_metrics.csv
@@ -609,7 +608,8 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
 
 **Evaluation Platform**
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+
+The assessment platform is a web application that centralizes all views of the evaluation metrics.
 
 .. code-block:: console
 
@@ -617,11 +617,10 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
 
   You can now view your Streamlit app in your browser.
   Local URL: http://localhost:8501
-  Network URL: http://10.0.0.103:8501
 
 
 .. image:: ../../images/dataviz/image2.png
   :width: 700
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+
 
