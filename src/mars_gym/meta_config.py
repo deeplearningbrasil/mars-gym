@@ -47,7 +47,7 @@ class ProjectConfig(object):
         item_column: Column,
         other_input_columns: List[Column],
         output_column: Column,
-        recommender_type: RecommenderType,
+        recommender_type: RecommenderType = RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
         dataset_extra_params: dict = {},
         user_is_input: bool = True,
         item_is_input: bool = True,

@@ -1,10 +1,23 @@
 Quick Start
 ================================
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+In this tutorial we will present a simple example of using MARS. Each module will be explained in a simple and superficial way with a focus on the application.
+
+.. image:: ../../images/img2.jpg
+  :width: 700
+  :align: center
+
+Three main components composes the framework. The first one is a highly customizable module where the consumer can ingest and process a massive amount of data for learning using spark jobs. The second component was designed for training purposes. It holds an extensible module built on top of PyTorch to design learning architectures. It also possesses an OpenAI’s Gym environment that ingests the processed dataset to run a multi-agent system that simulates the targeted marketplace.
+Finally, the last component is an evaluation module that provides a set of distinct perspectives on the agent’s performance. It presents not only traditional  ecommendation metrics but also off-policy evaluation metrics, to account for the bias induced from the historical data representation of marketplace dynamics
 
 Dataset
 *******
+
+MARS provides some datasets already processed to be used as examples to test the framework. They are real datasets, which contain interaction data between users and items and the metadata of the items to be recommended.
+
+* [1] Trivago Dataset - https://recsys.trivago.cloud/challenge/dataset/
+* [2] Yoochose Dataset - https://2015.recsyschallenge.com/challenge.html
+
 
 .. code-block:: python
 
@@ -34,16 +47,15 @@ Dataset
   4 [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, ...
 
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
-
-
 
 Prepare data
 ************
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+The Data Enginnering Module uses luigi as a data pipeline tool. Using luigi's tasks it is possible to make different transformations in the data before being used by :code:`BasePrepareDataFrames`, the class responsible for validating and preparing the data for MARS.
 
 .. code-block:: python
+
+  from mars_gym.data.utils import DownloadDataset
 
   class PrepareInteractionData(luigi.Task):
       def requires(self):
@@ -79,9 +91,11 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
           df.to_csv(self.output().path, index="item_id")
 
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+The class inherited from BasePrepareDataFrames is the one we will use within MARS. It is necessary to implement 4 methods in this class. The :code:`timestamp_property`, which is feature that defines the temporal order, :code:`dataset_dir`, which is local path where the dataset will be saved, :code:`read_data_frame_path`, which is local path of the interaction dataset and :code:`metadata_data_frame_path`, which is local path of the metadata dataset.
 
 .. code-block:: python
+
+  from mars_gym.data.task import BasePrepareDataFrames
 
   class PrepareTrivagoDataFrame(BasePrepareDataFrames):
       def requires(self):
@@ -106,8 +120,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
       def metadata_data_frame_path(self) -> Optional[str]:
           return self.input()[1].path
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
-
+It is possible to test this pipeline before the simulation. This is a luigi task, so the commands are the same.
 
 .. code-block:: python
 
@@ -143,19 +156,18 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
   '.../test_cc25c002c7.csv',
   '.../metadata.csv']
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+The :code:`BasePrepareDataFrames` is highly configurable and parameterizable. In general, the output of this job is the split and processed dataset to be used by MARS.
 
-
-* DATASET_DIR/train_cc25c002c7.csv
-* DATASET_DIR/val_cc25c002c7.csv
-* DATASET_DIR/test_cc25c002c7.csv
-* DATASET_DIR/metadata.csv
+* `DATASET_DIR/train_cc25c002c7.csv`
+* `DATASET_DIR/val_cc25c002c7.csv`
+* `DATASET_DIR/test_cc25c002c7.csv`
+* `DATASET_DIR/metadata.csv`
 
 
 Configuration
 *************
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+Before the simulation, we need to prepare a configuration file with design parameters and contextual information that will be used in the model. We need to define a variable with an instance of :code:`ProjectConfig` 
 
 .. code-block:: python
 
@@ -169,27 +181,47 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
       dataset_class=InteractionsDataset,
       user_column=Column("user_id", IOType.INDEXABLE),
       item_column=Column("item_id", IOType.INDEXABLE),
-      available_arms_column_name="impressions",
       other_input_columns=[
           Column("pos_item_id", IOType.NUMBER),
           Column("list_reference_item", IOType.INDEXABLE_ARRAY, same_index_as="item_id"),
       ],
       metadata_columns=[Column("list_metadata", IOType.INT_ARRAY),],
       output_column=Column("clicked", IOType.NUMBER),
-      recommender_type=RecommenderType.USER_BASED_COLLABORATIVE_FILTERING,
+      available_arms_column_name="impressions"
   )
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+
+* :code:`base_dir`: Local path where the dataset and files generated by the data enginner module will be saved
+* :code:`prepare_data_frames_task`: Class inherited from BasePrepareDataFrames. This defines the data enginner pipeline.
+* :code:`dataset_class`: This class defines how the dataset will be used in the simulation module. MARS already implements different types.
+* :code:`user_column`: Name of the column that identifies the user
+* :code:`item_column`: Name of the column that identifies the item
+* :code:`other_input_columns`: Name of the columns that will be used as input in the model and in the context
+* :code:`metadata_columns`: Name of the metadata columns that will be used as input to the model and context
+* :code:`output_column`: Nome of the reward column
+* :code:`available_arms_column_name`: Column name with items available for recommendation at the time of interaction. If this information is not available, MARS will randomly generate the items.
 
 .. note::
-  Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+  We recommend creating a `config.py` file with all project definitions. It is common to have several different definitions.
+
 
 Model and Simulation
 ********************
 
+The Recommendation Agent is composed of Reward Estimator and a Policy Recommendation. The model is trained using the rewards send from the environment and the policy needs to choose actions using the context send from the environment.
+
+Reward Estimator
+################
+
+We need implement a Reward Estimator ρ(x, a), this is a Pytorch Model that will estimator a reward in a contextual bandit problem. It uses the context 'x' (all information passed from environment) and the available actions 'a' to estimate a reward for each action.
+
+.. image:: ../../images/math_reward_estimator.png
+  :width: 300
+  :align: center
+
 **Model**
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+The model need inherited from RecommenderModule. It class provider the :code:`ProjectConfig` and a :code:`Dict`  with IndexMapping for all category variables. The model is a Pytorch :code:`nn.module` and receive in the foward function all context defined in :code:`ProjectConfig` (:code:`user_column`, :code:`item_column`, :code:`other_input_columns`, and :code:`metadata_columns`).
 
 .. code-block:: python
 
@@ -227,7 +259,18 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
         pass
 
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+This model will be trained using the Counterfactual Risk Minimization (CRM) [3] to reduce bias that came from the dataset. Everything on this train can be parameterized and changed easily.
+
+.. image:: ../../images/math_crm_loss.png
+  :width: 400
+  :align: center
+
+* [3] Adith Swaminathan and Thorsten Joachims. 2015. Counterfactual Risk Minimization: Learning from Logged Bandit Feedback. In Proceedings of the 32nd International Conference on International Conference on Machine Learning - Volume 37 (Lille, France) (ICML’15). JMLR.org, 814–823.
+
+
+**Model Example**
+
+This is an example of a simple linear model used in trivago samples:
 
 .. code-block:: python
 
@@ -282,10 +325,20 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
           return torch.sigmoid(x)
 
 
+
+Policy Recommendation
+#####################
+
+We need to implement a Policy Recommendation π(a|x), this is a bandit strategy 'π' when we choose the action 'a' using the context 'x'.
+
+.. image:: ../../images/math_policy_recommendation.png
+  :width: 100
+  :align: center
+
+
 **Bandit**
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
-
+The Bandit needs to be inherited from BanditPolicy. We need to implement the :code:`._select_idx(...)`, this function is called by the environment to receive an action given the context.
 
 .. code-block:: python
 
@@ -312,7 +365,12 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
 
           return action
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+
+* :code:`arm_indices`: Available actions at the time of interaction (same than :code:`available_arms_column_name`)
+* :code:`arm_contexts`: Context information at the time of interaction
+* :code:`arm_scores`: Estimated eward for each action. It came from Reward Estimator.
+
+**Example of Epsilon-Greedy Policy**
 
 .. code-block:: python
 
@@ -339,15 +397,24 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
 
           return action
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
 
-**Simulation**
+Simulation
+##########
+
+MARS-Gym simulates the dynamics of the marketplace. First of all, the framework filters only successful interactions, once they are the available source of the true reward distribution. Then, the gym environment wraps the resultant data. We compose each environment step with one interaction. The provided observation contains the associated user and its metadata, as well as the contextual information from the log. As selected action, the agent should return the recommendation of one partner. The environment also provides additional informative data via a dictionary (for example, a pre-selected list of potential recommendations, in order to narrow the action space). 
+
+We compute the reward by comparing the agent’s selected action and the partner provided by the log. The agent receives a positive reward if they match. Therefore, the agent only discovers the targeted partner in the scenario of a successful recommendation. Otherwise, it should explore the actions to build its knowledge. The sequence of steps follows the sequence of interactions in the filtered ground-truth dataset. Hence, we maintain the same temporal dynamic. We define an episode as one iteration trough all logs, rather than the user session. This behavior intends to approximate the multi-agent scenario and keep the perspective on the marketplace, not solely in the user. Finally, the interactions between the proposed agent and the environment generate new interaction logs. This simulated data trains the agent and also provides the cumulative reward curve as the first source of evaluation. In the next subsection, we describe the design of MARS-Gym to accomplish this simulation.
+
+.. image:: ../../images/img3.jpg
+  :width: 700
+  :align: center
 
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+For simulation, we use :code:`InteractionTraining` class. This class is a Gym implementation and receives as parameters the information about the project (:code:`ProjectConfig`), reward estimator (:code:`RecommenderModule`), bandit policy (:code:`BanditPolicy`) and other training parameters.
 
 
 .. code-block:: python
+
   >>> from mars_gym.simulation.training import InteractionTraining
   >>>
   >>> job_train = InteractionTraining(
@@ -412,7 +479,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
   2020-06-22 08:41:37,842 : INFO : Informed scheduler that task   InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d   has status   DONE
   DEBUG: Asking scheduler for work...
 
-The best way to run is in **Script Mode:**:
+The best way to run is in **Script Mode**:
 
 .. code-block:: console
 
@@ -443,20 +510,19 @@ The best way to run is in **Script Mode:**:
   2020-06-22 08:41:37,842 : INFO : Informed scheduler that task   InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d   has status   DONE
   DEBUG: Asking scheduler for work...
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+Each simulation generates many artifacts for evaluation and metadata for deploy models in another environment:
 
-
-* TASK_DIR/params.json
-* TASK_DIR/sim-datalog.csv
-* TASK_DIR/index_mapping.pkl
-* TASK_DIR/bandit.pkl
-* TASK_DIR/weights.pt
-* TASK_DIR/test_set_predictions.csv
+* ../params.json
+* ../sim-datalog.csv
+* ../index_mapping.pkl
+* ../bandit.pkl
+* ../weights.pt
+* ../test_set_predictions.csv
 
 Supervised Learning
-*******************
+###################
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
+It is also possible to use MARS-gym for supervised learning. It is useful for validating and testing the reward model before using it in a simulation.  In such cases, we can use :code:`TorchModelWithAgentTraining` class with similar parameters.  
 
 
 .. code-block:: console
@@ -498,9 +564,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, 
 
 .. image:: ../../images/supervised_learning/history.jpg
   :width: 400
-
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum augue diam, placerat ut urna tincidunt, tristique eleifend felis. Duis tellus libero, commodo vitae mauris eu, suscipit mollis leo. Quisque in nulla fermentum, iaculis risus eu, sollicitudin est. Mauris quis elementum metus. Maecenas mattis efficitur diam at tempor. Integer consequat gravida sagittis. Nam a ultrices odio.
-
+  :align: center
 
 Evaluation
 **********
