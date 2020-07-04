@@ -15,8 +15,8 @@ Dataset
 
 MARS provides some datasets already processed to be used as examples to test the framework. They are real datasets, which contain interaction data between users and items and the metadata of the items to be recommended.
 
-* [1] Trivago Dataset - https://recsys.trivago.cloud/challenge/dataset/
-* [2] Yoochose Dataset - https://2015.recsyschallenge.com/challenge.html
+* [1] Trivago Dataset - http://recsys.trivago.cloud/challenge/dataset/
+* [2] Yoochose Dataset - http://2015.recsyschallenge.com/challenge.html
 
 
 .. code-block:: python
@@ -608,8 +608,13 @@ Each evaluation generates many artifacts with metrics and metadata as can be use
 
 **Evaluation Platform**
 
+The Evaluation Platform is a web application that centralizes all views of the evaluation metrics.
 
-The assessment platform is a web application that centralizes all views of the evaluation metrics.
+.. image:: ../../images/dataviz/image1.png
+  :width: 800
+  :align: center
+
+It is an external service made with streamlit library. To start this service this is the command:
 
 .. code-block:: console
 
@@ -619,8 +624,8 @@ The assessment platform is a web application that centralizes all views of the e
   Local URL: http://localhost:8501
 
 
-.. image:: ../../images/dataviz/image2.png
-  :width: 700
+.. .. image:: ../../images/dataviz/image2.png
+..   :width: 700
 
 
 
