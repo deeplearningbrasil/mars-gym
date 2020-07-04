@@ -19,7 +19,7 @@ from mars_gym.model.agent import BanditAgent
 from mars_gym.model.bandit import BanditPolicy
 from mars_gym.simulation.training import (
     TORCH_LOSS_FUNCTIONS,
-    TorchModelWithAgentTraining,
+    SupervisedModelTraining,
 )
 from mars_gym.utils.index_mapping import transform_with_indexing
 from mars_gym.utils.plot import plot_history, plot_scores
@@ -41,7 +41,7 @@ from mars_gym.utils.utils import save_trained_data
 # from IPython import embed; embed()
 
 
-class InteractionTraining(TorchModelWithAgentTraining, metaclass=abc.ABCMeta):
+class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
     loss_function: str = luigi.ChoiceParameter(
         choices=TORCH_LOSS_FUNCTIONS.keys(), default="crm"
     )

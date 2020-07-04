@@ -15,7 +15,7 @@ from samples.yoochoose.data import (
 )  # , PrepareHistoryInteractionData, PrepareInteractionDataFrame
 from mars_gym.evaluation.task import EvaluateTestSetPredictions
 from mars_gym.simulation.interaction import InteractionTraining
-from mars_gym.simulation.training import TorchModelWithAgentTraining
+from mars_gym.simulation.training import SupervisedModelTraining
 import numpy as np
 import json
 import os
@@ -41,8 +41,8 @@ class TestYoochoose(unittest.TestCase):
 
     # Data Simulation
     def test_training_and_evaluation(self):
-        ## PYTHONPATH="." luigi --module mars_gym.simulation.training TorchModelWithAgentTraining --project samples.yoochoose.config.sample_yoochoose_with_negative_sample
-        job_train = TorchModelWithAgentTraining(
+        ## PYTHONPATH="." luigi --module mars_gym.simulation.training SupervisedModelTraining --project samples.yoochoose.config.sample_yoochoose_with_negative_sample
+        job_train = SupervisedModelTraining(
             project="samples.yoochoose.config.sample_yoochoose_with_negative_sample",
             recommender_module_class="samples.yoochoose.simulation.SimpleLinearModel",
             recommender_extra_params={"n_factors": 10},
@@ -55,7 +55,7 @@ class TestYoochoose(unittest.TestCase):
         ## PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-module samples.yoochoose.simulation  --model-cls YoochoseModelTraining --model-task-id YoochoseModelTraining____model____70b1aa0735 --fairness-columns "[]" --no-offpolicy
         job_eval = EvaluateTestSetPredictions(
             model_task_id=job_train.task_id,
-            model_task_class="mars_gym.simulation.training.TorchModelWithAgentTraining",
+            model_task_class="mars_gym.simulation.training.SupervisedModelTraining",
         )
         luigi.build([job_eval], local_scheduler=True)
 

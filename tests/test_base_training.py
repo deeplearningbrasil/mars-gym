@@ -7,7 +7,7 @@ import luigi
 import torch.nn as nn
 from mars_gym.model.base_model import LogisticRegression
 from mars_gym.simulation.interaction import InteractionTraining
-from mars_gym.simulation.training import TorchModelWithAgentTraining
+from mars_gym.simulation.training import SupervisedModelTraining
 from mars_gym.evaluation.task import EvaluateTestSetPredictions
 from unittest.mock import patch
 import shutil
@@ -40,7 +40,7 @@ class TestTraining(unittest.TestCase):
 
     def test_batch_training_and_evaluation(self):
         # Training
-        job = TorchModelWithAgentTraining(
+        job = SupervisedModelTraining(
             project="tests.factories.config.test_base_training",
             recommender_module_class="mars_gym.model.base_model.LogisticRegression",
             recommender_extra_params={"n_factors": 10},
@@ -53,7 +53,7 @@ class TestTraining(unittest.TestCase):
 
         job = EvaluateTestSetPredictions(
             model_task_id=job.task_id,
-            model_task_class="mars_gym.simulation.training.TorchModelWithAgentTraining",
+            model_task_class="mars_gym.simulation.training.SupervisedModelTraining",
         )
 
         luigi.build([job], local_scheduler=True)

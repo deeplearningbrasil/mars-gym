@@ -38,6 +38,7 @@ setup(
     packages=find_packages("src"),
     package_dir={"": "src"},
     py_modules=[splitext(basename(path))[0] for path in glob("src/*.py")],
+    scripts=["bin/mars-gym-viz"],
     include_package_data=True,
     zip_safe=False,
     classifiers=[
@@ -76,7 +77,8 @@ setup(
         "matplotlib>=2.2", "seaborn>=0.8", "plotly>=4.4", "streamlit>=0.52",
         "torch>=1.2", "torchbearer>=0.5", "pytorch-nlp>=0.4",
         "scikit-learn>=0.21", "imbalanced-learn>=0.4", "tensorboardx>=1.6",
-        "tqdm", "requests>=2", "diskcache>=3", "psutil>=5", "google-cloud-storage>=1.26"
+        "tqdm", "requests>=2", "diskcache>=3", "psutil>=5", "google-cloud-storage>=1.26",
+        "botocore",
     ],
     extras_require={
         # eg:

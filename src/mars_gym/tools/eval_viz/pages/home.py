@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from util import *
+from mars_gym.tools.eval_viz.util import *
 
-PATH_EVALUATION = "../../../output/evaluation/"
+PATH_EVALUATION = "output/evaluation/"
 
 
 @st.cache

@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import os
 import seaborn as sns
 import plotly.express as px
-from util import mean_confidence_interval
+from mars_gym.tools.eval_viz.util import mean_confidence_interval
 
 TEMPLATE = "plotly_white"  # simple_white
 # https://seaborn.pydata.org/generated/seaborn.color_palette.html#seaborn.color_palette

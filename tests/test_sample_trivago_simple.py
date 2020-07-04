@@ -17,7 +17,7 @@ from samples.trivago_simple.data import (
 )
 from mars_gym.evaluation.task import EvaluateTestSetPredictions
 from mars_gym.simulation.interaction import InteractionTraining
-from mars_gym.simulation.training import TorchModelWithAgentTraining
+from mars_gym.simulation.training import SupervisedModelTraining
 import numpy as np
 import json
 import os
@@ -39,7 +39,7 @@ class TestTrivagoRio(unittest.TestCase):
 
     # Data Simulation
     def test_training(self):
-        job_train = TorchModelWithAgentTraining(
+        job_train = SupervisedModelTraining(
             project="samples.trivago_simple.config.trivago_rio",
             recommender_module_class="samples.trivago_simple.simulation.SimpleLinearModel",
             recommender_extra_params={
