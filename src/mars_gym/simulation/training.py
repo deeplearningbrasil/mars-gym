@@ -1,4 +1,5 @@
 import abc
+import functools
 import gc
 import json
 import logging
@@ -8,6 +9,7 @@ import random
 import shutil
 from contextlib import redirect_stdout
 from copy import deepcopy
+from multiprocessing import Pool
 from typing import Type, Dict, List, Optional, Tuple, Union, Any
 
 import luigi
@@ -25,7 +27,7 @@ from torch.optim.adamax import Adamax
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_convert
-from torch.utils.data.dataset import Dataset
+from torch.utils.data.dataset import Dataset, ChainDataset
 from torchbearer import Trial
 from torchbearer.callbacks import GradientNormClipping
 from torchbearer.callbacks.checkpointers import ModelCheckpoint
@@ -110,9 +112,7 @@ SEED = 42
 DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class BaseModelTraining(luigi.Task):
-    __metaclass__ = abc.ABCMeta
-
+class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     project: str = luigi.Parameter(
         description="Should be like config.trivago_contextual_bandit",
     )
@@ -447,9 +447,7 @@ class BaseModelTraining(luigi.Task):
                 CudaRepository.put_available_device(self.device_id)
 
 
-class TorchModelTraining(BaseModelTraining):
-    __metaclass__ = abc.ABCMeta
-
+class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
     recommender_module_class: str = luigi.Parameter(
         description="Should be like mars_gym.model.trivago.trivago_models.SimpleLinearModel",
     )
@@ -681,7 +679,7 @@ class TorchModelTraining(BaseModelTraining):
         )
 
 
-class TorchModelWithAgentTraining(TorchModelTraining):
+class SupervisedModelTraining(TorchModelTraining):
     bandit_policy_class: str = luigi.Parameter(
         default="mars_gym.model.bandit.ModelPolicy",
         description="Should be like mars_gym.model.bandit.EpsilonGreedy",
@@ -754,7 +752,7 @@ class TorchModelWithAgentTraining(TorchModelTraining):
 
         return scores
 
-    def _create_ob_dataset(self, ob: dict, arm_indices: List[int]) -> Dataset:
+    def _create_ob_data_frame(self, ob: dict, arm_indices: List[int]) -> pd.DataFrame:
         data = [
             {**ob, self.project_config.item_column.name: arm_index}
             for arm_index in arm_indices
@@ -771,9 +769,7 @@ class TorchModelWithAgentTraining(TorchModelTraining):
             if auxiliar_output_column.name not in ob_df.columns:
                 ob_df[auxiliar_output_column.name] = 0
 
-        dataset = InteractionsDataset(ob_df, ob[ITEM_METADATA_KEY], self.project_config)
-
-        return dataset
+        return ob_df
 
     def _fill_hist_columns(self, ob_df: pd.DataFrame) -> pd.DataFrame:
         if self.project_config.hist_view_column_name not in ob_df:
@@ -783,32 +779,45 @@ class TorchModelWithAgentTraining(TorchModelTraining):
         return ob_df
 
     def _prepare_for_agent(
-        self, agent: BanditAgent, ob: dict
-    ) -> Tuple[np.ndarray, List[int], List[float]]:
-        arm_indices = self._get_arm_indices(ob)
-        ob_dataset = self._create_ob_dataset(ob, arm_indices)
-        arm_contexts = ob_dataset[: len(ob_dataset)][0]
-        arm_scores = (
-            self._get_arm_scores(agent, ob_dataset)
-            if agent.bandit.reward_model
-            else agent.bandit.calculate_scores(arm_indices, arm_contexts)
+        self, agent: BanditAgent, obs: List[Dict[str, Any]]
+    ) -> Tuple[List[Tuple[np.ndarray, ...]], List[List[int]], List[List[float]]]:
+        arm_indices_list = [self._get_arm_indices(ob) for ob in obs]
+        ob_dfs = [
+            self._create_ob_data_frame(ob, arm_indices)
+            for ob, arm_indices in zip(obs, arm_indices_list)
+        ]
+        obs_dataset = InteractionsDataset(
+            pd.concat(ob_dfs), obs[0][ITEM_METADATA_KEY], self.project_config
         )
-        return arm_contexts, arm_indices, arm_scores
+
+        arm_contexts_list: List[Tuple[np.ndarray, ...]] = []
+        i = 0
+        for ob_df in ob_dfs:
+            arm_contexts_list.append(obs_dataset[i : i + len(ob_df)][0])
+            i += len(ob_df)
+
+        if agent.bandit.reward_model:
+            all_arm_scores = self._get_arm_scores(agent, obs_dataset)
+            arm_scores_list = []
+            i = 0
+            for ob_df in ob_dfs:
+                arm_scores_list.append(all_arm_scores[i : i + len(ob_df)])
+                i += len(ob_df)
+        else:
+            arm_scores_list = [
+                agent.bandit.calculate_scores(arm_indices, arm_contexts)
+                for arm_indices, arm_contexts in zip(
+                    arm_indices_list, arm_contexts_list
+                )
+            ]
+        return arm_contexts_list, arm_indices_list, arm_scores_list
 
     def _act(self, agent: BanditAgent, ob: dict) -> int:
-        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(agent, ob)
-
-        return agent.act(arm_indices, arm_contexts, arm_scores)
-
-    def _rank(
-        self, agent: BanditAgent, ob: dict
-    ) -> Tuple[List[int], List[float], List[float]]:
-        arm_contexts, arm_indices, arm_scores = self._prepare_for_agent(agent, ob)
-        sorted_actions, proba_actions = agent.rank(
-            arm_indices, arm_contexts, arm_scores
+        arm_contexts_list, arm_indices_list, arm_scores_list = self._prepare_for_agent(
+            agent, [ob]
         )
 
-        return sorted_actions, proba_actions, arm_scores
+        return agent.act(arm_indices_list[0], arm_contexts_list[0], arm_scores_list[0])
 
     def clean(self):
         if hasattr(self, "_train_dataset"):
@@ -824,15 +833,10 @@ class TorchModelWithAgentTraining(TorchModelTraining):
 
     def _save_test_set_predictions(self, agent: BanditAgent) -> None:
         print("Saving test set predictions...")
-        sorted_actions_list = []
-        prob_actions_list = []
-        action_scores_list = []
-        obs = self.test_data_frame.to_dict("records")
+        obs: List[Dict[str, Any]] = self.test_data_frame.to_dict("records")
         self.clean()
-        # from IPython import embed; embed()
-        for ob in tqdm(obs, total=len(obs)):
-            items = None
 
+        for ob in tqdm(obs, total=len(obs)):
             if self.embeddings_for_metadata is not None:
                 ob[ITEM_METADATA_KEY] = self.embeddings_for_metadata
             else:
@@ -848,21 +852,32 @@ class TorchModelWithAgentTraining(TorchModelTraining):
                 items[available_arms] = 1
                 ob[self.project_config.available_arms_column_name] = items
 
-            sorted_actions, prob_actions, action_scores = self._rank(agent, ob)
+        arm_contexts_list, arm_indices_list, arm_scores_list = self._prepare_for_agent(
+            agent, obs
+        )
+
+        sorted_actions_list = []
+        proba_actions_list = []
+
+        for arm_contexts, arm_indices, arm_scores in tqdm(
+            zip(arm_contexts_list, arm_indices_list, arm_scores_list),
+            total=len(arm_contexts_list),
+        ):
+            sorted_actions, proba_actions = agent.rank(
+                arm_indices, arm_contexts, arm_scores
+            )
             sorted_actions_list.append(sorted_actions)
-            prob_actions_list.append(prob_actions)
+            proba_actions_list.append(proba_actions)
 
-            if action_scores:
-                action_scores_list.append(list(reversed(sorted(action_scores))))
+        action_scores_list = [
+            list(reversed(sorted(action_scores))) for action_scores in arm_scores_list
+        ]
 
-            del ob
-            del items
+        del obs
 
         self.test_data_frame["sorted_actions"] = sorted_actions_list
-        self.test_data_frame["prob_actions"] = prob_actions_list
-
-        if action_scores_list:
-            self.test_data_frame["action_scores"] = action_scores_list
+        self.test_data_frame["prob_actions"] = proba_actions_list
+        self.test_data_frame["action_scores"] = action_scores_list
 
         self.test_data_frame.to_csv(
             get_test_set_predictions_path(self.output().path), index=False

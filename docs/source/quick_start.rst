@@ -21,7 +21,7 @@ MARS provides some datasets already processed to be used as examples to test the
 
 .. code-block:: python
 
-  >>> from mars_gym.data import utils 
+  >>> from mars_gym.data import utils
   >>> utils.datasets()
   ['random',
  'yoochoose',
@@ -125,18 +125,18 @@ It is possible to test this pipeline before the simulation. This is a luigi task
 .. code-block:: python
 
   >>> job = PrepareTrivagoDataFrame()
-  PrepareTrivagoDataFrame(session_test_size=0.1, test_size=0.2, sample_size=-1, 
-  minimum_interactions=5, dataset_split_method=time, column_stratification=None, 
-  test_split_type=random, n_splits=10, split_index=0, val_size=0.2, 
-  sampling_strategy=none, balance_fields=[], sampling_proportions={}, 
-  use_sampling_in_validation=False, eq_filters={}, neq_filters={}, 
+  PrepareTrivagoDataFrame(session_test_size=0.1, test_size=0.2, sample_size=-1,
+  minimum_interactions=5, dataset_split_method=time, column_stratification=None,
+  test_split_type=random, n_splits=10, split_index=0, val_size=0.2,
+  sampling_strategy=none, balance_fields=[], sampling_proportions={},
+  use_sampling_in_validation=False, eq_filters={}, neq_filters={},
   isin_filters={}, seed=42)
 
   >>> luigi.build([job], local_scheduler=True)
   ....
-  INFO: Worker Worker(salt=154256821, workers=1, host=marlesson-pc, username=marlesson, 
+  INFO: Worker Worker(salt=154256821, workers=1, host=marlesson-pc, username=marlesson,
   pid=16527) was stopped. Shutting down Keep-Alive thread
-  INFO: 
+  INFO:
   ===== Luigi Execution Summary =====
 
   Scheduled 4 tasks of which:
@@ -148,7 +148,7 @@ It is possible to test this pipeline before the simulation. This is a luigi task
 
   This progress looks :) because there were no failed tasks or missing dependencies
 
-  ===== Luigi Execution Summary =====  
+  ===== Luigi Execution Summary =====
 
   >>> [o.path for o in job.output()]
   ['.../train_cc25c002c7.csv',
@@ -167,14 +167,14 @@ The :code:`BasePrepareDataFrames` is highly configurable and parameterizable. In
 Configuration
 *************
 
-Before the simulation, we need to prepare a configuration file with design parameters and contextual information that will be used in the model. We need to define a variable with an instance of :code:`ProjectConfig` 
+Before the simulation, we need to prepare a configuration file with design parameters and contextual information that will be used in the model. We need to define a variable with an instance of :code:`ProjectConfig`
 
 .. code-block:: python
 
   from mars_gym.data.dataset import InteractionsDataset
   from mars_gym.meta_config import *
   from samples.trivago_rio import data
-  
+
   trivago_rio = ProjectConfig(
       base_dir=data.BASE_DIR,
       prepare_data_frames_task=data.PrepareTrivagoDataFrame,
@@ -240,10 +240,10 @@ The model need inherited from RecommenderModule. It class provider the :code:`Pr
           index_mapping: Dict[str, Dict[Any, int]],
       ):
         """
-        build model architecture  
+        build model architecture
         """
         super().__init__(project_config, index_mapping)
-        #... 
+        #...
 
       def forward(
           self,
@@ -348,7 +348,7 @@ The Bandit needs to be inherited from BanditPolicy. We need to implement the :co
   class BasePolicy(BanditPolicy):
       def __init__(self, reward_model: nn.Module, seed: int = 42):
           """
-          Initialize bandit information and params 
+          Initialize bandit information and params
           """
           super().__init__(reward_model)
 
@@ -401,7 +401,7 @@ The Bandit needs to be inherited from BanditPolicy. We need to implement the :co
 Simulation
 ##########
 
-MARS-Gym simulates the dynamics of the marketplace. First of all, the framework filters only successful interactions, once they are the available source of the true reward distribution. Then, the gym environment wraps the resultant data. We compose each environment step with one interaction. The provided observation contains the associated user and its metadata, as well as the contextual information from the log. As selected action, the agent should return the recommendation of one partner. The environment also provides additional informative data via a dictionary (for example, a pre-selected list of potential recommendations, in order to narrow the action space). 
+MARS-Gym simulates the dynamics of the marketplace. First of all, the framework filters only successful interactions, once they are the available source of the true reward distribution. Then, the gym environment wraps the resultant data. We compose each environment step with one interaction. The provided observation contains the associated user and its metadata, as well as the contextual information from the log. As selected action, the agent should return the recommendation of one partner. The environment also provides additional informative data via a dictionary (for example, a pre-selected list of potential recommendations, in order to narrow the action space).
 
 We compute the reward by comparing the agent’s selected action and the partner provided by the log. The agent receives a positive reward if they match. Therefore, the agent only discovers the targeted partner in the scenario of a successful recommendation. Otherwise, it should explore the actions to build its knowledge. The sequence of steps follows the sequence of interactions in the filtered ground-truth dataset. Hence, we maintain the same temporal dynamic. We define an episode as one iteration trough all logs, rather than the user session. This behavior intends to approximate the multi-agent scenario and keep the perspective on the marketplace, not solely in the user. Finally, the interactions between the proposed agent and the environment generate new interaction logs. This simulated data trains the agent and also provides the cumulative reward curve as the first source of evaluation. In the next subsection, we describe the design of MARS-Gym to accomplish this simulation.
 
@@ -434,24 +434,24 @@ For simulation, we use :code:`InteractionTraining` class. This class is a Gym im
   >>>     num_episodes=1,
   >>> )
 
-  InteractionTraining(project=samples.trivago_simple.config.trivago_rio, 
-  minimum_interactions=5, session_test_size=0.1, dataset_split_method=time, 
-  val_size=0.2, n_splits=5, split_index=0, data_frames_preparation_extra_params={}, 
-  sampling_strategy=none, balance_fields=[], sampling_proportions={}, 
-  use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={}, 
-  seed=42, observation=, negative_proportion=0.0, 
-  recommender_module_class=samples.trivago_simple.simulation.SimpleLinearModel, 
-  recommender_extra_params={"n_factors": 10, "metadata_size": 148, "window_hist_size": 5}, 
-  device=cuda, batch_size=500, epochs=100, optimizer=adam, optimizer_params={}, 
-  learning_rate=0.001, loss_function_params={}, gradient_norm_clipping=0.0, 
-  gradient_norm_clipping_type=2, early_stopping_patience=5, early_stopping_min_delta=0.001, 
-  monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False, 
-  policy_estimator_extra_params={}, metrics=["loss"], 
-  bandit_policy_class=samples.trivago_simple.simulation.EGreedyPolicy, 
-  bandit_policy_params={"epsilon": 0.1, "seed": 42}, loss_function=crm, test_size=0.1, 
-  test_split_type=time, val_split_type=time, crm_ps_strategy=bandit, 
+  InteractionTraining(project=samples.trivago_simple.config.trivago_rio,
+  minimum_interactions=5, session_test_size=0.1, dataset_split_method=time,
+  val_size=0.2, n_splits=5, split_index=0, data_frames_preparation_extra_params={},
+  sampling_strategy=none, balance_fields=[], sampling_proportions={},
+  use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={},
+  seed=42, observation=, negative_proportion=0.0,
+  recommender_module_class=samples.trivago_simple.simulation.SimpleLinearModel,
+  recommender_extra_params={"n_factors": 10, "metadata_size": 148, "window_hist_size": 5},
+  device=cuda, batch_size=500, epochs=100, optimizer=adam, optimizer_params={},
+  learning_rate=0.001, loss_function_params={}, gradient_norm_clipping=0.0,
+  gradient_norm_clipping_type=2, early_stopping_patience=5, early_stopping_min_delta=0.001,
+  monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False,
+  policy_estimator_extra_params={}, metrics=["loss"],
+  bandit_policy_class=samples.trivago_simple.simulation.EGreedyPolicy,
+  bandit_policy_params={"epsilon": 0.1, "seed": 42}, loss_function=crm, test_size=0.1,
+  test_split_type=time, val_split_type=time, crm_ps_strategy=bandit,
   obs_batch_size=100, num_episodes=1, sample_size=-1, full_refit=False, output_model_dir=)
-  
+
   >>> luigi.build([job_train], local_scheduler=True)
   ...
   ...
@@ -463,10 +463,10 @@ For simulation, we use :code:`InteractionTraining` class. This class is a Gym im
 
   Interaction Stats (75.36%)
             count      mean       std
-  dataset                            
+  dataset
   all      7300.0  0.044110  0.205353
   train    5840.0  0.042808  0.202442
-  valid    1460.0  0.049315  0.216599 
+  valid    1460.0  0.049315  0.216599
 
   Saving logs...
   Saving test set predictions...
@@ -494,10 +494,10 @@ The best way to run is in **Script Mode**:
   ...
   Interaction Stats (75.36%)
             count      mean       std
-  dataset                            
+  dataset
   all      7300.0  0.044110  0.205353
   train    5840.0  0.042808  0.202442
-  valid    1460.0  0.049315  0.216599 
+  valid    1460.0  0.049315  0.216599
 
   Saving logs...
   Saving test set predictions...
@@ -521,33 +521,33 @@ Each simulation generates many artifacts for evaluation and metadata for deploy 
 Supervised Learning
 ###################
 
-It is also possible to use MARS-gym for supervised learning. It is useful for validating and testing the reward model before using it in a simulation.  In such cases, we can use :code:`TorchModelWithAgentTraining` class with similar parameters.  
+It is also possible to use MARS-gym for supervised learning. It is useful for validating and testing the reward model before using it in a simulation.  In such cases, we can use :code:`SupervisedModelTraining` class with similar parameters.
 
 
 .. code-block:: console
 
-  $ PYTHONPATH="." luigi --module mars_gym.simulation.training TorchModelWithAgentTraining \
+  $ PYTHONPATH="." luigi --module mars_gym.simulation.training SupervisedModelTraining \
   --project samples.trivago_simple.config.trivago_rio\
   --recommender-module-class samples.trivago_simple.simulation.SimpleLinearModel\
   --recommender-extra-params '{"n_factors": 10, "metadata_size": 148, "window_hist_size": 5}'\
   --early-stopping-min-delta 0.0001 --negative-proportion 0.8\
   --learning-rate 0.0001 --epochs 50 --batch-size 100 --metrics='["loss"]'
-  
+
   ...
   ...
-  DEBUG: Checking if TorchModelWithAgentTraining(project=samples.trivago_simple.config.trivago_rio, 
-  sample_size=-1, minimum_interactions=5, session_test_size=0.1, test_size=0.2, 
-  dataset_split_method=time, test_split_type=random, val_size=0.2, n_splits=5, 
-  split_index=0, data_frames_preparation_extra_params={}, sampling_strategy=none, 
-  balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={}, 
-  neq_filters={}, isin_filters={}, seed=42, observation=, negative_proportion=0.8, 
-  recommender_module_class=samples.trivago_simple.simulation.SimpleLinearModel, 
-  recommender_extra_params={"n_factors": 10, "metadata_size": 148, "window_hist_size": 5}, 
-  device=cuda, batch_size=100, epochs=50, optimizer=adam, optimizer_params={}, 
-  learning_rate=0.0001, loss_function=mse, loss_function_params={}, gradient_norm_clipping=0.0, 
-  gradient_norm_clipping_type=2, early_stopping_patience=5, early_stopping_min_delta=0.0001, 
-  monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False, 
-  policy_estimator_extra_params={}, metrics=["loss"], bandit_policy_class=mars_gym.model.bandit.ModelPolicy, 
+  DEBUG: Checking if SupervisedModelTraining(project=samples.trivago_simple.config.trivago_rio,
+  sample_size=-1, minimum_interactions=5, session_test_size=0.1, test_size=0.2,
+  dataset_split_method=time, test_split_type=random, val_size=0.2, n_splits=5,
+  split_index=0, data_frames_preparation_extra_params={}, sampling_strategy=none,
+  balance_fields=[], sampling_proportions={}, use_sampling_in_validation=False, eq_filters={},
+  neq_filters={}, isin_filters={}, seed=42, observation=, negative_proportion=0.8,
+  recommender_module_class=samples.trivago_simple.simulation.SimpleLinearModel,
+  recommender_extra_params={"n_factors": 10, "metadata_size": 148, "window_hist_size": 5},
+  device=cuda, batch_size=100, epochs=50, optimizer=adam, optimizer_params={},
+  learning_rate=0.0001, loss_function=mse, loss_function_params={}, gradient_norm_clipping=0.0,
+  gradient_norm_clipping_type=2, early_stopping_patience=5, early_stopping_min_delta=0.0001,
+  monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False,
+  policy_estimator_extra_params={}, metrics=["loss"], bandit_policy_class=mars_gym.model.bandit.ModelPolicy,
   bandit_policy_params={}) is complete
   ...
   20/50(t): 100%|████████████████████████████████████████████████████████████████| 388/388 [00:01<00:00, 242.70it/s, loss=0.129, running_loss=0.1277]
@@ -568,7 +568,7 @@ It is also possible to use MARS-gym for supervised learning. It is useful for va
 Evaluation
 **********
 
-We have a specific task for evaluation. The Mars fitness provider has three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is necessary to run a simulation or supervised training, after this we will use the :code:`task_id` for evaluation. For evaluation, we use :code:`EvaluateTestSetPredictions` class. 
+We have a specific task for evaluation. The Mars fitness provider has three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is necessary to run a simulation or supervised training, after this we will use the :code:`task_id` for evaluation. For evaluation, we use :code:`EvaluateTestSetPredictions` class.
 
 .. code-block:: console
 
