@@ -606,7 +606,14 @@ Each evaluation generates many artifacts with metrics and metadata as can be use
 * EVALUATION_DIR/fairness_df.csv
 * EVALUATION_DIR/fairness_metrics.csv
 
-**Evaluation Platform**
+**Fairness Metrics**
+
+
+**Off-policy Metrics**
+
+
+Evaluation Platform
+###################
 
 The Evaluation Platform is a web application that centralizes all views of the evaluation metrics.
 

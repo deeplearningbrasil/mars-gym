@@ -1,6 +1,13 @@
 import importlib
 import inspect
-from typing import Type, TypeVar, GenericMeta, Set
+from typing import Type, TypeVar, Set
+
+try:
+    from typing import GenericMeta  # python 3.6
+except ImportError:
+    # in 3.7, GenericMeta doesn't exist but we don't need it
+    class GenericMeta(type):
+        pass
 
 T = TypeVar("T")
 

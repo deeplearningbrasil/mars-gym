@@ -1,17 +1,25 @@
 Install
 ================================
 
+MARS-Gym is available for Python 3.6. The recommended way to install MARS-Gym is :code:`pip`:
 
-It is recommended to install MARS-Gym using ``git``::
+.. code-block:: console
 
-  git clone https://gitlab.com/deep-food/deep-reco-gym
+  $ python -m pip install mars-gym
+
+or from the repo:
+
+**Git**
+
+.. code-block:: console
 
 
-MARS-Gym is available for Python 3.6. The recommended way to install is using ```conda```::
+  $ git clone https://gitlab.com/deep-food/deep-reco-gym
+  $ cd mars-gym
+  $ conda env create -f environment.yml
+  $ conda activate mars-gym
 
-  cd mars-gym
-  conda env create -f environment.yml
-  conda activate mars-gym
+  $ pip install -e .
 
 Test MARS-Gym installation::
 
