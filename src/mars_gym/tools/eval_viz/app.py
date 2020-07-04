@@ -6,8 +6,8 @@ import plotly.figure_factory as ff
 import plotly.express as px
 import plotly.graph_objects as go
 import os
-from plot import *
-from util import *
+from mars_gym.tools.eval_viz.plot import *
+from mars_gym.tools.eval_viz.util import *
 import random
 
 pd.set_option("display.max_colwidth", -1)
@@ -542,7 +542,7 @@ def main():
     st.sidebar.title("About")
     st.sidebar.info(
         """
-        
+
         """
     )
 
