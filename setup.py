@@ -25,7 +25,7 @@ def read(*names, **kwargs):
 
 setup(
     name="mars-gym",
-    version="0.0.0",
+    version="0.0.1",
     license="MIT",
     description="Framework Code for the RecSys 2020 entitled 'MARS-Gym: A Gym framework to model, train, and evaluate recommendationsystems for marketplaces'.",
     long_description="%s\n%s" % (
@@ -73,12 +73,11 @@ setup(
     python_requires=">=3.6",
     install_requires=[
         "luigi>=2.8", "gym>=0.15",
-        "numpy>=1.17", "scipy>=1.3", "pandas>=0.25", "pyarrow>=0.15", "pyspark>=2.4", "dask[dataframe]>=2.12",
+        "numpy>=1.17", "scipy>=1.3", "pandas>=0.25", "pyspark>=2.4", 
         "matplotlib>=2.2", "seaborn>=0.8", "plotly>=4.4", "streamlit>=0.52",
         "torch>=1.2", "torchbearer>=0.5", "pytorch-nlp>=0.4",
         "scikit-learn>=0.21", "imbalanced-learn>=0.4", "tensorboardx>=1.6",
-        "tqdm", "requests>=2", "diskcache>=3", "psutil>=5", "google-cloud-storage>=1.26",
-        "botocore",
+        "tqdm", "requests>=2", "diskcache>=3", "psutil>=5"
     ],
     extras_require={
         # eg:

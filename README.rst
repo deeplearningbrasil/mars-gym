@@ -67,7 +67,6 @@ Dependencies and Requirements
 
 -  python=3.6.7
 -  pandas=0.25.1
--  pyarrow=0.15.0
 -  matplotlib=2.2.2
 -  scipy=1.3.1
 -  numpy=1.17.0
@@ -90,9 +89,7 @@ Dependencies and Requirements
 -  pytorch-nlp==0.4.1
 -  unidecode==1.1.1
 -  streamlit==0.52.2
--  dask[dataframe]==2.12.0
 -  gym==0.15.4
--  google-cloud-storage==1.26.0
 
 * Free software: MIT license
 
@@ -171,7 +168,7 @@ Evaluation Module
 .. code:: bash
 
 
-    streamlit run tools/eval_viz/app.py
+    mars-gym-viz
 
 Cite
 ----

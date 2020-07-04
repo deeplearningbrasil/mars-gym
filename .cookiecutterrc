@@ -64,7 +64,7 @@ default_context:
     test_runner:               'pytest'
     travis:                    'yes'
     travis_osx:                'no'
-    version:                   '0.0.0'
+    version:                   '0.0.1'
     website:                   'TODO website'
     year_from:                 '2020'
     year_to:                   '2020'

@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import dask.dataframe as dd
 import numpy as np
 import plotly.figure_factory as ff
 import plotly.express as px
@@ -10,18 +9,10 @@ from mars_gym.tools.eval_viz.plot import *
 from mars_gym.tools.eval_viz.util import *
 import random
 
-pd.set_option("display.max_colwidth", -1)
+pd.set_option("display.max_colwidth", None)
 
 PATH_EVALUATION = "output/evaluation/"
 PATH_EVAL_REINFORCEMENT = "output/interaction/"
-# PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-chicago-usa-crm/result-chicago-usa-crm/output/interaction/'
-# PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-new-york-usa-crm/result-new-york-usa-crm/output/interaction/'
-# PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-recsys-cities-crm/result-recsys-cities-crm/output/interaction/'
-# PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-rio-brazil-crm/result-rio-brazil-crm/output/interaction/'
-# PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/results-copenhagen-denmark-crm/results-copenhagen-denmark-crm/output/interaction/'
-# PATH_EVAL_REINFORCEMENT = '/media/marlesson/8ba238ab-96c3-466c-99d1-a1e8385c9c46/result-coma-italy-crm/result-coma-italy-crm/output/interaction/'
-
-
 PATH_TRAIN = "output/models/"
 
 

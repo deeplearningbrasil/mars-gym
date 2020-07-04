@@ -618,7 +618,7 @@ It is an external service made with streamlit library. To start this service thi
 
 .. code-block:: console
 
-  $ streamlit run tools/eval_viz/app.py
+  $ mars-gym-viz
 
   You can now view your Streamlit app in your browser.
   Local URL: http://localhost:8501

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from multiprocessing.pool import Pool
 from typing import List, Union, Dict, Tuple
 from zipfile import ZipFile
-from google.cloud import storage
+#from google.cloud import storage
 import json
 import scipy
 import numpy as np
@@ -200,13 +200,13 @@ def save_trained_data(source_dir: str, target_dir: str):
         for file in file_paths:
             zip.write(file)
 
-    if "gs://" in target_dir:
-        bucket = storage.Client().bucket(target_dir.split("//")[-1])
-        # blob   = bucket.blob('{}/{}'.format(datetime.now().strftime('%Y%m%d_%H%M%S'), zip_filename))
-        blob = bucket.blob(zip_filename)
-        blob.upload_from_filename(source_dir + "/" + zip_filename)
-    else:
-        shutil.copy(source_dir + "/" + zip_filename, target_dir + "/" + zip_filename)
+    # if "gs://" in target_dir:
+    #     bucket = storage.Client().bucket(target_dir.split("//")[-1])
+    #     # blob   = bucket.blob('{}/{}'.format(datetime.now().strftime('%Y%m%d_%H%M%S'), zip_filename))
+    #     blob = bucket.blob(zip_filename)
+    #     blob.upload_from_filename(source_dir + "/" + zip_filename)
+    # else:
+    shutil.copy(source_dir + "/" + zip_filename, target_dir + "/" + zip_filename)
 
 
 def mean_confidence_interval(data, confidence=0.95):
