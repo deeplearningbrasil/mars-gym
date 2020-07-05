@@ -573,8 +573,8 @@ We have a specific task for evaluation. The Mars fitness provider has three rati
 .. code-block:: console
 
   $ PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions \
-  --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d \
-  --model-task-class mars_gym.simulation.interaction.InteractionTraining
+  --model-task-class mars_gym.simulation.interaction.InteractionTraining \
+  --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d
 
   DEBUG: Checking if EvaluateTestSetPredictions(model_task_class=mars_gym.simulation.interaction.InteractionTraining, model_task_id=InteractionTraining____samples_trivago____epsilon___1__50e3124699, offpolicy_eval=False, task_hash=none, direct_estimator_class=None, direct_estimator_negative_proportion=0.8, direct_estimator_batch_size=500, direct_estimator_epochs=50, eval_cips_cap=15, policy_estimator_extra_params={}, num_processes=12, fairness_columns=[]) is complete
   2020-06-22 09:36:41,042 : DEBUG : Pending tasks: 1
@@ -608,8 +608,22 @@ Each evaluation generates many artifacts with metrics and metadata as can be use
 
 **Fairness Metrics**
 
+To calculate the metrics of fairness, you need to pass the parameter :code:`--fairness-columns`, this parameter is an array of attributes that the metrics will be calculated. Ex:
+
+
+.. code-block:: console
+
+  $ PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions \
+  --model-task-class mars_gym.simulation.interaction.InteractionTraining \
+  --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d \
+  --fairness-columns '["pos_item_id"]'
+
+under construction ...
+
 
 **Off-policy Metrics**
+
+under construction ...
 
 
 Evaluation Platform
