@@ -25,7 +25,7 @@ def read(*names, **kwargs):
 
 setup(
     name="mars-gym",
-    version="0.0.1",
+    version="0.0.0",
     license="MIT",
     description="Framework Code for the RecSys 2020 entitled 'MARS-Gym: A Gym framework to model, train, and evaluate recommendationsystems for marketplaces'.",
     long_description="%s\n%s" % (
@@ -38,7 +38,10 @@ setup(
     packages=find_packages("src"),
     package_dir={"": "src"},
     py_modules=[splitext(basename(path))[0] for path in glob("src/*.py")],
-    scripts=["bin/mars-gym-viz"],
+    entry_points='''
+        [console_scripts]
+        mars-gym=mars_gym.cli:cli
+    ''',
     include_package_data=True,
     zip_safe=False,
     classifiers=[
@@ -72,12 +75,14 @@ setup(
     ],
     python_requires=">=3.6",
     install_requires=[
-        "luigi>=2.8", "gym>=0.15",
-        "numpy>=1.17", "scipy>=1.3", "pandas>=0.25", "pyspark>=2.4", 
-        "matplotlib>=2.2", "seaborn>=0.8", "plotly>=4.4", "streamlit>=0.52",
-        "torch>=1.2", "torchbearer>=0.5", "pytorch-nlp>=0.4",
+        "luigi>=2.8,<3.0", "gym>=0.15",
+        "numpy>=1.17", "scipy>=1.3", "pandas>=0.25", "pyspark>=2.4",
+        "matplotlib>=2.2", "seaborn>=0.8", "plotly>=4.4", "streamlit==0.62",
+        "torch==1.2", "torchbearer==0.5", "pytorch-nlp>=0.4",
         "scikit-learn>=0.21", "imbalanced-learn>=0.4", "tensorboardx>=1.6",
-        "tqdm", "requests>=2", "diskcache>=3", "psutil>=5"
+        "tqdm", "requests>=2", "diskcache>=3", "psutil>=5",
+        "click>=7.0",
+        "docutils==0.15",
     ],
     extras_require={
         # eg:
