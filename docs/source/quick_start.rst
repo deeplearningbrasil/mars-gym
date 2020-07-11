@@ -213,7 +213,7 @@ The Recommendation Agent is composed of Reward Estimator and a Policy Recommenda
 Reward Estimator
 ################
 
-We need implement a Reward Estimator ρ(x, a), this is a Pytorch Model that will estimator a reward in a contextual bandit problem. It uses the context 'x' (all information passed from environment) and the available actions 'a' to estimate a reward for each action.
+We need implement a Reward Estimator ρ(x, a), this is a Pytorch Model that will estimate a reward in a contextual bandit problem. It uses the context 'x' (all information passed from environment) and the available actions 'a' to estimate a reward for each action.
 
 .. image:: ../../images/math_reward_estimator.png
   :width: 300
@@ -221,7 +221,7 @@ We need implement a Reward Estimator ρ(x, a), this is a Pytorch Model that will
 
 **Model**
 
-The model need inherited from RecommenderModule. It class provider the :code:`ProjectConfig` and a :code:`Dict`  with IndexMapping for all category variables. The model is a Pytorch :code:`nn.module` and receive in the foward function all context defined in :code:`ProjectConfig` (:code:`user_column`, :code:`item_column`, :code:`other_input_columns`, and :code:`metadata_columns`).
+The model needs to inherit from RecommenderModule. This class receives through its constructor the :code:`ProjectConfig` and a :code:`Dict`  with IndexMapping for all categorical variables. The model is a Pytorch :code:`nn.Module` and receives in the foward function all context defined in :code:`ProjectConfig` (:code:`user_column`, :code:`item_column`, :code:`other_input_columns`, and :code:`metadata_columns`).
 
 .. code-block:: python
 
@@ -482,7 +482,7 @@ The best way to run is in **Script Mode**:
 
 .. code-block:: console
 
-  $ PYTHONPATH="." luigi --module mars_gym.simulation.interaction InteractionTraining \
+  $ mars-gym run interaction \
   --project samples.trivago_simple.config.trivago_rio \
   --recommender-module-class samples.trivago_simple.simulation.SimpleLinearModel \
   --recommender-extra-params '{"n_factors": 10, "metadata_size": 148, "window_hist_size": 5}' \
@@ -526,11 +526,11 @@ It is also possible to use MARS-gym for supervised learning. It is useful for va
 
 .. code-block:: console
 
-  $ PYTHONPATH="." luigi --module mars_gym.simulation.training SupervisedModelTraining \
-  --project samples.trivago_simple.config.trivago_rio\
-  --recommender-module-class samples.trivago_simple.simulation.SimpleLinearModel\
-  --recommender-extra-params '{"n_factors": 10, "metadata_size": 148, "window_hist_size": 5}'\
-  --early-stopping-min-delta 0.0001 --negative-proportion 0.8\
+  $ mars-gym run supervised \
+  --project samples.trivago_simple.config.trivago_rio \
+  --recommender-module-class samples.trivago_simple.simulation.SimpleLinearModel \
+  --recommender-extra-params '{"n_factors": 10, "metadata_size": 148, "window_hist_size": 5}' \
+  --early-stopping-min-delta 0.0001 --negative-proportion 0.8 \
   --learning-rate 0.0001 --epochs 50 --batch-size 100 --metrics='["loss"]'
 
   ...
@@ -568,12 +568,11 @@ It is also possible to use MARS-gym for supervised learning. It is useful for va
 Evaluation
 **********
 
-We have a specific task for evaluation. The Mars fitness provider has three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is necessary to run a simulation or supervised training, after this we will use the :code:`task_id` for evaluation. For evaluation, we use :code:`EvaluateTestSetPredictions` class.
+We have a specific task for evaluation. This task implements three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is necessary to run a simulation or supervised training, after this we will use the :code:`task_id` for evaluation. For evaluation, we use the :code:`mars-gym evaluate` command, which has the :code:`mars-gym evaluate interaction` and :code:`mars-gym evaluate supervised` variants.
 
 .. code-block:: console
 
-  $ PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions \
-  --model-task-class mars_gym.simulation.interaction.InteractionTraining \
+  $ mars-gym evaluate interaction \
   --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d
 
   DEBUG: Checking if EvaluateTestSetPredictions(model_task_class=mars_gym.simulation.interaction.InteractionTraining, model_task_id=InteractionTraining____samples_trivago____epsilon___1__50e3124699, offpolicy_eval=False, task_hash=none, direct_estimator_class=None, direct_estimator_negative_proportion=0.8, direct_estimator_batch_size=500, direct_estimator_epochs=50, eval_cips_cap=15, policy_estimator_extra_params={}, num_processes=12, fairness_columns=[]) is complete
@@ -613,8 +612,7 @@ To calculate the metrics of fairness, you need to pass the parameter :code:`--fa
 
 .. code-block:: console
 
-  $ PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions \
-  --model-task-class mars_gym.simulation.interaction.InteractionTraining \
+  $ mars-gym evaluate interaction \
   --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d \
   --fairness-columns '["pos_item_id"]'
 
@@ -639,7 +637,7 @@ It is an external service made with streamlit library. To start this service thi
 
 .. code-block:: console
 
-  $ mars-gym-viz
+  $ mars-gym viz
 
   You can now view your Streamlit app in your browser.
   Local URL: http://localhost:8501

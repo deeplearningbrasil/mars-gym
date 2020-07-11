@@ -47,15 +47,20 @@ Overview
 
 .. end-badges
 
-Framework Code for the RecSys 2020 entitled 'MARS-Gym: A Gym framework to model, train, and evaluate
-recommendationsystems for marketplaces'.
+Framework Code for the RecSys 2020 entitled 'MARS-Gym: A Gym framework to model, train, and evaluate recommendation systems for marketplaces'.
 
 .. figure:: images/img1.jpg
    :alt: MDP
 
    MDP
 
-MARS-Gym(MArketplaceRecommenderSystems Gym), a benchmark framework for modeling, training, and evaluating RL-based recommender systems for marketplaces. Three main components composes the framework. The first one is a highly customizable module where the consumer can ingest and process a massive amount of data for learning using spark jobs. We designed the second component for training purposes. It holds an extensible module built on top of PyTorch to design learning architectures. It also possesses an OpenAI’s Gym environment that ingests the processed dataset to run a multi-agent system that simulates the targeted marketplace. Finally, the last component is an evaluation module that provides a set of distinct perspectives on the agent’s performance. It presents not only traditional recommendation metrics but also off-policy evaluation metrics, to account for the bias induced from the historical data representation of marketplace dynamics. Finally, it also presents fairness indicators to analyze the long-term impact of such recommenders in the ecosystem concerning sensitive attributes. This component is powered by a user-friendly interface to facilitate the analysis and comparison between agents.
+MARS-Gym (MArketplace Recommender Systems Gym), a benchmark framework for modeling, training, and evaluating RL-based recommender systems for marketplaces.
+
+Three main components composes the framework:
+
+- Data Engineering Module: A highly customizable module where the consumer can ingest and process a massive amount of data for learning using spark jobs.
+- Simulation Module: Holds an extensible module built on top of PyTorch to design learning architectures. It also possesses an OpenAI’s Gym environment that ingests the processed dataset to run a multi-agent system that simulates the targeted marketplace.
+- Evaluation Module: Provides a set of distinct perspectives on the agent’s performance. It presents traditional recommendation metrics, off-policy evaluation metrics, and fairness indicators. This component is powered by a user-friendly interface to facilitate the analysis and comparison betweenagents
 
 .. figure:: images/img2.jpg
    :alt: Framework
@@ -91,7 +96,7 @@ Dependencies and Requirements
 -  streamlit==0.52.2
 -  gym==0.15.4
 
-* Free software: MIT license
+Free software: MIT license
 
 Installation
 ============
@@ -146,7 +151,7 @@ Simulate Example
 .. code:: bash
 
 
-    PYTHONPATH="." luigi --module MODULE --project PROJECT \
+    mars-gym run interaction --project PROJECT \
     --n-factors N_FACTORS --learning-rate LR --optimizer OPTIMIZER \
     --epochs EPOCHS --obs-batch-size OBS_BATCH \
     --batch-size BATCH_SIZE --num-episodes NUM_EP \
@@ -158,17 +163,17 @@ Evaluate Example
 .. code:: bash
 
 
-    PYTHONPATH="." luigi --module MODULE --model-task-class MODEL_CLASS \
+    mars-gym evaluate iteraction \
      --model-task-id MODEL_TASK_ID --fairness-columns "[]" \
      --direct-estimator-class DE_CLASS
 
 Evaluation Module
-----------------
+-----------------
 
 .. code:: bash
 
 
-    mars-gym-viz
+    mars-gym viz
 
 Cite
 ----
@@ -178,7 +183,7 @@ Please cite the associated paper for this work if you use this code:
 ::
 
     @article{santana2020mars,
-      title={MARS-Gym: A Gym framework to model, train, and evaluate recommendationsystems for marketplaces},
+      title={MARS-Gym: A Gym framework to model, train, and evaluate recommendation systems for marketplaces},
       author={Marlesson R. O. de Santana and
               Luckeciano C. Melo and
               Fernando H. F. Camargo and
