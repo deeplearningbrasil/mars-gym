@@ -21,6 +21,9 @@ metastore_db/
 .idea_modules/
 *.iml
 
+# VsCode
+.vscode/
+
 *.pyc
 *.db
 *.log
