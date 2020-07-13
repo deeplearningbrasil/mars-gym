@@ -718,7 +718,8 @@ class SupervisedModelTraining(TorchModelTraining):
                 ob[self.project_config.available_arms_column_name]
             )
         else:
-            arm_indices = self.unique_items
+            arm_indices = self.unique_items[:100]
+        random.shuffle(arm_indices)
 
         return arm_indices
 
@@ -790,7 +791,7 @@ class SupervisedModelTraining(TorchModelTraining):
             for ob, arm_indices in zip(obs, arm_indices_list)
         ]
         obs_dataset = InteractionsDataset(
-            pd.concat(ob_dfs), obs[0][ITEM_METADATA_KEY], self.project_config
+            pd.concat(ob_dfs), obs[0][ITEM_METADATA_KEY], self.project_config, self.index_mapping
         )
 
         arm_contexts_list: List[Tuple[np.ndarray, ...]] = []

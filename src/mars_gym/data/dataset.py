@@ -177,7 +177,7 @@ class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
         # data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
 
         super().__init__(
-            data_frame, embeddings_for_metadata, project_config, *args, **kwargs
+            data_frame, embeddings_for_metadata, project_config, index_mapping, *args, **kwargs
         )
         self._negative_proportion = negative_proportion
         self._max_item_idx = data_frame[project_config.item_column.name].max()
