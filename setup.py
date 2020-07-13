@@ -72,17 +72,16 @@ setup(
     },
     keywords=[
         # eg: "keyword1", "keyword2", "keyword3",
-    ],
+    ],  
     python_requires=">=3.6",
     install_requires=[
-        "luigi>=2.8,<3.0", "gym>=0.15",
-        "numpy>=1.17", "scipy>=1.3", "pandas>=0.25", "pyspark>=2.4",
-        "matplotlib>=2.2", "seaborn>=0.8", "plotly>=4.4", "streamlit==0.62",
+        "luigi>=2.8,<3.0", "gym>=0.15,<1",
+        "numpy>=1.17,<2", "scipy>=1.3,<2", "pandas>=0.25,<1", "pyspark>=2.4,<3",
+        "matplotlib>=2.2,<3", "seaborn>=0.8,<1", "plotly>=4.4,<5", "streamlit==0.62",
         "torch==1.2", "torchbearer==0.5", "pytorch-nlp>=0.4",
-        "scikit-learn>=0.21", "imbalanced-learn>=0.4", "tensorboardx>=1.6",
-        "tqdm", "requests>=2", "diskcache>=3", "psutil>=5",
-        "click>=7.0",
-        "docutils==0.15",
+        "scikit-learn>=0.21,<1", "imbalanced-learn>=0.4,<1", "tensorboardx>=1.6,<2",
+        "tqdm<5", "requests>=2,<3", "diskcache>=3,<4", "psutil>=5,<6",
+        "click>=7.0","docutils==0.15"
     ],
     extras_require={
         # eg:

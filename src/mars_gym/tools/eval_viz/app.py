@@ -9,7 +9,7 @@ from mars_gym.tools.eval_viz.plot import *
 from mars_gym.tools.eval_viz.util import *
 import random
 
-pd.set_option("display.max_colwidth", None)
+pd.set_option("display.max_colwidth", -1)
 
 PATH_EVALUATION = "output/evaluation/"
 PATH_EVAL_REINFORCEMENT = "output/interaction/"
