@@ -363,6 +363,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 data_frame=self.train_data_frame,
                 embeddings_for_metadata=self.embeddings_for_metadata,
                 project_config=self.project_config,
+                index_mapping=self.index_mapping,
                 negative_proportion=self.negative_proportion,
             )
         return self._train_dataset
@@ -374,6 +375,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 data_frame=self.val_data_frame,
                 embeddings_for_metadata=self.embeddings_for_metadata,
                 project_config=self.project_config,
+                index_mapping=self.index_mapping,
                 negative_proportion=self.negative_proportion,
             )
         return self._val_dataset
@@ -385,6 +387,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 data_frame=self.test_data_frame,
                 embeddings_for_metadata=self.embeddings_for_metadata,
                 project_config=self.project_config,
+                index_mapping=self.index_mapping,
                 negative_proportion=0.0,
             )
         return self._test_dataset

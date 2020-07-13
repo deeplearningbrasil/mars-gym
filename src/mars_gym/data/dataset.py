@@ -90,6 +90,7 @@ class InteractionsDataset(Dataset):
         data_frame: pd.DataFrame,
         embeddings_for_metadata: Optional[Dict[Any, np.ndarray]],
         project_config: ProjectConfig,
+        index_mapping: Dict[str, Dict[Any, int]],
         *args,
         **kwargs
     ) -> None:
@@ -162,13 +163,13 @@ class InteractionsDataset(Dataset):
         # print(inputs)
         return inputs, output
 
-
 class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
     def __init__(
         self,
         data_frame: pd.DataFrame,
         embeddings_for_metadata: Optional[Dict[str, np.ndarray]],
         project_config: ProjectConfig,
+        index_mapping: Dict[str, Dict[Any, int]],
         negative_proportion: float = 0.8,
         *args,
         **kwargs
