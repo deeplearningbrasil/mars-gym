@@ -38,6 +38,7 @@ from mars_gym.utils.files import (
 )
 from mars_gym.utils.utils import save_trained_data
 
+
 # from IPython import embed; embed()
 
 
@@ -167,9 +168,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
         if self.project_config.available_arms_column_name is None:
             n = 1
         else:
-            n = np.sum(
-                ob[self.project_config.available_arms_column_name]
-            )  # Binary Array [0,0,1,0,0,1...]
+            n = len(ob[self.project_config.available_arms_column_name])
         prob += 0.001  # error
         ps = (1 / n) / prob
         return ps
@@ -185,9 +184,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
         except KeyError:
             prob = 0
 
-        n = np.sum(
-            ob[self.project_config.available_arms_column_name]
-        )  # Binary Array [0,0,1,0,0,1...]
+        n = len(ob[self.project_config.available_arms_column_name])
         prob += 0.001  # error
         ps = (1 / n) / prob
 
@@ -293,9 +290,9 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                     1, device=self.torch_device, requires_grad=True
                 ),
             )
-            .with_generators(val_generator=val_loader)
-            .to(self.torch_device)
-            .eval()
+                .with_generators(val_generator=val_loader)
+                .to(self.torch_device)
+                .eval()
         )
 
         with torch.no_grad():
@@ -326,7 +323,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                 ignore_index=True,
             )
             if self.sample_size > 0:
-                data = data[-self.sample_size :]
+                data = data[-self.sample_size:]
 
             self._interactions_data_frame = preprocess_interactions_data_frame(
                 data, self.project_config,
@@ -370,7 +367,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                         self.project_config.output_column.name
                     ]
                 )
-                > 1
+                   > 1
                 else None,
             )
         else:
@@ -416,14 +413,14 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                 self.known_observations_data_frame[
                     [self.project_config.output_column.name]
                 ]
-                .describe()
-                .transpose(),
+                    .describe()
+                    .transpose(),
                 self._train_data_frame[[self.project_config.output_column.name]]
-                .describe()
-                .transpose(),
+                    .describe()
+                    .transpose(),
                 self._val_data_frame[[self.project_config.output_column.name]]
-                .describe()
-                .transpose(),
+                    .describe()
+                    .transpose(),
             ]
         )
         stats["dataset"] = ["all", "train", "valid"]
@@ -448,9 +445,9 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             available_items_column=self.project_config.available_arms_column_name,
             item_column=self.project_config.item_column.name,
             number_of_items=self.interactions_data_frame[
-                self.project_config.item_column.name
-            ].max()
-            + 1,
+                                self.project_config.item_column.name
+                            ].max()
+                            + 1,
             item_metadata=self.embeddings_for_metadata,
         )
         self.env.seed(42)
@@ -462,6 +459,12 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
         k = 0
         for i in range(self.num_episodes):
             ob = self.env.reset()
+
+            if self.project_config.available_arms_column_name in ob:
+                # The Env returns a binary array to be compatible with OpenAI Gym API but only the indices are needed
+                ob[self.project_config.available_arms_column_name] = np.flatnonzero(
+                    ob[self.project_config.available_arms_column_name]
+                )
 
             while True:
                 interactions += 1

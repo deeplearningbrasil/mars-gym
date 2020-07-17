@@ -709,15 +709,11 @@ class SupervisedModelTraining(TorchModelTraining):
             ]
         return self._obs_columns
 
-    def _get_arm_indices(self, ob: dict) -> Union[List[int], np.ndarray]:
+    def _get_arm_indices(self, ob: dict) -> Union[List[int]]:
         if self.project_config.available_arms_column_name:
-            arm_indices = np.flatnonzero(
-                ob[self.project_config.available_arms_column_name]
-            )
+            return ob[self.project_config.available_arms_column_name]
         else:
-            arm_indices = self.unique_items
-
-        return arm_indices
+            return self.unique_items
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
         batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
@@ -842,15 +838,13 @@ class SupervisedModelTraining(TorchModelTraining):
             else:
                 ob[ITEM_METADATA_KEY] = None
 
-            if self.project_config.available_arms_column_name:
-                available_arms = ob[self.project_config.available_arms_column_name]
-                # TODO
-                if len(available_arms) == 0:
-                    available_arms = [ob[self.project_config.item_column.name]]
-
-                items = np.zeros(np.max(available_arms) + 1)
-                items[available_arms] = 1
-                ob[self.project_config.available_arms_column_name] = items
+            if (
+                self.project_config.available_arms_column_name
+                and len(ob[self.project_config.available_arms_column_name]) == 0
+            ):
+                ob[self.project_config.available_arms_column_name] = [
+                    ob[self.project_config.item_column.name]
+                ]
 
         arm_contexts_list, arm_indices_list, arm_scores_list = self._prepare_for_agent(
             agent, obs
@@ -897,7 +891,6 @@ def load_torch_model_training_from_task_dir(
 def load_torch_model_training_from_task_id(
     model_cls: Type[TorchModelTraining], task_id: str
 ) -> TorchModelTraining:
-
     task_dir = get_task_dir(model_cls, task_id)
     if not os.path.exists(task_dir):
         task_dir = get_interaction_dir(model_cls, task_id)
