@@ -363,6 +363,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 data_frame=self.train_data_frame,
                 embeddings_for_metadata=self.embeddings_for_metadata,
                 project_config=self.project_config,
+                index_mapping=self.index_mapping,
                 negative_proportion=self.negative_proportion,
             )
         return self._train_dataset
@@ -374,6 +375,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 data_frame=self.val_data_frame,
                 embeddings_for_metadata=self.embeddings_for_metadata,
                 project_config=self.project_config,
+                index_mapping=self.index_mapping,
                 negative_proportion=self.negative_proportion,
             )
         return self._val_dataset
@@ -385,6 +387,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 data_frame=self.test_data_frame,
                 embeddings_for_metadata=self.embeddings_for_metadata,
                 project_config=self.project_config,
+                index_mapping=self.index_mapping,
                 negative_proportion=0.0,
             )
         return self._test_dataset
@@ -711,9 +714,12 @@ class SupervisedModelTraining(TorchModelTraining):
 
     def _get_arm_indices(self, ob: dict) -> Union[List[int]]:
         if self.project_config.available_arms_column_name:
-            return ob[self.project_config.available_arms_column_name]
+            arm_indices = ob[self.project_config.available_arms_column_name]
         else:
-            return self.unique_items
+            arm_indices = self.unique_items[:100]
+        random.shuffle(arm_indices)
+
+        return arm_indices
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
         batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
@@ -783,7 +789,7 @@ class SupervisedModelTraining(TorchModelTraining):
             for ob, arm_indices in zip(obs, arm_indices_list)
         ]
         obs_dataset = InteractionsDataset(
-            pd.concat(ob_dfs), obs[0][ITEM_METADATA_KEY], self.project_config
+            pd.concat(ob_dfs), obs[0][ITEM_METADATA_KEY], self.project_config, self.index_mapping
         )
 
         arm_contexts_list: List[Tuple[np.ndarray, ...]] = []
