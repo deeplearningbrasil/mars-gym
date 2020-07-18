@@ -5,7 +5,7 @@ import click
 
 import mars_gym
 
-os.environ["LUIGI_CONFIG_PATH"] = os.path.join(mars_gym.__file__, "luigi.cfg")
+os.environ["LUIGI_CONFIG_PATH"] = os.path.join(os.path.split(mars_gym.__file__)[0], "luigi.cfg")
 
 
 def _process_args(args: Tuple[str]) -> str:
