@@ -715,9 +715,9 @@ class SupervisedModelTraining(TorchModelTraining):
     def _get_arm_indices(self, ob: dict) -> Union[List[int]]:
         if self.project_config.available_arms_column_name:
             arm_indices = ob[self.project_config.available_arms_column_name]
+            arm_indices = random.sample(arm_indices, len(arm_indices))
         else:
-            arm_indices = self.unique_items[:100]
-        random.shuffle(arm_indices)
+            arm_indices = random.sample(self.unique_items, min(100, len(self.unique_items)))
 
         return arm_indices
 
