@@ -10,7 +10,7 @@ import shutil
 from contextlib import redirect_stdout
 from copy import deepcopy
 from multiprocessing import Pool
-from typing import Type, Dict, List, Optional, Tuple, Union, Any
+from typing import Type, Dict, List, Optional, Tuple, Union, Any, cast
 
 import luigi
 import numpy as np
@@ -72,6 +72,7 @@ from mars_gym.utils.index_mapping import (
     create_index_mapping,
     create_index_mapping_from_arrays,
     transform_with_indexing,
+    map_array,
 )
 from mars_gym.utils.plot import plot_history
 from mars_gym.utils import files
@@ -712,14 +713,16 @@ class SupervisedModelTraining(TorchModelTraining):
             ]
         return self._obs_columns
 
-    def _get_arm_indices(self, ob: dict) -> Union[List[int]]:
+    def _get_arms(self, ob: dict) -> List[Any]:
         if self.project_config.available_arms_column_name:
-            arm_indices = ob[self.project_config.available_arms_column_name]
-            arm_indices = random.sample(arm_indices, len(arm_indices))
+            arms = ob[self.project_config.available_arms_column_name]
+            arms = random.sample(arms, len(arms))
         else:
-            arm_indices = random.sample(self.unique_items, min(100, len(self.unique_items)))
+            arms = random.sample(
+                self.unique_items, min(100, len(self.unique_items))
+            )
 
-        return arm_indices
+        return arms
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
         batch_sampler = FasterBatchSampler(ob_dataset, self.batch_size, shuffle=False)
@@ -782,19 +785,31 @@ class SupervisedModelTraining(TorchModelTraining):
 
     def _prepare_for_agent(
         self, agent: BanditAgent, obs: List[Dict[str, Any]]
-    ) -> Tuple[List[Tuple[np.ndarray, ...]], List[List[int]], List[List[float]]]:
-        arm_indices_list = [self._get_arm_indices(ob) for ob in obs]
+    ) -> Tuple[List[Tuple[np.ndarray, ...]], List[List[Any]], List[List[int]], List[List[float]]]:
+        arms_list = [self._get_arms(ob) for ob in tqdm(obs, total=len(obs))]
+        if self.project_config.item_column.type == IOType.INDEXABLE:
+            arm_indices_list = [
+                map_array(
+                    arms, self.index_mapping[self.project_config.item_column.name]
+                )
+                for arms in tqdm(arms_list, total=len(arms_list))
+            ]
+        else:
+            arm_indices_list = cast(List[List[int]], arms_list)
         ob_dfs = [
             self._create_ob_data_frame(ob, arm_indices)
-            for ob, arm_indices in zip(obs, arm_indices_list)
+            for ob, arm_indices in tqdm(zip(obs, arm_indices_list), total=len(obs))
         ]
         obs_dataset = InteractionsDataset(
-            pd.concat(ob_dfs), obs[0][ITEM_METADATA_KEY], self.project_config, self.index_mapping
+            pd.concat(ob_dfs),
+            obs[0][ITEM_METADATA_KEY],
+            self.project_config,
+            self.index_mapping,
         )
 
         arm_contexts_list: List[Tuple[np.ndarray, ...]] = []
         i = 0
-        for ob_df in ob_dfs:
+        for ob_df in tqdm(ob_dfs, total=len(ob_dfs)):
             arm_contexts_list.append(obs_dataset[i : i + len(ob_df)][0])
             i += len(ob_df)
 
@@ -802,20 +817,21 @@ class SupervisedModelTraining(TorchModelTraining):
             all_arm_scores = self._get_arm_scores(agent, obs_dataset)
             arm_scores_list = []
             i = 0
-            for ob_df in ob_dfs:
+            for ob_df in tqdm(ob_dfs, total=len(ob_dfs)):
                 arm_scores_list.append(all_arm_scores[i : i + len(ob_df)])
                 i += len(ob_df)
         else:
             arm_scores_list = [
                 agent.bandit.calculate_scores(arm_indices, arm_contexts)
-                for arm_indices, arm_contexts in zip(
-                    arm_indices_list, arm_contexts_list
+                for arm_indices, arm_contexts in tqdm(
+                    zip(arm_indices_list, arm_contexts_list),
+                    total=len(arm_indices_list),
                 )
             ]
-        return arm_contexts_list, arm_indices_list, arm_scores_list
+        return arm_contexts_list, arms_list, arm_indices_list, arm_scores_list
 
     def _act(self, agent: BanditAgent, ob: dict) -> int:
-        arm_contexts_list, arm_indices_list, arm_scores_list = self._prepare_for_agent(
+        arm_contexts_list, _, arm_indices_list, arm_scores_list = self._prepare_for_agent(
             agent, [ob]
         )
 
@@ -852,19 +868,19 @@ class SupervisedModelTraining(TorchModelTraining):
                     ob[self.project_config.item_column.name]
                 ]
 
-        arm_contexts_list, arm_indices_list, arm_scores_list = self._prepare_for_agent(
+        arm_contexts_list, arms_list, arm_indices_list, arm_scores_list = self._prepare_for_agent(
             agent, obs
         )
 
         sorted_actions_list = []
         proba_actions_list = []
 
-        for arm_contexts, arm_indices, arm_scores in tqdm(
-            zip(arm_contexts_list, arm_indices_list, arm_scores_list),
+        for arm_contexts, arms, arm_indices, arm_scores in tqdm(
+            zip(arm_contexts_list, arms_list, arm_indices_list, arm_scores_list),
             total=len(arm_contexts_list),
         ):
             sorted_actions, proba_actions = agent.rank(
-                arm_indices, arm_contexts, arm_scores
+                arms, arm_indices, arm_contexts, arm_scores
             )
             sorted_actions_list.append(sorted_actions)
             proba_actions_list.append(proba_actions)
@@ -875,11 +891,12 @@ class SupervisedModelTraining(TorchModelTraining):
 
         del obs
 
-        self.test_data_frame["sorted_actions"] = sorted_actions_list
-        self.test_data_frame["prob_actions"] = proba_actions_list
-        self.test_data_frame["action_scores"] = action_scores_list
+        df = pd.read_csv(self.test_data_frame_path)
+        df["sorted_actions"] = sorted_actions_list
+        df["prob_actions"] = proba_actions_list
+        df["action_scores"] = action_scores_list
 
-        self.test_data_frame.to_csv(
+        df.to_csv(
             get_test_set_predictions_path(self.output().path), index=False
         )
 

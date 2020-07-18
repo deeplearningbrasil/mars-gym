@@ -36,7 +36,7 @@ def create_index_mapping_from_arrays(
     return create_index_mapping(all_values, include_unkown, include_none)
 
 
-def _map_array(values: list, mapping: dict) -> List[int]:
+def map_array(values: list, mapping: dict) -> List[int]:
     return [int(mapping[str(value)]) for value in values]
 
 
@@ -52,18 +52,4 @@ def transform_with_indexing(
             if column.type == IOType.INDEXABLE:
                 df[key] = df[key].astype(str).map(mapping).astype(int)
             elif column.type == IOType.INDEXABLE_ARRAY:
-                df[key] = df[key].map(functools.partial(_map_array, mapping=mapping))
-
-    if (
-        project_config.available_arms_column_name in df
-        and project_config.item_column.name in index_mapping
-    ):
-        df[project_config.available_arms_column_name] = (
-            df[project_config.available_arms_column_name]
-            .fillna("")
-            .map(
-                functools.partial(
-                    _map_array, mapping=index_mapping[project_config.item_column.name]
-                )
-            )
-        )
+                df[key] = df[key].map(functools.partial(map_array, mapping=mapping))

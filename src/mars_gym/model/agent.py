@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 
 import numpy as np
 from torchbearer import Trial, DataLoader
@@ -45,12 +45,14 @@ class BanditAgent(object):
 
     def rank(
         self,
+        arms: List[Any],
         arm_indices: List[int],
         arm_contexts: Tuple[np.ndarray, ...],
         arm_scores: Optional[List[float]],
-    ) -> Tuple[List[int], List[float]]:
+    ) -> Tuple[List[Any], List[float]]:
         return self.bandit.rank(
-            arm_indices,
+            arms=arms,
+            arm_indices=arm_indices,
             arm_contexts=arm_contexts,
             arm_scores=arm_scores,
             with_probs=True,

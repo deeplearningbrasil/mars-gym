@@ -1,6 +1,6 @@
 import abc
 import collections
-from typing import List, Union, Tuple, Dict, Type, Optional
+from typing import List, Union, Tuple, Dict, Type, Optional, Any
 
 import math
 import numpy as np
@@ -74,12 +74,13 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
     def rank(
         self,
+        arms: List[Any],
         arm_indices: List[int],
         arm_contexts: Tuple[np.ndarray, ...] = None,
         arm_scores: List[float] = None,
         with_probs: bool = False,
         limit: int = None,
-    ) -> Union[List[int], Tuple[List[int], List[float]]]:
+    ) -> Union[List[Any], Tuple[List[Any], List[float]]]:
         assert arm_contexts is not None or arm_scores is not None
 
         if arm_scores is None:
@@ -101,7 +102,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
             idx = self.select_idx(
                 arm_indices, arm_contexts=arm_contexts, arm_scores=arm_scores, pos=i
             )
-            ranked_arms.append(arm_indices[idx])
+            ranked_arms.append(arms[idx])
 
             if with_probs:
                 prob_ranked_arms.append(arm_probs[idx])
@@ -574,25 +575,26 @@ class _LinBanditPolicy(BanditPolicy, metaclass=abc.ABCMeta):
 
     def rank(
         self,
+        arms: List[Any],
         arm_indices: List[int],
         arm_contexts: Tuple[np.ndarray, ...] = None,
         arm_scores: List[float] = None,
         with_probs: bool = False,
         limit: int = None,
-    ) -> Union[List[int], Tuple[List[int], List[float]]]:
+    ) -> Union[List[Any], Tuple[List[Any], List[float]]]:
         assert arm_contexts is not None or arm_scores is not None
         if not arm_scores:
             arm_scores = self.calculate_scores(arm_indices, arm_contexts)
         assert len(arm_indices) == len(arm_scores)
 
-        X, arms = self._flatten_input_and_extract_arms(arm_contexts)
+        X, context_arms = self._flatten_input_and_extract_arms(arm_contexts)
         arm_scores = [
             self._calculate_score(arm_score, x, arm)
-            for x, arm, arm_score in zip(X, arms, arm_scores)
+            for x, arm, arm_score in zip(X, context_arms, arm_scores)
         ]
 
         ranked_arms = [
-            arm_id for _, arm_id in sorted(zip(arm_scores, arm_indices), reverse=True)
+            arm for _, arm in sorted(zip(arm_scores, arms), reverse=True)
         ]
         if limit is not None:
             ranked_arms = ranked_arms[:limit]

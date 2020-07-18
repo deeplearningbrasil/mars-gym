@@ -2,7 +2,7 @@ import functools
 import json
 import os
 from multiprocessing.pool import Pool
-from typing import List, Tuple, Type
+from typing import List, Tuple, Type, Any
 import pprint
 
 import abc
@@ -182,9 +182,6 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             ),
             self.model_training.project_config,
         )  # .sample(10000)
-        df[self.model_training.project_config.item_column.name] = df[
-            self.model_training.project_config.item_column.name
-        ].astype(int)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
         df["prob_actions"] = parallel_literal_eval(df["prob_actions"])
@@ -527,7 +524,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
 
 def _create_relevance_list(
-    sorted_actions: List[int], expected_action: int, reward: int
+    sorted_actions: List[Any], expected_action: Any, reward: int
 ) -> List[int]:
     return [1 if action == expected_action else 0 for action in sorted_actions]
 
