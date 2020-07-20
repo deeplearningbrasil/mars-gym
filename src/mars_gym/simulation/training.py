@@ -786,8 +786,10 @@ class SupervisedModelTraining(TorchModelTraining):
     def _prepare_for_agent(
         self, agent: BanditAgent, obs: List[Dict[str, Any]]
     ) -> Tuple[List[Tuple[np.ndarray, ...]], List[List[Any]], List[List[int]], List[List[float]]]:
+        
         arms_list = [self._get_arms(ob) for ob in tqdm(obs, total=len(obs))]
-        if self.project_config.item_column.type == IOType.INDEXABLE:
+
+        if self.project_config.item_column.type in [IOType.INDEXABLE, IOType.INDEXABLE_ARRAY]:
             arm_indices_list = [
                 map_array(
                     arms, self.index_mapping[self.project_config.item_column.name]
@@ -796,6 +798,7 @@ class SupervisedModelTraining(TorchModelTraining):
             ]
         else:
             arm_indices_list = cast(List[List[int]], arms_list)
+
         ob_dfs = [
             self._create_ob_data_frame(ob, arm_indices)
             for ob, arm_indices in tqdm(zip(obs, arm_indices_list), total=len(obs))
@@ -809,6 +812,7 @@ class SupervisedModelTraining(TorchModelTraining):
 
         arm_contexts_list: List[Tuple[np.ndarray, ...]] = []
         i = 0
+   
         for ob_df in tqdm(ob_dfs, total=len(ob_dfs)):
             arm_contexts_list.append(obs_dataset[i : i + len(ob_df)][0])
             i += len(ob_df)
@@ -888,6 +892,7 @@ class SupervisedModelTraining(TorchModelTraining):
         action_scores_list = [
             list(reversed(sorted(action_scores))) for action_scores in arm_scores_list
         ]
+
 
         del obs
 

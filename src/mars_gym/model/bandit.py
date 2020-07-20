@@ -90,6 +90,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
 
         self._limit = limit
         ranked_arms = []
+        arms = list(arms)
         arm_indices = list(arm_indices)
         arm_scores = list(arm_scores)
 
@@ -108,6 +109,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
                 prob_ranked_arms.append(arm_probs[idx])
                 arm_probs.pop(idx)
 
+            arms.pop(idx)
             arm_indices.pop(idx)
             arm_scores.pop(idx)
 

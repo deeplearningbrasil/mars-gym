@@ -29,9 +29,12 @@ from mars_gym.evaluation.metrics.offpolicy import (
     eval_doubly_robust,
 )
 from mars_gym.evaluation.metrics.rank import (
+    mean_reciprocal_rank,
     average_precision,
     precision_at_k,
     ndcg_at_k,
+    personalization_at_k,
+    prediction_coverage_at_k,
 )
 from mars_gym.simulation.training import (
     TorchModelTraining,
@@ -173,6 +176,10 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def propensity_score_column(self) -> str:
         return self.model_training.project_config.propensity_score_column_name
 
+    @property
+    def catalog(self) -> str:
+        return list(self.model_training.index_mapping[self.model_training.project_config.item_column.name].keys())
+
     def run(self):
         os.makedirs(self.output().path)
 
@@ -262,6 +269,10 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             df["average_precision"] = list(
                 tqdm(p.map(average_precision, df["relevance_list"]), total=len(df))
             )
+            print("Calculating mean reciprocal rank...")
+            df["MRR"] = list(
+                tqdm(p.map(mean_reciprocal_rank, df["relevance_list"]), total=len(df))
+            )
 
             print("Calculating precision at 1...")
             df["precision_at_1"] = list(
@@ -307,36 +318,37 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 )
             )
         #
-        catalog = list(range(self.model_training.n_items))
+        catalog = self.catalog
 
         metrics = {
             "model_task": self.model_task_id,
             "count": len(df),
             "mean_average_precision": df["average_precision"].mean(),
+            "MRR": df["MRR"].mean(),
             "precision_at_1": df["precision_at_1"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
             "ndcg_at_10": df["ndcg_at_10"].mean(),
-            "ndcg_at_15": df["ndcg_at_15"].mean(),
+            #"ndcg_at_15": df["ndcg_at_15"].mean(),
             "ndcg_at_20": df["ndcg_at_20"].mean(),
-            "ndcg_at_50": df["ndcg_at_50"].mean(),
-            # "coverage_at_5": prediction_coverage_at_k(df["sorted_actions"], catalog, 5),
-            # "coverage_at_10": prediction_coverage_at_k(
-            #     df["sorted_actions"], catalog, 10
-            # ),
-            # "coverage_at_15": prediction_coverage_at_k(
-            #     df["sorted_actions"], catalog, 15
-            # ),
-            # "coverage_at_20": prediction_coverage_at_k(
-            #     df["sorted_actions"], catalog, 20
-            # ),
-            # "coverage_at_50": prediction_coverage_at_k(
-            #     df["sorted_actions"], catalog, 50
-            # ),
-            # "personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
-            # "personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
-            # "personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
-            # "personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
-            # "personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
+            #"ndcg_at_50": df["ndcg_at_50"].mean(),
+            "coverage_at_5": prediction_coverage_at_k(df["sorted_actions"], catalog, 5),
+            "coverage_at_10": prediction_coverage_at_k(
+                df["sorted_actions"], catalog, 10
+            ),
+            #"coverage_at_15": prediction_coverage_at_k(
+            #    df["sorted_actions"], catalog, 15
+            #),
+            "coverage_at_20": prediction_coverage_at_k(
+                df["sorted_actions"], catalog, 20
+            ),
+            #"coverage_at_50": prediction_coverage_at_k(
+            #    df["sorted_actions"], catalog, 50
+            #),
+            #"personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
+            #"personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
+            #"personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
+            #"personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
+            #"personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
         }
 
         return df, metrics
