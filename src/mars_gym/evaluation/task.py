@@ -183,11 +183,15 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def run(self):
         os.makedirs(self.output().path)
 
-        df: pd.DataFrame = preprocess_interactions_data_frame(
-            pd.read_csv(
-                get_test_set_predictions_path(self.model_training.output().path)
-            ),
-            self.model_training.project_config,
+        # df: pd.DataFrame = preprocess_interactions_data_frame(
+        #     pd.read_csv(
+        #         get_test_set_predictions_path(self.model_training.output().path)
+        #     ),
+        #     self.model_training.project_config,
+        # )  # .sample(10000)
+
+        df: pd.DataFrame = pd.read_csv(
+            get_test_set_predictions_path(self.model_training.output().path)
         )  # .sample(10000)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
@@ -225,10 +229,9 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
         # Ground Truth
         ground_truth_df = df[
-            df[self.model_training.project_config.output_column.name] == 1
+            ~(df[self.model_training.project_config.output_column.name] == 0)
         ]
 
-        ## from IPython import embed; embed()
         print("Rank Metrics...")
         df_rank, dict_rank = self.rank_metrics(ground_truth_df)
         gc.collect()

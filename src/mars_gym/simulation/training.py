@@ -251,7 +251,6 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     @property
     def embeddings_for_metadata(self) -> Optional[Dict[str, np.ndarray]]:
         if not hasattr(self, "_embeddings_for_metadata"):
-            # from IPython import embed; embed()
             self._embeddings_for_metadata = (
                 preprocess_metadata_data_frame(
                     self.metadata_data_frame, self.project_config
@@ -901,6 +900,9 @@ class SupervisedModelTraining(TorchModelTraining):
         df["prob_actions"] = proba_actions_list
         df["action_scores"] = action_scores_list
 
+        self._to_csv_test_set_predictions(df)
+
+    def _to_csv_test_set_predictions(self, df: pd.DataFrame) -> None:
         df.to_csv(
             get_test_set_predictions_path(self.output().path), index=False
         )
