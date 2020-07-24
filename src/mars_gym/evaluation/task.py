@@ -197,6 +197,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
         df["prob_actions"] = parallel_literal_eval(df["prob_actions"])
         df["action_scores"] = parallel_literal_eval(df["action_scores"])
+
+        
         df["action"] = df["sorted_actions"].apply(
             lambda sorted_actions: sorted_actions[0]
         )
@@ -267,6 +269,13 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         )
 
     def rank_metrics(self, df: pd.DataFrame):
+        df[self.model_training.project_config.available_arms_column_name] = parallel_literal_eval(
+            df[self.model_training.project_config.available_arms_column_name])
+
+        # Filter only disponível interaction 
+        df = df[df.apply(lambda row: row[self.model_training.project_config.item_column.name]
+                    in row[self.model_training.project_config.available_arms_column_name], axis=1)]
+
         with Pool(self.num_processes) as p:
             print("Calculating average precision...")
             df["average_precision"] = list(

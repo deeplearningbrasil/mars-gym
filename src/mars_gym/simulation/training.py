@@ -35,6 +35,11 @@ from torchbearer.callbacks.csv_logger import CSVLogger
 from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from tqdm import tqdm
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 
 from mars_gym.cuda import CudaRepository
 from mars_gym.data.dataset import (
@@ -753,8 +758,18 @@ class SupervisedModelTraining(TorchModelTraining):
             model_output, torch.Tensor
         ) else model_output[0][0]
         scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
+        self.plot_scores(scores)
 
         return scores
+
+
+    def plot_scores(self, scores):
+        plt.figure()
+        sns_plot = sns.distplot(
+            scores, hist=False, color="g", kde_kws={"shade": True})
+        figure = sns_plot.get_figure()
+        figure.savefig(os.path.join(self.output().path, "scores.png"))
+
 
     def _create_ob_data_frame(self, ob: dict, arm_indices: List[int]) -> pd.DataFrame:
         data = [

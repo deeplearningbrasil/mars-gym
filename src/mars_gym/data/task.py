@@ -199,15 +199,15 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         for field, value in self.isin_filters.items():
             df = df[df[field].isin(value)]
 
-        train_df, val_df, test_df = self.split_dataset(df)
+        self.train_df, self.val_df, self.test_df = self.split_dataset(df)
 
-        self.transform_data_frame(train_df, data_key=self.TRAIN_DATA).to_csv(
+        self.transform_data_frame(self.train_df, data_key=self.TRAIN_DATA).to_csv(
             self.output()[0].path, index=False
         )
-        self.transform_data_frame(val_df, data_key=self.VALIDATION_DATA).to_csv(
+        self.transform_data_frame(self.val_df, data_key=self.VALIDATION_DATA).to_csv(
             self.output()[1].path, index=False
         )
-        self.transform_data_frame(test_df, data_key=self.TEST_GENERATOR).to_csv(
+        self.transform_data_frame(self.test_df, data_key=self.TEST_GENERATOR).to_csv(
             self.output()[2].path, index=False
         )
 
