@@ -1,23 +1,31 @@
 Quick Start
 ================================
 
-In this tutorial we will present a simple example of using MARS. Each module will be explained in a simple and superficial way with a focus on the application.
+In this tutorial we will present a simple example using MARS. Each module will be explained in a superficial way with focus on the application.
 
 .. image:: ../../images/img2.jpg
   :width: 700
   :align: center
 
-Three main components composes the framework. The first one is a highly customizable module where the consumer can ingest and process a massive amount of data for learning using spark jobs. The second component was designed for training purposes. It holds an extensible module built on top of PyTorch to design learning architectures. It also possesses an OpenAI’s Gym environment that ingests the processed dataset to run a multi-agent system that simulates the targeted marketplace.
-Finally, the last component is an evaluation module that provides a set of distinct perspectives on the agent’s performance. It presents not only traditional  ecommendation metrics but also off-policy evaluation metrics, to account for the bias induced from the historical data representation of marketplace dynamics
+Three main components make the framework:
+
+* The first one is a highly customizable module where the consumer can ingest and process a massive amount of **data** for learning using spark jobs. 
+* The second component was designed for **training** purposes. It holds an extensible module built on top of PyTorch to design learning architectures. It also has an OpenAI Gym environment that ingests the processed dataset to simulate the targeted marketplace.
+* Finally, the last component is an **evaluation** module that provides a set of distinct perspectives on the agent’s performance. It presents not only traditional recommendation metrics but also off-policy evaluations, to account for the bias induced from the historical data representation.
+
+All code used in this guide is designed to ilustrate how each class must be implemented. They will 
+vary according to each project, but the consistent and necessary methods are displayed here. Some examples 
+can be found at the :code:`samples` folder. These are used to run our examples, so make sure this folder is
+located in the same place you'll be running the commands from the following sections.
 
 Dataset
 *******
 
-MARS provides some datasets already processed to be used as examples to test the framework. They are real datasets, which contain interaction data between users and items and the metadata of the items to be recommended.
+MARS provides some datasets preprocessed as examples to test the framework. They are real datasets, 
+which contain interaction data between users and items and the metadata of the items to be recommended.
 
-* [1] Trivago Dataset - http://recsys.trivago.cloud/challenge/dataset/
-* [2] Yoochose Dataset - http://2015.recsyschallenge.com/challenge.html
-
+* Trivago Dataset - http://recsys.trivago.cloud/challenge/dataset/
+* Yoochose Dataset - http://2015.recsyschallenge.com/challenge.html
 
 .. code-block:: python
 
@@ -46,12 +54,16 @@ MARS provides some datasets already processed to be used as examples to test the
   3 [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, ...
   4 [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, ...
 
-
+.. note::
+  The :code:`load_dataset()` function will download and load only the datasets in :code:`mars_gym.data.utils.datasets()`
 
 Prepare data
 ************
 
-The Data Enginnering Module uses luigi as a data pipeline tool. Using luigi's tasks it is possible to make different transformations in the data before being used by :code:`BasePrepareDataFrames`, the class responsible for validating and preparing the data for MARS.
+The Data Engineering Module is responsible for preprocessing the data and setting up interactions and metadata for 
+the simulation module. It uses `Luigi <https://github.com/spotify/luigi>`_ as a pipeline tool. 
+
+:code:`BasePrepareDataFrames` is the main class responsible for validating and preparing the data.
 
 .. code-block:: python
 
@@ -91,7 +103,7 @@ The Data Enginnering Module uses luigi as a data pipeline tool. Using luigi's ta
           df.to_csv(self.output().path, index="item_id")
 
 
-The class inherited from BasePrepareDataFrames is the one we will use within MARS. It is necessary to implement 4 methods in this class. The :code:`timestamp_property`, which is feature that defines the temporal order, :code:`dataset_dir`, which is local path where the dataset will be saved, :code:`read_data_frame_path`, which is local path of the interaction dataset and :code:`metadata_data_frame_path`, which is local path of the metadata dataset.
+The class inherited from :code:`BasePrepareDataFrames` is the one we will use from within MARS. It is necessary to implement 4 methods in this class. The :code:`timestamp_property`, which is a feature that defines the temporal order, :code:`dataset_dir`, which is the local path where the dataset will be saved, :code:`read_data_frame_path`, which is the local path of the interaction dataset and :code:`metadata_data_frame_path`, which is the local path of the metadata dataset.
 
 .. code-block:: python
 
@@ -120,18 +132,13 @@ The class inherited from BasePrepareDataFrames is the one we will use within MAR
       def metadata_data_frame_path(self) -> Optional[str]:
           return self.input()[1].path
 
-It is possible to test this pipeline before the simulation. This is a luigi task, so the commands are the same.
+It is possible to test this pipeline before the simulation. Since this is a Luigi task it will give you summary about its success or failure, the commands to test are the following:
 
 .. code-block:: python
 
+  >>> from samples.trivago_simple.data import PrepareTrivagoDataFrame
+  >>> import luigi
   >>> job = PrepareTrivagoDataFrame()
-  PrepareTrivagoDataFrame(session_test_size=0.1, test_size=0.2, sample_size=-1,
-  minimum_interactions=5, dataset_split_method=time, column_stratification=None,
-  test_split_type=random, n_splits=10, split_index=0, val_size=0.2,
-  sampling_strategy=none, balance_fields=[], sampling_proportions={},
-  use_sampling_in_validation=False, eq_filters={}, neq_filters={},
-  isin_filters={}, seed=42)
-
   >>> luigi.build([job], local_scheduler=True)
   ....
   INFO: Worker Worker(salt=154256821, workers=1, host=marlesson-pc, username=marlesson,
@@ -156,7 +163,7 @@ It is possible to test this pipeline before the simulation. This is a luigi task
   '.../test_cc25c002c7.csv',
   '.../metadata.csv']
 
-The :code:`BasePrepareDataFrames` is highly configurable and parameterizable. In general, the output of this job is the split and processed dataset to be used by MARS.
+The :code:`BasePrepareDataFrames` is highly configurable and parameterizable. In general, the output of this job is the split and processed datasets to be used by MARS.
 
 * `DATASET_DIR/train_cc25c002c7.csv`
 * `DATASET_DIR/val_cc25c002c7.csv`
@@ -167,7 +174,7 @@ The :code:`BasePrepareDataFrames` is highly configurable and parameterizable. In
 Configuration
 *************
 
-Before the simulation, we need to prepare a configuration file with design parameters and contextual information that will be used in the model. We need to define a variable with an instance of :code:`ProjectConfig`
+Before the simulation, we need to prepare a configuration file with the design parameters and contextual information to be used in the model. We need to define a variable as an instance of :code:`ProjectConfig`
 
 .. code-block:: python
 
@@ -191,33 +198,33 @@ Before the simulation, we need to prepare a configuration file with design param
   )
 
 
-* :code:`base_dir`: Local path where the dataset and files generated by the data enginner module will be saved
-* :code:`prepare_data_frames_task`: Class inherited from BasePrepareDataFrames. This defines the data enginner pipeline.
+* :code:`base_dir`: Local path where the dataset and files generated by the data engineer module will be saved
+* :code:`prepare_data_frames_task`: Class inherited from BasePrepareDataFrames. This defines the data engineer pipeline.
 * :code:`dataset_class`: This class defines how the dataset will be used in the simulation module. MARS already implements different types.
-* :code:`user_column`: Name of the column that identifies the user
-* :code:`item_column`: Name of the column that identifies the item
-* :code:`other_input_columns`: Name of the columns that will be used as input in the model and in the context
-* :code:`metadata_columns`: Name of the metadata columns that will be used as input to the model and context
-* :code:`output_column`: Nome of the reward column
-* :code:`available_arms_column_name`: Column name with items available for recommendation at the time of interaction. If this information is not available, MARS will randomly generate the items.
+* :code:`user_column`: Column that identifies the user
+* :code:`item_column`: Column that identifies the item
+* :code:`other_input_columns`: Columns that will be used as input for the model and context
+* :code:`metadata_columns`: Metadata columns that will be used as input for the model and context
+* :code:`output_column`: Reward column, the column that defines wether the recommendation was sucessful or not  
+* :code:`available_arms_column_name`: Name of the column with items available for recommendation at the time of interaction. This column must contain a list of items the same type as :code:`item_column`. If this information is not available, MARS will randomly generate the items.
 
 .. note::
-  We recommend creating a `config.py` file with all project definitions. It is common to have several different definitions.
+  We recommend creating a `config.py` file with all project definitions. It is common to have several different configurations to experiment.
 
 
 Model and Simulation
 ********************
 
-The Recommendation Agent is composed of Reward Estimator and a Policy Recommendation. The model is trained using the rewards send from the environment and the policy needs to choose actions using the context send from the environment.
+The Recommendation Agent is composed of Reward Estimator and a Recommendation Policy. The model is trained using the rewards from the environment and the policy chooses actions (recommendations) using the context received, again, from the environment.
 
 Reward Estimator
 ################
 
-We need implement a Reward Estimator ρ(x, a), this is a Pytorch Model that will estimate a reward in a contextual bandit problem. It uses the context 'x' (all information passed from environment) and the available actions 'a' to estimate a reward for each action.
+In order to implement a Reward Estimator ρ(x, a) we use a Pytorch Model that will estimate a reward in a contextual bandit problem. It uses the context 'x' (all information passed from environment) and the available actions 'a' to estimate a reward for each action.
 
-.. image:: ../../images/math_reward_estimator.png
-  :width: 300
-  :align: center
+.. .. image:: ../../images/math_reward_estimator.png
+..   :width: 300
+..   :align: center
 
 **Model**
 
@@ -259,18 +266,18 @@ The model needs to inherit from RecommenderModule. This class receives through i
         pass
 
 
-This model will be trained using the Counterfactual Risk Minimization (CRM) [3] to reduce bias that came from the dataset. Everything on this train can be parameterized and changed easily.
+This model will be trained using the Counterfactual Risk Minimization (CRM) [`1 <https://www.cs.cornell.edu/people/tj/publications/swaminathan_joachims_15b.pdf>`_] to reduce bias that came from the dataset. Everything about this training can be parameterized and easily altered.
 
-.. image:: ../../images/math_crm_loss.png
-  :width: 400
-  :align: center
+.. .. image:: ../../images/math_crm_loss.png
+..   :width: 400
+..   :align: center
 
-* [3] Adith Swaminathan and Thorsten Joachims. 2015. Counterfactual Risk Minimization: Learning from Logged Bandit Feedback. In Proceedings of the 32nd International Conference on International Conference on Machine Learning - Volume 37 (Lille, France) (ICML’15). JMLR.org, 814–823.
+* [`1 <https://www.cs.cornell.edu/people/tj/publications/swaminathan_joachims_15b.pdf>`_] Adith Swaminathan and Thorsten Joachims. 2015. Counterfactual Risk Minimization: Learning from Logged Bandit Feedback. In Proceedings of the 32nd International Conference on International Conference on Machine Learning - Volume 37 (Lille, France) (ICML’15). JMLR.org, 814–823.
 
 
 **Model Example**
 
-This is an example of a simple linear model used in trivago samples:
+This is an example of a simple linear model used in the trivago samples:
 
 .. code-block:: python
 
@@ -326,10 +333,10 @@ This is an example of a simple linear model used in trivago samples:
 
 
 
-Policy Recommendation
+Recommendation Policy
 #####################
 
-We need to implement a Policy Recommendation π(a|x), this is a bandit strategy 'π' when we choose the action 'a' using the context 'x'.
+We need to implement a Recommendation Policy π(a|x), this is a bandit strategy 'π' that will choose an action 'a' based on the context 'x'.
 
 .. image:: ../../images/math_policy_recommendation.png
   :width: 100
@@ -338,7 +345,7 @@ We need to implement a Policy Recommendation π(a|x), this is a bandit strategy 
 
 **Bandit**
 
-The Bandit needs to be inherited from BanditPolicy. We need to implement the :code:`._select_idx(...)`, this function is called by the environment to receive an action given the context.
+The Bandit needs to be inherited from BanditPolicy. We need to implement the :code:`._select_idx(...)` function. This method is called by the environment to receive an action given the context.
 
 .. code-block:: python
 
@@ -360,15 +367,15 @@ The Bandit needs to be inherited from BanditPolicy. We need to implement the :co
           pos: int = 0,
       ) -> Union[int, Tuple[int, float]]:
           """
-          Choice the index of arm selected in turn
+          Choose the index of arm selected in turn
           """
 
           return action
 
 
-* :code:`arm_indices`: Available actions at the time of interaction (same than :code:`available_arms_column_name`)
+* :code:`arm_indices`: Available actions at the time of interaction (same as :code:`available_arms_column_name`)
 * :code:`arm_contexts`: Context information at the time of interaction
-* :code:`arm_scores`: Estimated eward for each action. It came from Reward Estimator.
+* :code:`arm_scores`: Estimated reward, that came from Reward Estimator, for each action.
 
 **Example of Epsilon-Greedy Policy**
 
@@ -401,20 +408,25 @@ The Bandit needs to be inherited from BanditPolicy. We need to implement the :co
 Simulation
 ##########
 
-MARS-Gym simulates the dynamics of the marketplace. First of all, the framework filters only successful interactions, once they are the available source of the true reward distribution. Then, the gym environment wraps the resultant data. We compose each environment step with one interaction. The provided observation contains the associated user and its metadata, as well as the contextual information from the log. As selected action, the agent should return the recommendation of one partner. The environment also provides additional informative data via a dictionary (for example, a pre-selected list of potential recommendations, in order to narrow the action space).
-
-We compute the reward by comparing the agent’s selected action and the partner provided by the log. The agent receives a positive reward if they match. Therefore, the agent only discovers the targeted partner in the scenario of a successful recommendation. Otherwise, it should explore the actions to build its knowledge. The sequence of steps follows the sequence of interactions in the filtered ground-truth dataset. Hence, we maintain the same temporal dynamic. We define an episode as one iteration trough all logs, rather than the user session. This behavior intends to approximate the multi-agent scenario and keep the perspective on the marketplace, not solely in the user. Finally, the interactions between the proposed agent and the environment generate new interaction logs. This simulated data trains the agent and also provides the cumulative reward curve as the first source of evaluation. In the next subsection, we describe the design of MARS-Gym to accomplish this simulation.
+MARS-Gym simulates the dynamics of the marketplace. This includes several processes.
+The framework filters only successful interactions. They are the only ones that 
+tell us what the users really want, thus they are used to compose the rewards. Each 
+simulation step is an interaction, with observations being the user's metadata, and 
+actions being the items to recommend. The sequence of steps follows the sequence of 
+interactions in the filtered ground-truth dataset to maintain the temporal dynamic.
+Finally, the interactions between the proposed agent and the environment generate 
+new interaction logs that are used in subsequent steps.
 
 .. image:: ../../images/img3.jpg
   :width: 700
   :align: center
 
 
-For simulation, we use :code:`InteractionTraining` class. This class is a Gym implementation and receives as parameters the information about the project (:code:`ProjectConfig`), reward estimator (:code:`RecommenderModule`), bandit policy (:code:`BanditPolicy`) and other training parameters.
+For simulation, we use the :code:`InteractionTraining` class. This class is a Gym implementation and receives as parameters the information about the project (:code:`ProjectConfig`), reward estimator (:code:`RecommenderModule`), bandit policy (:code:`BanditPolicy`) and other training parameters.
 
 .. code-block:: python
 
-  >>> from mars_gym.simulation.training import InteractionTraining
+  >>> from mars_gym.simulation.interaction import InteractionTraining
   >>>
   >>> job_train = InteractionTraining(
   >>>     project="samples.trivago_simple.config.trivago_rio",
@@ -433,25 +445,7 @@ For simulation, we use :code:`InteractionTraining` class. This class is a Gym im
   >>>     obs_batch_size=100,
   >>>     num_episodes=1,
   >>> )
-
-  InteractionTraining(project=samples.trivago_simple.config.trivago_rio,
-  minimum_interactions=5, session_test_size=0.1, dataset_split_method=time,
-  val_size=0.2, n_splits=5, split_index=0, data_frames_preparation_extra_params={},
-  sampling_strategy=none, balance_fields=[], sampling_proportions={},
-  use_sampling_in_validation=False, eq_filters={}, neq_filters={}, isin_filters={},
-  seed=42, observation=, negative_proportion=0.0,
-  recommender_module_class=samples.trivago_simple.simulation.SimpleLinearModel,
-  recommender_extra_params={"n_factors": 10, "metadata_size": 148, "window_hist_size": 5},
-  device=cuda, batch_size=500, epochs=100, optimizer=adam, optimizer_params={},
-  learning_rate=0.001, loss_function_params={}, gradient_norm_clipping=0.0,
-  gradient_norm_clipping_type=2, early_stopping_patience=5, early_stopping_min_delta=0.001,
-  monitor_metric=val_loss, monitor_mode=min, generator_workers=0, pin_memory=False,
-  policy_estimator_extra_params={}, metrics=["loss"],
-  bandit_policy_class=samples.trivago_simple.simulation.EGreedyPolicy,
-  bandit_policy_params={"epsilon": 0.1, "seed": 42}, loss_function=crm, test_size=0.1,
-  test_split_type=time, val_split_type=time, crm_ps_strategy=bandit,
-  obs_batch_size=100, num_episodes=1, sample_size=-1, full_refit=False, output_model_dir=)
-
+  >>>
   >>> luigi.build([job_train], local_scheduler=True)
   ...
   ...
@@ -509,7 +503,10 @@ The best way to run is in **Script Mode**:
   2020-06-22 08:41:37,842 : INFO : Informed scheduler that task   InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d   has status   DONE
   DEBUG: Asking scheduler for work...
 
-Each simulation generates many artifacts for evaluation and metadata for deploy models in another environment:
+.. note::
+  Make sure you have downloaded the dataset to be processed. In this script specifically, we are using the "processed_trivago_rio" dataset
+
+Each simulation generates artifacts for evaluation and metadata that can be used to deploy models in another environment:
 
 * ../params.json
 * ../sim-datalog.csv
@@ -521,7 +518,7 @@ Each simulation generates many artifacts for evaluation and metadata for deploy 
 Supervised Learning
 ###################
 
-It is also possible to use MARS-gym for supervised learning. It is useful for validating and testing the reward model before using it in a simulation.  In such cases, we can use :code:`SupervisedModelTraining` class with similar parameters.
+It is also possible to use MARS-gym for supervised learning. It is useful for validating and testing the reward model before using it in a simulation. In such cases, we can use :code:`SupervisedModelTraining` class with similar parameters.
 
 
 .. code-block:: console
@@ -568,7 +565,7 @@ It is also possible to use MARS-gym for supervised learning. It is useful for va
 Evaluation
 **********
 
-We have a specific task for evaluation. This task implements three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is necessary to run a simulation or supervised training, after this we will use the :code:`task_id` for evaluation. For evaluation, we use the :code:`mars-gym evaluate` command, which has the :code:`mars-gym evaluate interaction` and :code:`mars-gym evaluate supervised` variants.
+We have a specific command for evaluation. This task implements three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is necessary to run a simulation or supervised training, after this we will use the :code:`task_id` provided by luigi, and also used as the folder name in :code:`output/interaction/InteractionTraining/results/task_id`. For evaluation, we use the :code:`mars-gym evaluate` command, which has the :code:`mars-gym evaluate interaction` and :code:`mars-gym evaluate supervised` variants.
 
 .. code-block:: console
 
@@ -605,10 +602,23 @@ Each evaluation generates many artifacts with metrics and metadata as can be use
 * EVALUATION_DIR/fairness_df.csv
 * EVALUATION_DIR/fairness_metrics.csv
 
+.. note::
+  You can always type :code:`--help` for more option inside the evaluation commands
+
+
 **Fairness Metrics**
 
-To calculate the metrics of fairness, you need to pass the parameter :code:`--fairness-columns`, this parameter is an array of attributes that the metrics will be calculated. Ex:
+In MARS-Gym, we consider three perspectives to measure fairness [`2 <https://doi.org/10.1145/3038912.3052660>`_]:
 
+* Disparate Treatment
+
+* Disparate Impact
+
+* Disparate Mistreatment
+
+To calculate the metrics of fairness, you need to pass the parameter 
+:code:`--fairness-columns`, this parameter receives an array of attributes according to 
+which the metrics will be computed. Ex:
 
 .. code-block:: console
 
@@ -616,13 +626,20 @@ To calculate the metrics of fairness, you need to pass the parameter :code:`--fa
   --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d \
   --fairness-columns '["pos_item_id"]'
 
-under construction ...
-
+[`2 <https://doi.org/10.1145/3038912.3052660>`_] Zafar et. al, 2017. Fairness Beyond Disparate Treatment & Disparate Impact: Learning 
+Classification without Disparate Mistreatment https://doi.org/10.1145/3038912.3052660
 
 **Off-policy Metrics**
 
-under construction ...
+For off-policy evaluation, MARS-Gym uses three main estimators [`3 <https://dl.acm.org/doi/10.5555/3104482.3104620>`_]:
 
+* Direct Method 
+* Inverse Propensity Score 
+* Doubly Robust 
+
+All of which can be seen and compared with our Evaluation Platform.
+
+[`3 <https://dl.acm.org/doi/10.5555/3104482.3104620>`_] Miroslav Dudík, John Langford, and Lihong Li. 2011. Doubly Robust Policy Evaluation and Learning. InProceedings of the 28th InternationalConference on International Conference on Machine Learning(Bellevue, Washington, USA)(ICML’11). Omnipress, Madison, WI, USA, 1097–1104.
 
 Evaluation Platform
 ###################
@@ -633,7 +650,7 @@ The Evaluation Platform is a web application that centralizes all views of the e
   :width: 800
   :align: center
 
-It is an external service made with streamlit library. To start this service this is the command:
+It is an external service made with `Streamlit <https://www.streamlit.io/>`_ library. To start the service, use this command:
 
 .. code-block:: console
 
@@ -641,6 +658,8 @@ It is an external service made with streamlit library. To start this service thi
 
   You can now view your Streamlit app in your browser.
   Local URL: http://localhost:8501
+
+In this platform you'll be able to select experiments, metrics, and visualize them in a number of ways.
 
 
 .. .. image:: ../../images/dataviz/image2.png
