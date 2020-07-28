@@ -33,6 +33,14 @@
 
 # PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote --bandit-policy-params '{"endpoints": ["http://localhost:5005/rank"]}' --obs-batch-size 1 --val-size 0 --obs "CDAE"
 
+
+PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_ensemble --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "agg": "max"}' --obs-batch-size 1 --val-size 0 --obs "RemoteEnsembleMax"
+
+PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_ensemble --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "agg": "min"}' --obs-batch-size 1 --val-size 0 --obs "RemoteEnsembleMin"
+
+PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_ensemble --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "agg": "mean"}' --obs-batch-size 1 --val-size 0 --obs "RemoteEnsembleAvg"
+
+
 #########################################################################################
 
 PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_epsilon_greedy --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "window_reward": 100, "epsilon": 0.05}' --obs-batch-size 1 --val-size 0 --obs "[MAB]e-greedy(100-0.05)"
@@ -59,13 +67,17 @@ PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMAB
 
 PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_epsilon_greedy --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "window_reward": 4000, "epsilon": 0.2}' --obs-batch-size 1 --val-size 0 --obs "[MAB]e-greedy(4000-0.2)"
 
-PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_ucb --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "c": 5}' --obs-batch-size 1 --val-size 0 --obs "[MAB]UCB"
+PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_ucb --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "c": 1, "window_reward": 1000}' --obs-batch-size 1 --val-size 0 --obs "[MAB]UCB(1)"
+
+PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_ucb --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "c": 5, "window_reward": 1000}' --obs-batch-size 1 --val-size 0 --obs "[MAB]UCB(5)"
+
+PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_ucb --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "c": 10, "window_reward": 1000}' --obs-batch-size 1 --val-size 0 --obs "[MAB]UCB(10)"
 
 
 #########################################################################################################
 
 
-for i in $(seq 1 10) 
+for i in $(seq 1 5) 
 do
 
 PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_contextual_softmax --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank", "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "logit_multiplier": 10}' --obs-batch-size 1 --val-size 0 --obs "[Contextual]Softmax(10) $i" --seed $i
@@ -87,7 +99,7 @@ PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMAB
 
 done
 
-for i in $(seq 1 10) 
+for i in $(seq 1 5) 
 do
 
 PYTHONPATH="." luigi --module recommendation.task.model.ensamble_mab EnsambleMABInteraction --project ifood_ensamble_mab --bandit-policy remote_epsilon_greedy --bandit-policy-params '{"endpoints": ["http://localhost:5001/rank",  "http://localhost:5003/rank", "http://localhost:5004/rank", "http://localhost:5005/rank"], "window_reward": 500}' --obs-batch-size 1 --val-size 0 --obs "[MAB] e-greedy $i" --seed $i

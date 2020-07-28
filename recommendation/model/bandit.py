@@ -202,6 +202,61 @@ class RemoteEpsilonGreedy(RemotePolicy):
 
         return list(arm_indices).index(action)
 
+class RemoteEnsemble(RemotePolicy):
+    def __init__(self, reward_model: nn.Module, index_data = None, endpoints=[], agg='mean', window_reward=500,seed: int = 42) -> None:
+        super().__init__(reward_model, seed, index_data, endpoints, window_reward)
+        self._rng = RandomState(seed)
+        agg_func = {"mean": np.mean, "max": np.max, "min": np.min}
+        self._agg_func = agg_func[agg]
+
+    def fit(self, dataset: Dataset, batch_size: int = 500) -> None:
+        pass
+
+    def _request(self, endpoint: str, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None):
+
+        items_idx = arm_indices
+        user_idx  = arm_contexts[0][0]
+        
+        #{"user": "anything", "items": ["a6aa3afc-30c4-4e64-aad5-b1a6db104245", "fb42869a-088d-4b98-941f-aa15ca464128", "6a462430-96cc-424d-9f03-7c85bbdb9b1d"]}
+        payload   = {"user": self.index_mapping.user[user_idx], "items": [self.index_mapping.item[i] for i in items_idx]}
+        
+        r = requests.post(endpoint, data = json.dumps(payload), 
+                        headers={"Content-Type": "application/json"} )
+        
+        r = json.loads(r.text)
+        
+        return r['items']#
+
+    def _get_best_item(self, list_models):
+        actions_scores = {}
+        list_size = len(list_models[0])
+
+        for l in list_models:
+            for i in range(list_size):
+                 if l[i] in actions_scores:
+                    actions_scores[l[i]].append(i)
+                 else:
+                    actions_scores[l[i]] = [i]
+            
+        actions     = list(actions_scores.keys())
+        avg_pos     = [self._agg_func(l) for l in  list(actions_scores.values())]
+        best_action = np.argmin(avg_pos)
+        #from IPython import embed; embed()
+        return self.inverse_index_mapping.item[actions[best_action]]
+
+    def _select_idx(self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...] = None,
+                   arm_scores: List[float] = None, pos: int = 0) -> Union[int, Tuple[int, float]]:
+        
+        # Request
+        list_models = [ ]
+        for endpoint in self._endpoints:
+            actions    = self._request(endpoint, arm_indices, arm_contexts)
+            list_models.append(actions)
+
+        action = self._get_best_item(list_models)
+
+        return list(arm_indices).index(action)
+
 class RemoteUCB(RemotePolicy):
     def __init__(self, reward_model: nn.Module, c: float = 2, index_data = None, window_reward=500,endpoints=[], seed: int = 42) -> None:
         super().__init__(reward_model, seed, index_data, endpoints, window_reward)
@@ -958,4 +1013,4 @@ BANDIT_POLICIES: Dict[str, Type[BanditPolicy]] = dict(
     explore_then_exploit=ExploreThenExploit, fixed=FixedPolicy, none=None, remote=RemotePolicy, 
     remote_epsilon_greedy=RemoteEpsilonGreedy, remote_ucb=RemoteUCB, remote_softmax=RemoteSoftmax,
     remote_contextual_epsilon_greedy=RemoteContextualEpsilonGreedy, meta_bandit=MetaBanditPolicy, 
-    remote_contextual_softmax=RemoteContextualSoftmax)
+    remote_contextual_softmax=RemoteContextualSoftmax, remote_ensemble=RemoteEnsemble)
