@@ -2,6 +2,7 @@ from typing import Tuple, List, Union, Optional, Dict, Any
 
 import numpy as np
 import pandas as pd
+import random
 from torch.utils.data import Dataset
 
 from mars_gym.meta_config import ProjectConfig, IOType, Column
@@ -84,6 +85,13 @@ def _rand_int_except(low: int, high: int, exception: int) -> int:
             return number
 
 
+def _choose_except(values: list, exception: Any) -> int:
+    while True:
+        value = random.choice(values)
+        if value != exception:
+            return value
+
+
 class InteractionsDataset(Dataset):
     def __init__(
         self,
@@ -163,6 +171,7 @@ class InteractionsDataset(Dataset):
         # print(inputs)
         return inputs, output
 
+
 class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
     def __init__(
         self,
@@ -177,7 +186,12 @@ class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
         # data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
 
         super().__init__(
-            data_frame, embeddings_for_metadata, project_config, index_mapping, *args, **kwargs
+            data_frame,
+            embeddings_for_metadata,
+            project_config,
+            index_mapping,
+            *args,
+            **kwargs
         )
         self._negative_proportion = negative_proportion
         self._max_item_idx = data_frame[project_config.item_column.name].max()
@@ -216,6 +230,88 @@ class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
                 [
                     _rand_int_except(0, self._max_item_idx + 1, exception=item_idx)
                     for item_idx in negative_input[self._item_input_index]
+                ]
+            )
+            negative_input = tuple(negative_input)
+
+            if positive_indices:
+                input_ = tuple(
+                    np.concatenate([positive_array, negative_array])
+                    for positive_array, negative_array in zip(
+                        positive_input, negative_input
+                    )
+                )
+                output = np.concatenate([positive_output, negative_output])
+            else:
+                input_ = negative_input
+                output = negative_output
+        else:
+            input_ = positive_input
+            output = positive_output
+
+        return input_, output
+
+
+class InteractionsWithNegativeItemGenerationByAvailableItemsDataset(
+    InteractionsDataset
+):
+    def __init__(
+        self,
+        data_frame: pd.DataFrame,
+        embeddings_for_metadata: Optional[Dict[str, np.ndarray]],
+        project_config: ProjectConfig,
+        index_mapping: Dict[str, Dict[Any, int]],
+        negative_proportion: float = 0.8,
+        *args,
+        **kwargs
+    ) -> None:
+        # data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
+
+        assert project_config.available_arms_column_name in data_frame
+        self._available_items = data_frame[project_config.available_arms_column_name].values
+
+        super().__init__(
+            data_frame,
+            embeddings_for_metadata,
+            project_config,
+            index_mapping,
+            *args,
+            **kwargs
+        )
+        self._negative_proportion = negative_proportion
+
+    def __len__(self) -> int:
+        return super().__len__() + int(
+            (1 / (1 - self._negative_proportion) - 1) * super().__len__()
+        )
+
+    def __getitem__(
+        self, indices: Union[int, List[int], slice]
+    ) -> Tuple[Tuple[np.ndarray, ...], np.ndarray]:
+        if isinstance(indices, int):
+            indices = [indices]
+        if isinstance(indices, slice):
+            indices = list(range(len(self))[indices])
+
+        n = super().__len__()
+
+        positive_indices = [index for index in indices if index < n]
+        negative_indices = [index - (index // n) * n for index in indices if index >= n]
+
+        positive_input, positive_output = super().__getitem__(positive_indices)
+
+        if negative_indices:
+            negative_input, _ = super().__getitem__(negative_indices)
+
+            negative_output = self._convert_dtype(
+                np.zeros(len(negative_indices)), self._project_config.output_column.type
+            )
+
+            negative_input = list(negative_input)
+            negative_input[self._item_input_index] = np.array(
+                [
+                    _choose_except(self._available_items[index], item_idx)
+                    for index, item_idx in zip(negative_indices, negative_input[self._item_input_index])
                 ]
             )
             negative_input = tuple(negative_input)
