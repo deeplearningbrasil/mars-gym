@@ -103,6 +103,8 @@ class ProjectConfig(object):
             self.user_column,
             self.item_column,
             *self.other_input_columns,
+            *self.other_input_columns,
+            *self.auxiliar_output_columns
         ]
 
     def get_column_by_name(self, name: str) -> Optional[Column]:

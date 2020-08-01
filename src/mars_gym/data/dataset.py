@@ -36,7 +36,8 @@ def preprocess_interactions_data_frame(
             project_config.item_column,
             project_config.output_column,
         ]
-        + [input_column for input_column in project_config.other_input_columns],
+        + [input_column for input_column in project_config.other_input_columns]\
+        + [input_column for input_column in project_config.auxiliar_output_columns],
     )
     if project_config.available_arms_column_name and isinstance(
         data_frame.iloc[0][project_config.available_arms_column_name], str
@@ -44,6 +45,7 @@ def preprocess_interactions_data_frame(
         data_frame[project_config.available_arms_column_name] = parallel_literal_eval(
             data_frame[project_config.available_arms_column_name]
         )
+
     return data_frame
 
 
