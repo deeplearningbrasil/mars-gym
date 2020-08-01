@@ -533,7 +533,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
                 summary(module, sample_input)
             summary(module, sample_input)
 
-        sample_data = self.train_data_frame.sample(100)
+        sample_data = self.train_data_frame.sample(100, replace=True)
         sample_data.to_csv(os.path.join(self.output().path, "sample_train.csv"))
 
         trial = self.create_trial(module)
@@ -800,9 +800,10 @@ class SupervisedModelTraining(TorchModelTraining):
     def _prepare_for_agent(
         self, agent: BanditAgent, obs: List[Dict[str, Any]]
     ) -> Tuple[List[Tuple[np.ndarray, ...]], List[List[Any]], List[List[int]], List[List[float]]]:
-        
         arms_list = [self._get_arms(ob) for ob in tqdm(obs, total=len(obs))]
-
+        
+        #TODO
+        #If a column in available_arms_column_name was used in (auxiliar_output_columns, other_input_columns) its not necessery
         if self.project_config.item_column.type in [IOType.INDEXABLE, IOType.INDEXABLE_ARRAY]:
             arm_indices_list = [
                 map_array(
@@ -871,7 +872,7 @@ class SupervisedModelTraining(TorchModelTraining):
         print("Saving test set predictions...")
         obs: List[Dict[str, Any]] = self.test_data_frame.to_dict("records")
         self.clean()
-
+        
         for ob in tqdm(obs, total=len(obs)):
             if self.embeddings_for_metadata is not None:
                 ob[ITEM_METADATA_KEY] = self.embeddings_for_metadata
@@ -885,7 +886,7 @@ class SupervisedModelTraining(TorchModelTraining):
                 ob[self.project_config.available_arms_column_name] = [
                     ob[self.project_config.item_column.name]
                 ]
-
+        
         arm_contexts_list, arms_list, arm_indices_list, arm_scores_list = self._prepare_for_agent(
             agent, obs
         )
