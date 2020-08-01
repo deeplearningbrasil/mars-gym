@@ -1,11 +1,13 @@
 from typing import Tuple, List, Union, Optional, Dict, Any
 
+import functools
 import numpy as np
 import pandas as pd
 import random
 from torch.utils.data import Dataset
 
 from mars_gym.meta_config import ProjectConfig, IOType, Column
+from mars_gym.utils.index_mapping import map_array
 from mars_gym.utils.utils import parallel_literal_eval
 
 
@@ -268,7 +270,8 @@ class InteractionsWithNegativeItemGenerationByAvailableItemsDataset(
         # data_frame = data_frame[data_frame[project_config.output_column.name] > 0]
 
         assert project_config.available_arms_column_name in data_frame
-        self._available_items = data_frame[project_config.available_arms_column_name].values
+        self._available_items = data_frame[project_config.available_arms_column_name].map(
+            functools.partial(map_array, mapping=index_mapping[project_config.item_column.name])).values
 
         super().__init__(
             data_frame,
