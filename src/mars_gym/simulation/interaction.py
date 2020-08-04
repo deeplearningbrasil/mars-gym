@@ -1,7 +1,8 @@
 import abc
 import os
-from typing import List, Tuple, Union, Type
+from typing import List, Tuple, Union, Type, Any
 
+import functools
 import gym
 import luigi
 import numpy as np
@@ -21,7 +22,7 @@ from mars_gym.simulation.training import (
     TORCH_LOSS_FUNCTIONS,
     SupervisedModelTraining,
 )
-from mars_gym.utils.index_mapping import transform_with_indexing
+from mars_gym.utils.index_mapping import transform_with_indexing, map_array
 from mars_gym.utils.plot import plot_history, plot_scores
 from mars_gym.utils.reflection import load_attr
 
@@ -290,9 +291,9 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                     1, device=self.torch_device, requires_grad=True
                 ),
             )
-                .with_generators(val_generator=val_loader)
-                .to(self.torch_device)
-                .eval()
+            .with_generators(val_generator=val_loader)
+            .to(self.torch_device)
+            .eval()
         )
 
         with torch.no_grad():
@@ -323,7 +324,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                 ignore_index=True,
             )
             if self.sample_size > 0:
-                data = data[-self.sample_size:]
+                data = data[-self.sample_size :]
 
             self._interactions_data_frame = preprocess_interactions_data_frame(
                 data, self.project_config,
@@ -367,7 +368,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                         self.project_config.output_column.name
                     ]
                 )
-                   > 1
+                > 1
                 else None,
             )
         else:
@@ -400,11 +401,24 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             if self.project_config.available_arms_column_name:
                 env_columns += [self.project_config.available_arms_column_name]
 
-            self._env_data_frame = self.interactions_data_frame.loc[
+            df = self.interactions_data_frame.loc[
                 self.interactions_data_frame[self.project_config.output_column.name]
                 == 1,
                 env_columns,
             ]
+
+            if self.project_config.available_arms_column_name:
+                df[self.project_config.available_arms_column_name] = df[
+                    self.project_config.available_arms_column_name
+                ].map(
+                    functools.partial(
+                        map_array,
+                        mapping=self.index_mapping[
+                            self.project_config.item_column.name
+                        ],
+                    )
+                )
+            self._env_data_frame = df
         return self._env_data_frame
 
     def _print_hist(self):
@@ -413,14 +427,14 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                 self.known_observations_data_frame[
                     [self.project_config.output_column.name]
                 ]
-                    .describe()
-                    .transpose(),
+                .describe()
+                .transpose(),
                 self._train_data_frame[[self.project_config.output_column.name]]
-                    .describe()
-                    .transpose(),
+                .describe()
+                .transpose(),
                 self._val_data_frame[[self.project_config.output_column.name]]
-                    .describe()
-                    .transpose(),
+                .describe()
+                .transpose(),
             ]
         )
         stats["dataset"] = ["all", "train", "valid"]
@@ -445,9 +459,9 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             available_items_column=self.project_config.available_arms_column_name,
             item_column=self.project_config.item_column.name,
             number_of_items=self.interactions_data_frame[
-                                self.project_config.item_column.name
-                            ].max()
-                            + 1,
+                self.project_config.item_column.name
+            ].max()
+            + 1,
             item_metadata=self.embeddings_for_metadata,
         )
         self.env.seed(42)
@@ -460,14 +474,17 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
         for i in range(self.num_episodes):
             ob = self.env.reset()
 
-            if self.project_config.available_arms_column_name in ob:
-                # The Env returns a binary array to be compatible with OpenAI Gym API but only the indices are needed
-                ob[self.project_config.available_arms_column_name] = np.flatnonzero(
-                    ob[self.project_config.available_arms_column_name]
-                )
-
             while True:
                 interactions += 1
+
+                if self.project_config.available_arms_column_name in ob:
+                    # The Env returns a binary array to be compatible with OpenAI Gym API but the actual items are needed
+                    ob[self.project_config.available_arms_column_name] = [
+                        self.reverse_index_mapping[self.project_config.item_column.name][index]
+                        for index in np.flatnonzero(
+                            ob[self.project_config.available_arms_column_name]
+                        ).tolist()
+                    ]
 
                 action, prob = self._act(self.agent, ob)
 

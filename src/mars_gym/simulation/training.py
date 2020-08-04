@@ -36,6 +36,7 @@ from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from tqdm import tqdm
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -722,9 +723,7 @@ class SupervisedModelTraining(TorchModelTraining):
             arms = ob[self.project_config.available_arms_column_name]
             arms = random.sample(arms, len(arms))
         else:
-            arms = random.sample(
-                self.unique_items, min(100, len(self.unique_items))
-            )
+            arms = random.sample(self.unique_items, min(100, len(self.unique_items)))
 
         return arms
 
@@ -758,18 +757,14 @@ class SupervisedModelTraining(TorchModelTraining):
             model_output, torch.Tensor
         ) else model_output[0][0]
         scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
-        self.plot_scores(scores)
 
         return scores
 
-
     def plot_scores(self, scores):
-        plt.figure()
-        sns_plot = sns.distplot(
-            scores, hist=False, color="g", kde_kws={"shade": True})
+        sns_plot = sns.distplot(scores, hist=False, color="g", kde_kws={"shade": True})
         figure = sns_plot.get_figure()
         figure.savefig(os.path.join(self.output().path, "scores.png"))
-
+        plt.close(figure)
 
     def _create_ob_data_frame(self, ob: dict, arm_indices: List[int]) -> pd.DataFrame:
         data = [
@@ -799,24 +794,32 @@ class SupervisedModelTraining(TorchModelTraining):
 
     def _prepare_for_agent(
         self, agent: BanditAgent, obs: List[Dict[str, Any]]
-    ) -> Tuple[List[Tuple[np.ndarray, ...]], List[List[Any]], List[List[int]], List[List[float]]]:
-        arms_list = [self._get_arms(ob) for ob in tqdm(obs, total=len(obs))]
-        
-        #TODO
-        #If a column in available_arms_column_name was used in (auxiliar_output_columns, other_input_columns) its not necessery
-        if self.project_config.item_column.type in [IOType.INDEXABLE, IOType.INDEXABLE_ARRAY]:
+    ) -> Tuple[
+        List[Tuple[np.ndarray, ...]],
+        List[List[Any]],
+        List[List[int]],
+        List[List[float]],
+    ]:
+        arms_list = [self._get_arms(ob) for ob in obs]
+
+        # TODO
+        # If a column in available_arms_column_name was used in (auxiliar_output_columns, other_input_columns) its not necessery
+        if self.project_config.item_column.type in [
+            IOType.INDEXABLE,
+            IOType.INDEXABLE_ARRAY,
+        ]:
             arm_indices_list = [
                 map_array(
                     arms, self.index_mapping[self.project_config.item_column.name]
                 )
-                for arms in tqdm(arms_list, total=len(arms_list))
+                for arms in arms_list
             ]
         else:
             arm_indices_list = cast(List[List[int]], arms_list)
 
         ob_dfs = [
             self._create_ob_data_frame(ob, arm_indices)
-            for ob, arm_indices in tqdm(zip(obs, arm_indices_list), total=len(obs))
+            for ob, arm_indices in zip(obs, arm_indices_list)
         ]
         obs_dataset = InteractionsDataset(
             pd.concat(ob_dfs),
@@ -827,8 +830,8 @@ class SupervisedModelTraining(TorchModelTraining):
 
         arm_contexts_list: List[Tuple[np.ndarray, ...]] = []
         i = 0
-   
-        for ob_df in tqdm(ob_dfs, total=len(ob_dfs)):
+
+        for ob_df in ob_dfs:
             arm_contexts_list.append(obs_dataset[i : i + len(ob_df)][0])
             i += len(ob_df)
 
@@ -836,23 +839,25 @@ class SupervisedModelTraining(TorchModelTraining):
             all_arm_scores = self._get_arm_scores(agent, obs_dataset)
             arm_scores_list = []
             i = 0
-            for ob_df in tqdm(ob_dfs, total=len(ob_dfs)):
+            for ob_df in ob_dfs:
                 arm_scores_list.append(all_arm_scores[i : i + len(ob_df)])
                 i += len(ob_df)
         else:
             arm_scores_list = [
                 agent.bandit.calculate_scores(arm_indices, arm_contexts)
-                for arm_indices, arm_contexts in tqdm(
-                    zip(arm_indices_list, arm_contexts_list),
-                    total=len(arm_indices_list),
+                for arm_indices, arm_contexts in zip(
+                    arm_indices_list, arm_contexts_list
                 )
             ]
         return arm_contexts_list, arms_list, arm_indices_list, arm_scores_list
 
     def _act(self, agent: BanditAgent, ob: dict) -> int:
-        arm_contexts_list, _, arm_indices_list, arm_scores_list = self._prepare_for_agent(
-            agent, [ob]
-        )
+        (
+            arm_contexts_list,
+            _,
+            arm_indices_list,
+            arm_scores_list,
+        ) = self._prepare_for_agent(agent, [ob])
 
         return agent.act(arm_indices_list[0], arm_contexts_list[0], arm_scores_list[0])
 
@@ -872,7 +877,7 @@ class SupervisedModelTraining(TorchModelTraining):
         print("Saving test set predictions...")
         obs: List[Dict[str, Any]] = self.test_data_frame.to_dict("records")
         self.clean()
-        
+
         for ob in tqdm(obs, total=len(obs)):
             if self.embeddings_for_metadata is not None:
                 ob[ITEM_METADATA_KEY] = self.embeddings_for_metadata
@@ -886,10 +891,13 @@ class SupervisedModelTraining(TorchModelTraining):
                 ob[self.project_config.available_arms_column_name] = [
                     ob[self.project_config.item_column.name]
                 ]
-        
-        arm_contexts_list, arms_list, arm_indices_list, arm_scores_list = self._prepare_for_agent(
-            agent, obs
-        )
+
+        (
+            arm_contexts_list,
+            arms_list,
+            arm_indices_list,
+            arm_scores_list,
+        ) = self._prepare_for_agent(agent, obs)
 
         sorted_actions_list = []
         proba_actions_list = []
@@ -908,7 +916,6 @@ class SupervisedModelTraining(TorchModelTraining):
             list(reversed(sorted(action_scores))) for action_scores in arm_scores_list
         ]
 
-
         del obs
 
         df = pd.read_csv(self.test_data_frame_path)
@@ -916,12 +923,12 @@ class SupervisedModelTraining(TorchModelTraining):
         df["prob_actions"] = proba_actions_list
         df["action_scores"] = action_scores_list
 
+        self.plot_scores([score for arm_scores in arm_scores_list for score in arm_scores])
+
         self._to_csv_test_set_predictions(df)
 
     def _to_csv_test_set_predictions(self, df: pd.DataFrame) -> None:
-        df.to_csv(
-            get_test_set_predictions_path(self.output().path), index=False
-        )
+        df.to_csv(get_test_set_predictions_path(self.output().path), index=False)
 
     def after_fit(self):
         if self.test_size > 0:
