@@ -28,6 +28,8 @@ class PrepareInteractionData(luigi.Task):
         os.makedirs(DATASET_DIR, exist_ok=True)
 
         df = pd.read_csv(self.input()[0].path)
+        df['impressions'] = df['impressions'].apply(lambda x: [] if x is np.nan else x)
+        
         # .... transform dataset
         df.to_csv(self.output().path)
 
