@@ -11,7 +11,7 @@ from contextlib import redirect_stdout
 from copy import deepcopy
 from multiprocessing import Pool
 from typing import Type, Dict, List, Optional, Tuple, Union, Any, cast
-
+import math
 import luigi
 import numpy as np
 import pandas as pd
@@ -884,10 +884,9 @@ class SupervisedModelTraining(TorchModelTraining):
             else:
                 ob[ITEM_METADATA_KEY] = None
 
-            if (
-                self.project_config.available_arms_column_name
-                and len(ob[self.project_config.available_arms_column_name]) == 0
-            ):
+            if (self.project_config.available_arms_column_name
+                and len(ob[self.project_config.available_arms_column_name]) == 0):
+                
                 ob[self.project_config.available_arms_column_name] = [
                     ob[self.project_config.item_column.name]
                 ]

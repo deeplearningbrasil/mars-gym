@@ -97,7 +97,7 @@ class TestYoochoose(unittest.TestCase):
 
         self.assertEqual(metrics["model_task"], job_train.task_id)
         self.assertEqual(metrics["count"], 30643)
-        self.assertEqual(np.round(metrics["precision_at_1"], 2), 0.48)
+        self.assertEqual(np.round(metrics["precision_at_1"], 2), 0.05)
 
 
 if __name__ == "__main__":

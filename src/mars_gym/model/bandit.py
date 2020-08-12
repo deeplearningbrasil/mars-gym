@@ -37,6 +37,7 @@ class BanditPolicy(object, metaclass=abc.ABCMeta):
     ) -> List[float]:
         n_arms = len(arm_indices)
         arms_probs = np.zeros(n_arms)
+
         arms_probs[0] = 1.0
         return arms_probs.tolist()
 

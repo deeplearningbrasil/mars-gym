@@ -61,6 +61,8 @@ class TestTrivagoRio(unittest.TestCase):
         )
         luigi.build([job_train], local_scheduler=True)
 
+
+
     # Data Evaluation
     def test_interactive_and_evaluation(self):
         ## PYTHONPATH="." luigi --module samples.exp_trivago_rio.simulation TrivagoModelInteraction --project trivago_rio --n-factors 100 --metrics '["loss"]'  --obs-batch-size 1000 --batch-size 200 --num-episodes 1 --val-split-type random --full-refit --bandit-policy epsilon_greedy --bandit-policy-params '{"epsilon": 0.1}' --epochs 100 --seed 42
@@ -75,7 +77,7 @@ class TestTrivagoRio(unittest.TestCase):
             batch_size=1,
             epochs=1,
             sample_size=100,
-            test_size=0.1,
+            test_size=0.01,
             num_episodes=1,
             obs_batch_size=1000,
         )

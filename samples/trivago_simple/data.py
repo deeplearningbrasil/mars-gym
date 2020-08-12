@@ -31,7 +31,7 @@ class PrepareInteractionData(luigi.Task):
         df['impressions'] = df['impressions'].apply(lambda x: [] if x is np.nan else x)
         
         # .... transform dataset
-        df.to_csv(self.output().path)
+        df.to_csv(self.output().path, index=False)
 
 
 class PrepareMetaData(luigi.Task):

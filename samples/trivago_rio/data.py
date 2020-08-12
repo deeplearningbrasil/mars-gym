@@ -147,7 +147,11 @@ class PrepareHistoryInteractionData(BasePySparkTask):
         df = self.group_history_data(df)
         df = self.transform_data(df)
 
-        df.toPandas().to_csv(self.output().path, index=False)
+        df = df.toPandas()
+        
+        df['impressions'] = df['impressions'].apply(lambda x: [] if x is np.nan else x)
+
+        df.to_csv(self.output().path, index=False)
 
 
 class PrepareTrivagoDataFrame(BasePrepareDataFrames):
