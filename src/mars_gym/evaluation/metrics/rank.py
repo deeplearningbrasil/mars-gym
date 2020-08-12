@@ -277,6 +277,7 @@ def prediction_coverage(predicted: List[list], catalog: list) -> float:
     """
     predicted_flattened = [p for sublist in predicted for p in sublist]
     unique_predictions = len(set(predicted_flattened))
+    
     prediction_coverage = round(unique_predictions / (len(catalog) * 1.0) * 100, 2)
     return prediction_coverage
 

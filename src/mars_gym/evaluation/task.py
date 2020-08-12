@@ -176,9 +176,15 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def propensity_score_column(self) -> str:
         return self.model_training.project_config.propensity_score_column_name
 
-    @property
-    def catalog(self) -> str:
-        return list(self.model_training.index_mapping[self.model_training.project_config.item_column.name].keys())
+    def get_catalog(self, df: pd.DataFrame) -> str:
+        indexed_list = list(self.model_training.index_mapping[self.model_training.project_config.item_column.name].keys())
+        indexed_list = [x for x in indexed_list if x is not None and str(x) != 'nan']
+        test_list    = list(df["sorted_actions"])
+        test_list.append(indexed_list)
+
+        all_items = sum(test_list, [])
+        unique_items = list(np.unique(all_items))
+        return unique_items
 
     def run(self):
         os.makedirs(self.output().path)
@@ -191,7 +197,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         # )  # .sample(10000)
 
         df: pd.DataFrame = pd.read_csv(
-            get_test_set_predictions_path(self.model_training.output().path)
+            get_test_set_predictions_path(self.model_training.output().path),
+            dtype = {self.model_training.project_config.item_column.name : "str"}
         )  # .sample(10000)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
@@ -223,17 +230,18 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         if self.model_training.metadata_data_frame is not None:
             df = pd.merge(
                 df,
-                self.model_training.metadata_data_frame,
+                pd.read_csv(self.model_training.metadata_data_frame_path, dtype = {self.model_training.project_config.item_column.name : "str"}),
                 left_on="action",
                 right_on=self.model_training.project_config.item_column.name,
                 suffixes=("", "_action"),
             )
 
         # Ground Truth
+        
         ground_truth_df = df[
             ~(df[self.model_training.project_config.output_column.name] == 0)
         ]
-
+        
         print("Rank Metrics...")
         df_rank, dict_rank = self.rank_metrics(ground_truth_df)
         gc.collect()
@@ -275,7 +283,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         # Filter only disponível interaction 
         df = df[df.apply(lambda row: row[self.model_training.project_config.item_column.name]
                     in row[self.model_training.project_config.available_arms_column_name], axis=1)]
-
+        
         with Pool(self.num_processes) as p:
             print("Calculating average precision...")
             df["average_precision"] = list(
@@ -330,8 +338,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 )
             )
         #
-        catalog = self.catalog
-
+        catalog = self.get_catalog(df)
+        
         metrics = {
             "model_task": self.model_task_id,
             "count": len(df),
