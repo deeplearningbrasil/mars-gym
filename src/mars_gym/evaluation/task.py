@@ -44,7 +44,12 @@ from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.torch.data import FasterBatchSampler, NoAutoCollationDataLoader
 from mars_gym.utils.reflection import load_attr, get_attribute_names
 from mars_gym.utils.utils import parallel_literal_eval, JsonEncoder
-
+from mars_gym.utils.index_mapping import (
+    create_index_mapping,
+    create_index_mapping_from_arrays,
+    transform_with_indexing,
+    map_array,
+)
 
 class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
     model_task_class: str = luigi.Parameter(
@@ -128,6 +133,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
         return estimator_class(**{**params, **extra_params})
 
+    #TODO We need change it
     @property
     def direct_estimator(self):
         if not hasattr(self, "_direct_estimator"):
@@ -380,7 +386,6 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             return pd.DataFrame(), metrics
 
         df["rewards"] = df[self.model_training.project_config.output_column.name]
-        # from IPython import embed; embed()
         with Pool(self.num_processes) as p:
             self.fill_rhat_rewards(df, p)
             self.fill_ps(df, p)
@@ -494,10 +499,23 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         df["item_idx_rhat_rewards"] = rewards
 
     def _direct_estimator_predict(self, df):
+        #from IPython import embed
+        #embed()
+        _df = preprocess_interactions_data_frame(
+            df, 
+            self.direct_estimator.project_config
+        )
+        transform_with_indexing(
+            _df, 
+            self.direct_estimator.index_mapping, 
+            self.direct_estimator.project_config
+        )
+
         dataset = InteractionsDataset(
-            df,
-            self.direct_estimator.embeddings_for_metadata,
-            self.direct_estimator.project_config,
+            data_frame=_df,
+            embeddings_for_metadata=self.direct_estimator.embeddings_for_metadata,
+            project_config=self.direct_estimator.project_config,
+            index_mapping=self.direct_estimator.index_mapping
         )
         batch_sampler = FasterBatchSampler(
             dataset, self.direct_estimator.batch_size, shuffle=False

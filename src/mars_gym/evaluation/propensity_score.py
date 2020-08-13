@@ -8,13 +8,19 @@ import torchbearer
 from torchbearer import Trial
 from tqdm import tqdm
 from typing import List
+import functools
 
 from mars_gym.data.dataset import InteractionsDataset
 from mars_gym.evaluation.policy_estimator import PolicyEstimatorTraining
 from mars_gym.torch.data import FasterBatchSampler, NoAutoCollationDataLoader
 from mars_gym.utils.index_mapping import transform_with_indexing
-
-
+from mars_gym.data.dataset import (
+    preprocess_interactions_data_frame,
+    InteractionsDataset,
+)
+from mars_gym.utils.index_mapping import (
+    map_array,
+)
 class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
     @property
     @abc.abstractmethod
@@ -37,14 +43,30 @@ class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
         pass
 
     def fill_ps(self, df: pd.DataFrame, pool: Pool):
-        policy_estimator_df = df.copy()
+        policy_estimator_df = preprocess_interactions_data_frame(df, self.policy_estimator.project_config)
         transform_with_indexing(
             policy_estimator_df,
             self.policy_estimator.index_mapping,
             self.policy_estimator.project_config,
         )
+
+        if self.available_arms_column:
+            policy_estimator_df[self.available_arms_column] = policy_estimator_df[
+                self.available_arms_column
+            ].map(
+                functools.partial(
+                    map_array,
+                    mapping=self.policy_estimator.index_mapping[
+                        self.policy_estimator.project_config.item_column.name
+                    ],
+                )
+            )
+
         dataset = InteractionsDataset(
-            policy_estimator_df, None, self.policy_estimator.project_config
+            data_frame=policy_estimator_df,
+            embeddings_for_metadata=self.policy_estimator.embeddings_for_metadata,
+            project_config=self.policy_estimator.project_config,
+            index_mapping=self.policy_estimator.index_mapping
         )
         batch_sampler = FasterBatchSampler(
             dataset, self.policy_estimator.batch_size, shuffle=False
@@ -76,6 +98,7 @@ class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
             if self.available_arms_column
             else zip(item_indices, probas)
         )
+
 
         # from IPython import embed; embed()
         df[self.propensity_score_column] = list(
