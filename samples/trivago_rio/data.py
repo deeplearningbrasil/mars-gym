@@ -149,7 +149,8 @@ class PrepareHistoryInteractionData(BasePySparkTask):
 
         df = df.toPandas()
         
-        df['impressions'] = df['impressions'].apply(lambda x: [] if x is np.nan else x)
+        df['impressions'] = df.apply(lambda row: sum([[row.item_id], random.sample(list(df['item_id']), 24)], [])
+                                     if row.impressions is np.nan else row.impressions, axis=1)
 
         df.to_csv(self.output().path, index=False)
 

@@ -43,7 +43,7 @@ class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
         pass
 
     def fill_ps(self, df: pd.DataFrame, pool: Pool):
-        policy_estimator_df = preprocess_interactions_data_frame(df, self.policy_estimator.project_config)
+        policy_estimator_df = preprocess_interactions_data_frame(df.copy(), self.policy_estimator.project_config)
         transform_with_indexing(
             policy_estimator_df,
             self.policy_estimator.index_mapping,
@@ -72,7 +72,8 @@ class FillPropensityScoreMixin(object, metaclass=abc.ABCMeta):
             dataset, self.policy_estimator.batch_size, shuffle=False
         )
         data_loader = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
-
+        #from IPython import embed
+        #embed()
         trial = (
             Trial(
                 self.policy_estimator.get_trained_module(),

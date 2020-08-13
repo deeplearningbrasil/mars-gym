@@ -2,6 +2,8 @@ import luigi
 import pandas as pd
 import numpy as np
 import datetime
+import random
+
 import os
 from typing import List, Tuple, Dict, Optional
 from mars_gym.data.task import (
@@ -28,8 +30,8 @@ class PrepareInteractionData(luigi.Task):
         os.makedirs(DATASET_DIR, exist_ok=True)
 
         df = pd.read_csv(self.input()[0].path)
-        df['impressions'] = df['impressions'].apply(lambda x: [] if x is np.nan else x)
-        
+        df['impressions'] = df.apply(lambda row: sum([[str(row.item_id)], random.sample(list(df['item_id'].astype(str)), 24)], [])
+                                     if row.impressions is np.nan else row.impressions, axis=1)
         # .... transform dataset
         df.to_csv(self.output().path, index=False)
 

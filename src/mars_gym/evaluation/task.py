@@ -232,7 +232,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                     total=len(df),
                 )
             )
-
+        # PQ FILTRA?
         if self.model_training.metadata_data_frame is not None:
             df = pd.merge(
                 df,
@@ -255,6 +255,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         print("Fairness Metrics")
         df_fairness, df_fairness_metrics = self.fairness_metrics(ground_truth_df)
         gc.collect()
+
 
         print("Offpolice Metrics")
         df_offpolicy, dict_offpolice = self.offpolice_metrics(df)
@@ -384,7 +385,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
         if not self.offpolicy_eval:
             return pd.DataFrame(), metrics
-
+        
         df["rewards"] = df[self.model_training.project_config.output_column.name]
         with Pool(self.num_processes) as p:
             self.fill_rhat_rewards(df, p)
@@ -409,6 +410,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 ps_eval_i,
                 ps,
             ) = self._offpolicy_eval(df)
+
 
             ips, c_ips = eval_IPS(rewards, ps_eval_i, ps)
             cips, c_cips = eval_CIPS(rewards, ps_eval_i, ps, cap=self.eval_cips_cap)
@@ -499,10 +501,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         df["item_idx_rhat_rewards"] = rewards
 
     def _direct_estimator_predict(self, df):
-        #from IPython import embed
-        #embed()
         _df = preprocess_interactions_data_frame(
-            df, 
+            df.copy(), 
             self.direct_estimator.project_config
         )
         transform_with_indexing(
@@ -559,6 +559,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             ),
             axis=1,
         )
+
         ps = df_offpolicy[ps_column].values
         action_rhat_rewards = df_offpolicy["action_rhat_rewards"].values
         item_idx_rhat_rewards = df_offpolicy["item_idx_rhat_rewards"].values
