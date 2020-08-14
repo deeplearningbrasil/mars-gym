@@ -141,7 +141,7 @@ It is possible to test this pipeline before the simulation. Since this is a Luig
   >>> job = PrepareTrivagoDataFrame()
   >>> luigi.build([job], local_scheduler=True)
   ....
-  INFO: Worker Worker(salt=154256821, workers=1, host=marlesson-pc, username=marlesson,
+  INFO: Worker Worker(salt=154256821, workers=1, host=user-pc, username=user,
   pid=16527) was stopped. Shutting down Keep-Alive thread
   INFO:
   ===== Luigi Execution Summary =====
@@ -226,7 +226,8 @@ In order to implement a Reward Estimator ρ(x, a) we use a Pytorch Model that wi
 ..   :width: 300
 ..   :align: center
 
-**Model**
+Model
+#####
 
 The model needs to inherit from RecommenderModule. This class receives through its constructor the :code:`ProjectConfig` and a :code:`Dict`  with IndexMapping for all categorical variables. The model is a Pytorch :code:`nn.Module` and receives in the foward function all context defined in :code:`ProjectConfig` (:code:`user_column`, :code:`item_column`, :code:`other_input_columns`, and :code:`metadata_columns`).
 
@@ -562,39 +563,17 @@ It is also possible to use MARS-gym for supervised learning. It is useful for va
   :width: 400
   :align: center
 
+-------------------------------------
+
 Evaluation
 **********
 
-We have a specific command for evaluation. This task implements three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is necessary to run a simulation or supervised training, after this we will use the :code:`task_id` provided by luigi, and also used as the folder name in :code:`output/interaction/InteractionTraining/results/task_id`. For evaluation, we use the :code:`mars-gym evaluate` command, which has the :code:`mars-gym evaluate interaction` and :code:`mars-gym evaluate supervised` variants.
+We have a specific command for evaluation. This task implements three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is 
+necessary to run a simulation or supervised training, after this we will use the :code:`task_id` provided by luigi, and also used as the folder name in 
+:code:`output/interaction/InteractionTraining/results/task_id`. For evaluation, we use the :code:`mars-gym evaluate` command, which has the :code:`mars-gym evaluate interaction` and 
+:code:`mars-gym evaluate supervised` variants.
 
-.. code-block:: console
-
-  $ mars-gym evaluate interaction \
-  --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d
-
-  DEBUG: Checking if EvaluateTestSetPredictions(model_task_class=mars_gym.simulation.interaction.InteractionTraining, model_task_id=InteractionTraining____samples_trivago____epsilon___1__50e3124699, offpolicy_eval=False, task_hash=none, direct_estimator_class=None, direct_estimator_negative_proportion=0.8, direct_estimator_batch_size=500, direct_estimator_epochs=50, eval_cips_cap=15, policy_estimator_extra_params={}, num_processes=12, fairness_columns=[]) is complete
-  2020-06-22 09:36:41,042 : DEBUG : Pending tasks: 1
-  INFO: [pid 15069] Worker Worker(salt=021781557, workers=1, host=marlesson-pc, username=marlesson, pid=15069) running   EvaluateTestSetPredictions(model_task_class=mars_gym.simulation.interaction.InteractionTraining, model_task_id=InteractionTraining____samples_trivago____epsilon___1__50e3124699, offpolicy_eval=False, task_hash=none, direct_estimator_class=None, direct_estimator_negative_proportion=0.8, direct_estimator_batch_size=500, direct_estimator_epochs=50, eval_cips_cap=15, policy_estimator_extra_params={}, num_processes=12, fairness_columns=[])
-  2020-06-22 09:36:41,043 : INFO : [pid 15069] Worker Worker(salt=021781557, workers=1, host=marlesson-pc, username=marlesson, pid=15069) running   EvaluateTestSetPredictions(model_task_class=mars_gym.simulation.interaction.InteractionTraining, model_task_id=InteractionTraining____samples_trivago____epsilon___1__50e3124699, offpolicy_eval=False, task_hash=none, direct_estimator_class=None, direct_estimator_negative_proportion=0.8, direct_estimator_batch_size=500, direct_estimator_epochs=50, eval_cips_cap=15, policy_estimator_extra_params={}, num_processes=12, fairness_columns=[])
-  Creating the relevance lists...
-  100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2422/2422 [00:00<00:00, 4252241.23it/s]
-  100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 818/818 [00:00<00:00, 2999074.01it/s]
-  Rank Metrics...
-  Calculating average precision...
-  100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5271/5271 [00:00<00:00, 4507273.47it/s]
-  Calculating precision at 1...
-  100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5271/5271 [00:00<00:00, 4080505.05it/s]
-  Calculating nDCG at 5...
-  100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5271/5271 [00:00<00:00, 4734084.88it/s]
-  Calculating nDCG at 15...
-  100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5271/5271 [00:00<00:00, 4644574.87it/s]
-  Calculating nDCG at 20...
-  100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5271/5271 [00:00<00:00, 4636781.96it/s]
-  Fairness Metrics
-  Offpolice Metrics
-  2020-06-22 09:36:43,525 : INFO : Informed scheduler that task   EvaluateTestSetPredictions_500_None_50_61a88a638d   has status   DONE
-
-Each evaluation generates many artifacts with metrics and metadata as can be used into Evaluation Platform.
+Each evaluation command generates many artifacts with metrics and metadata that can be used by the Evaluation Platform.
 
 * EVALUATION_DIR/metrics.json
 * EVALUATION_DIR/rank_metrics.csv
@@ -602,34 +581,27 @@ Each evaluation generates many artifacts with metrics and metadata as can be use
 * EVALUATION_DIR/fairness_df.csv
 * EVALUATION_DIR/fairness_metrics.csv
 
-.. note::
-  You can always type :code:`--help` for more option inside the evaluation commands
+Rank Metrics
+############
 
+By default, every run of :code:`mars-gym evaluate` will compute Rank Metrics, such as:
 
-**Fairness Metrics**
-
-In MARS-Gym, we consider three perspectives to measure fairness [`2 <https://doi.org/10.1145/3038912.3052660>`_]:
-
-* Disparate Treatment
-
-* Disparate Impact
-
-* Disparate Mistreatment
-
-To calculate the metrics of fairness, you need to pass the parameter 
-:code:`--fairness-columns`, this parameter receives an array of attributes according to 
-which the metrics will be computed. Ex:
+* nDCG
+* Mean Average Precision
 
 .. code-block:: console
 
   $ mars-gym evaluate interaction \
-  --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__4fc1370d9d \
-  --fairness-columns '["pos_item_id"]'
+  --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__3fe8c849e3
 
-[`2 <https://doi.org/10.1145/3038912.3052660>`_] Zafar et. al, 2017. Fairness Beyond Disparate Treatment & Disparate Impact: Learning 
-Classification without Disparate Mistreatment https://doi.org/10.1145/3038912.3052660
+.. image:: ../../images/dataviz/rank.png
+  :width: 500
 
-**Off-policy Metrics**
+Notice that each evaluation command will receive its own :code:`task_id` preceded by the training's :code:`task_id`.
+
+
+Off-policy Metrics
+##################
 
 For off-policy evaluation, MARS-Gym uses three main estimators [`3 <https://dl.acm.org/doi/10.5555/3104482.3104620>`_]:
 
@@ -639,7 +611,50 @@ For off-policy evaluation, MARS-Gym uses three main estimators [`3 <https://dl.a
 
 All of which can be seen and compared with our Evaluation Platform.
 
+In order to run these metrics, just add the flag :code:`--offpolicy-eval` to the command:
+
+.. code-block:: console
+
+  $ mars-gym evaluate interaction \
+  --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__3fe8c849e3 \
+  --offpolicy-eval
+
+.. image:: ../../images/dataviz/off.png
+  :width: 500
+
 [`3 <https://dl.acm.org/doi/10.5555/3104482.3104620>`_] Miroslav Dudík, John Langford, and Lihong Li. 2011. Doubly Robust Policy Evaluation and Learning. InProceedings of the 28th InternationalConference on International Conference on Machine Learning(Bellevue, Washington, USA)(ICML’11). Omnipress, Madison, WI, USA, 1097–1104.
+
+
+Fairness Metrics
+################
+
+In MARS-Gym, we consider three perspectives to measure fairness [`2 <https://doi.org/10.1145/3038912.3052660>`_]:
+
+* **Disparate Treatment**
+.. image:: ../../images/dataviz/treatment.png
+  :width: 500
+
+* **Disparate Impact**
+.. image:: ../../images/dataviz/impact.png
+  :width: 500
+
+* **Disparate Mistreatment**
+.. image:: ../../images/dataviz/mistreatment.png
+  :width: 500
+
+To calculate the metrics of fairness, you need to pass the parameter 
+:code:`--fairness-columns`, this parameter receives an array of attributes according to 
+which the metrics will be computed. Ex:
+
+.. code-block:: console
+
+  $ mars-gym evaluate interaction \
+  --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__3fe8c849e3 \
+  --fairness-columns '["pos_item_id"]'
+
+[`2 <https://doi.org/10.1145/3038912.3052660>`_] Zafar et. al, 2017. Fairness Beyond Disparate Treatment & Disparate Impact: Learning 
+Classification without Disparate Mistreatment https://doi.org/10.1145/3038912.3052660
+
 
 Evaluation Platform
 ###################
@@ -659,7 +674,7 @@ It is an external service made with `Streamlit <https://www.streamlit.io/>`_ lib
   You can now view your Streamlit app in your browser.
   Local URL: http://localhost:8501
 
-In this platform you'll be able to select experiments, metrics, and visualize them in a number of ways.
+In this platform you'll be able to select experiments, metrics, and visualize them in a number of ways, including the iteraction results from training.
 
 
 .. .. image:: ../../images/dataviz/image2.png
