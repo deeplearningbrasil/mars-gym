@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import os
+import random
 from typing import List, Tuple, Dict, Optional
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
@@ -147,11 +148,13 @@ class PrepareHistoryInteractionData(BasePySparkTask):
         df = self.group_history_data(df)
         df = self.transform_data(df)
 
-        df = df.toPandas()
+        df = df.cache().toPandas()
         
-        df['impressions'] = df.apply(lambda row: sum([[row.item_id], random.sample(list(df['item_id']), 24)], [])
-                                     if row.impressions is np.nan else row.impressions, axis=1)
+        print("=========================")
+        print(df)
 
+        df['impressions'] = list(df.apply(lambda row: sum([[row.item_id], random.sample(list(df['item_id']), 24)], []), axis=1))
+        print(df.head())
         df.to_csv(self.output().path, index=False)
 
 

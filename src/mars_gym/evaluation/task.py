@@ -213,7 +213,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
         
         df["action"] = df["sorted_actions"].apply(
-            lambda sorted_actions: sorted_actions[0]
+            lambda sorted_actions: str(sorted_actions[0])
         )
 
         with Pool(self.num_processes) as p:
@@ -232,7 +232,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                     total=len(df),
                 )
             )
-        # PQ FILTRA?
+        
+
         if self.model_training.metadata_data_frame is not None:
             df = pd.merge(
                 df,
@@ -242,8 +243,6 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 suffixes=("", "_action"),
             )
 
-        # Ground Truth
-        
         ground_truth_df = df[
             ~(df[self.model_training.project_config.output_column.name] == 0)
         ]
@@ -288,9 +287,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             df[self.model_training.project_config.available_arms_column_name])
 
         # Filter only disponível interaction 
-        df = df[df.apply(lambda row: row[self.model_training.project_config.item_column.name]
-                    in row[self.model_training.project_config.available_arms_column_name], axis=1)]
-        
+        df = df[df.relevance_list.apply(max) > 0]
+
         with Pool(self.num_processes) as p:
             print("Calculating average precision...")
             df["average_precision"] = list(
@@ -351,7 +349,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             "model_task": self.model_task_id,
             "count": len(df),
             "mean_average_precision": df["average_precision"].mean(),
-            "MRR": df["MRR"].mean(),
+            #"MRR": df["MRR"].mean(),
             "precision_at_1": df["precision_at_1"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
             "ndcg_at_10": df["ndcg_at_10"].mean(),
@@ -577,7 +575,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 def _create_relevance_list(
     sorted_actions: List[Any], expected_action: Any, reward: int
 ) -> List[int]:
-    return [1 if action == expected_action else 0 for action in sorted_actions]
+    return [1 if str(action) == str(expected_action) else 0 for action in sorted_actions]
 
 
 def _ps_policy_eval(

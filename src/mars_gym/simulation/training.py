@@ -472,7 +472,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
     optimizer_params: dict = luigi.DictParameter(default={})
     learning_rate: float = luigi.FloatParameter(1e-3)
     loss_function: str = luigi.ChoiceParameter(
-        choices=TORCH_LOSS_FUNCTIONS.keys(), default="mse"
+        choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce"
     )
     loss_function_params: dict = luigi.DictParameter(default={})
     gradient_norm_clipping: float = luigi.FloatParameter(default=0.0)
@@ -761,6 +761,7 @@ class SupervisedModelTraining(TorchModelTraining):
         return scores
 
     def plot_scores(self, scores):
+        plt.figure()
         sns_plot = sns.distplot(scores, hist=False, color="g", kde_kws={"shade": True})
         figure = sns_plot.get_figure()
         figure.savefig(os.path.join(self.output().path, "scores.png"))

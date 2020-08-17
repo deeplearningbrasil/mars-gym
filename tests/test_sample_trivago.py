@@ -79,7 +79,7 @@ class TestTrivagoRio(unittest.TestCase):
             sample_size=100,
             test_size=0.01,
             num_episodes=1,
-            obs_batch_size=1000,
+            obs_batch_size=10,
         )
 
         luigi.build([job_train], local_scheduler=True)
@@ -95,9 +95,8 @@ class TestTrivagoRio(unittest.TestCase):
         with open(job_eval.output().path + "/metrics.json") as f:
             metrics = json.loads(f.read())
         print(metrics)
-        # self.assertEqual(metrics['model_task'], job_train.task_id)
-        # self.assertEqual(metrics['count'], 2517)
-        # self.assertEqual(np.round(metrics['precision_at_1'], 2) , 0.12)
+        self.assertEqual(metrics['model_task'], job_train.task_id)
+        self.assertEqual(metrics['count'], 88)
 
 
 if __name__ == "__main__":

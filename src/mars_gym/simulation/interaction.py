@@ -440,9 +440,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
         stats["dataset"] = ["all", "train", "valid"]
         stats = stats.set_index("dataset")
 
-        percent = len(self.known_observations_data_frame) / len(
-            self.interactions_data_frame
-        )
+        percent = len(self.known_observations_data_frame) / (len(self.interactions_data_frame) )
 
         print("\nInteraction Stats ({}%)".format(np.round(percent * 100, 2)))
         print(stats[["count", "mean", "std"]], "\n")
