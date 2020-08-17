@@ -47,6 +47,14 @@ def supervised(args: Tuple[str]):
     )
 
 
+@run.command(context_settings=dict(ignore_unknown_options=True,), add_help_option=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def data(args: Tuple[str]):
+    args_str = _process_args(args)
+    os.system(
+        f"PYTHONPATH=. luigi --module {args_str} --local-scheduler"
+    )
+
 @cli.group()
 def evaluate():
     pass
