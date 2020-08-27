@@ -831,7 +831,6 @@ class SupervisedModelTraining(TorchModelTraining):
 
         arm_contexts_list: List[Tuple[np.ndarray, ...]] = []
         i = 0
-
         for ob_df in ob_dfs:
             arm_contexts_list.append(obs_dataset[i : i + len(ob_df)][0])
             i += len(ob_df)

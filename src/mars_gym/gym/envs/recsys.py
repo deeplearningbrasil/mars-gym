@@ -104,12 +104,13 @@ class RecSysEnv(gym.Env, utils.EzPickle):
         return {}
 
     def _compute_reward(self, action: int) -> float:
+
         return float(
             self._dataset.iloc[self._current_index][self._item_column] == action
         )
 
     def _get_next_ob(self) -> dict:
-        ob = self._obs_dataset[self._current_index]
+        ob = self._obs_dataset[self._current_index].copy()
         if self._item_metadata is not None:
             ob[ITEM_METADATA_KEY] = self._item_metadata
         else:

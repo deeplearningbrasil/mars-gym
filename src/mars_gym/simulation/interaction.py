@@ -440,7 +440,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
         stats["dataset"] = ["all", "train", "valid"]
         stats = stats.set_index("dataset")
 
-        percent = len(self.known_observations_data_frame) / (len(self.interactions_data_frame) )
+        percent = len(self.known_observations_data_frame) / (len(self.env_data_frame) * self.num_episodes)
 
         print("\nInteraction Stats ({}%)".format(np.round(percent * 100, 2)))
         print(stats[["count", "mean", "std"]], "\n")
@@ -450,6 +450,8 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
         self.start_time = time.time()
 
         self._save_params()
+        print("DataFrame: env_data_frame, ", self.env_data_frame.shape)
+        print("DataFrame: interactions_data_frame, ", self.interactions_data_frame.shape)
 
         self.env: RecSysEnv = gym.make(
             "recsys-v0",
@@ -483,11 +485,11 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                             ob[self.project_config.available_arms_column_name]
                         ).tolist()
                     ]
-
                 action, prob = self._act(self.agent, ob)
 
                 new_ob, reward, done, info = self.env.step(action)
                 rewards.append(reward)
+                
                 self._accumulate_known_observations(ob, action, prob, reward)
 
                 if done:
@@ -498,7 +500,6 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                 if interactions % self.obs_batch_size == 0:
                     # self._create_hist_columns()
                     self._reset_dataset()
-
                     if self.agent.bandit.reward_model:
                         if self.full_refit:
                             self.agent.bandit.reward_model = self.create_module()

@@ -153,7 +153,6 @@ class FixedPolicy(BanditPolicy):
     ) -> List[float]:
         X, arms = self._flatten_input_and_extract_arms(arm_contexts)
         arm_scores = [int(x[self._arg] == arm) for x, arm in zip(X, arms)]
-
         return arm_scores
 
     def _compute_prob(

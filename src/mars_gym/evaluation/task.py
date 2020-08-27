@@ -109,6 +109,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     direct_estimator_negative_proportion: int = luigi.FloatParameter(0.8)
     direct_estimator_batch_size: int = luigi.IntParameter(default=500)
     direct_estimator_epochs: int = luigi.IntParameter(default=50)
+    direct_estimator_extra_params: dict = luigi.DictParameter(default={})
+
     eval_cips_cap: int = luigi.IntParameter(default=15)
 
     policy_estimator_extra_params: dict = luigi.DictParameter(default={})
@@ -130,7 +132,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             for key, value in self.model_training.param_kwargs.items()
             if key in attribute_names
         }
-
+        
         return estimator_class(**{**params, **extra_params})
 
     #TODO We need change it
@@ -138,7 +140,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def direct_estimator(self):
         if not hasattr(self, "_direct_estimator"):
             self._direct_estimator = self.get_direct_estimator(
-                {
+                {**{
                     "project": self.model_training.project,
                     "learning_rate": 0.001,
                     "test_size": 0.0,
@@ -151,7 +153,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                     "policy_estimator_extra_params": {},
                     "metrics": ["loss"],
                     "seed": 51,
-                }
+                }, **self.direct_estimator_extra_params}
             )
         return self._direct_estimator
 

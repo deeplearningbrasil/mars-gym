@@ -8,6 +8,7 @@ from sklearn.metrics import (
     classification_report,
 )
 from mars_gym.utils.utils import mean_confidence_interval
+np.seterr(divide='ignore', invalid='ignore')
 
 # https://stackoverflow.com/questions/50666091/true-positive-rate-and-false-positive-rate-tpr-fpr-for-multi-class-data-in-py
 # https://en.wikipedia.org/wiki/Sensitivity_and_specificity
@@ -23,9 +24,11 @@ def calculate_fairness_metrics(
             sub_df = df[df[sub_key] == sub]
 
             y_true, y_pred = (
-                sub_df[ground_truth_key],
-                sub_df[prediction_key],
+                sub_df[ground_truth_key].astype(int),
+                sub_df[prediction_key].astype(int),
             )
+            #from IPython import embed
+            #embed()
             cnf_matrix = confusion_matrix(y_true, y_pred)
 
             num_positives = np.sum(np.diag(cnf_matrix))
