@@ -8,12 +8,13 @@ import os
 from mars_gym.tools.eval_viz.plot import *
 from mars_gym.tools.eval_viz.util import *
 import random
+import os
 
 pd.set_option("display.max_colwidth", -1)
 
-PATH_EVALUATION = "output/evaluation/"
-PATH_EVAL_REINFORCEMENT = "output/interaction/"
-PATH_TRAIN = "output/models/"
+PATH_EVALUATION = os.getenv('PATH_EVALUATION') or "output/evaluation/"
+PATH_EVAL_REINFORCEMENT = os.getenv('PATH_EVAL_REINFORCEMENT') or "output/interaction/"
+PATH_TRAIN = os.getenv('PATH_TRAIN') or "output/models/"
 
 
 PAGES = {"Home": "pages.home", "Model": "pages.model"}

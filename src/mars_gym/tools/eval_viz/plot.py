@@ -29,7 +29,7 @@ def plot_bar(df, confidence=None, title=""):
                 name=row.name,
                 x=row.keys(),
                 y=row.values,
-                error_y=dict(type="data", array=confidence.loc[row.name].values),
+                error_y=dict(type="data", array=[] if confidence is None else confidence.loc[row.name].values),
             )
         )
 

@@ -371,10 +371,10 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             #"coverage_at_50": prediction_coverage_at_k(
             #    df["sorted_actions"], catalog, 50
             #),
-            #"personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
-            #"personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
+            "personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
+            "personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
             #"personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
-            #"personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
+            "personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
             #"personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
         }
 
