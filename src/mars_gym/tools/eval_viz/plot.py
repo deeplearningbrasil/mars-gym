@@ -346,7 +346,7 @@ def plot_fairness_treatment(df, metric, items, min_count=10, top=False, title=""
         # Diff min max score
         df_diff = df.groupby("action").agg(total=(score, "count"))
         # df_diff['diff'] = df_diff['max_score']-df_diff['min_score']
-        items = df_diff.sort_values("total", ascending=False).index[:5]
+        items = df_diff.sort_values("total", ascending=False)#.index[:5]
 
     df = (
         df.groupby(["action", metric])
@@ -360,7 +360,12 @@ def plot_fairness_treatment(df, metric, items, min_count=10, top=False, title=""
 
     df = df[df.rewards > min_count]  # filter min interactions
 
-    df = df[df.action.isin(items)]
+    #------------------
+    df_group = df[df['rewards'] > min_count].groupby(
+        'action').agg({metric: 'count'}).reset_index()
+    df_all = df_group[df_group[metric] >= len(df[metric].unique())]['action'].values
+
+    df = df[df.action.isin(df_all)].iloc[0:int(3*5)]
 
     for group, rows in df.groupby(metric):
         data.append(

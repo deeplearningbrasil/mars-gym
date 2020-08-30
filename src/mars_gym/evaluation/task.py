@@ -106,7 +106,7 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
 
 class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     direct_estimator_class: str = luigi.Parameter(default="mars_gym.simulation.training.SupervisedModelTraining")
-    direct_estimator_negative_proportion: int = luigi.FloatParameter(0.8)
+    direct_estimator_negative_proportion: int = luigi.FloatParameter(0)
     direct_estimator_batch_size: int = luigi.IntParameter(default=500)
     direct_estimator_epochs: int = luigi.IntParameter(default=50)
     direct_estimator_extra_params: dict = luigi.DictParameter(default={})
@@ -142,7 +142,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             self._direct_estimator = self.get_direct_estimator(
                 {**{
                     "project": self.model_training.project,
-                    "learning_rate": 0.001,
+                    "learning_rate": 0.0001,
                     "test_size": 0.0,
                     "epochs": self.direct_estimator_epochs,
                     "batch_size": self.direct_estimator_batch_size,

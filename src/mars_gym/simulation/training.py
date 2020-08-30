@@ -536,7 +536,8 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
 
         sample_data = self.train_data_frame.sample(100, replace=True)
         sample_data.to_csv(os.path.join(self.output().path, "sample_train.csv"))
-
+        #from IPython import embed
+        #embed()
         trial = self.create_trial(module)
 
         try:
