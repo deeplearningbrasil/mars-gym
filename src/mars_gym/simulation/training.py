@@ -319,6 +319,12 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     def get_data_frame_for_indexing(self) -> pd.DataFrame:
         return pd.concat([self.train_data_frame, self.val_data_frame])
 
+    def get_data_frame_interactions(self) ->  pd.DataFrame:
+        return pd.concat([pd.read_csv(self.train_data_frame_path, 
+                                usecols = [self.project_config.user_column.name, self.project_config.item_column.name]), 
+                        pd.read_csv(self.val_data_frame_path, 
+                                usecols = [self.project_config.user_column.name, self.project_config.item_column.name])]).drop_duplicates()
+
     @property
     def index_mapping(self) -> Dict[str, Dict[Any, int]]:
         if not hasattr(self, "_index_mapping"):
@@ -728,8 +734,10 @@ class SupervisedModelTraining(TorchModelTraining):
             arms = ob[self.project_config.available_arms_column_name]
             arms = random.sample(arms, len(arms))
         else:
-            arms = random.sample(self.unique_items, min(100, len(self.unique_items)))
-
+            arms = random.sample(self.unique_items, min(99, len(self.unique_items)))
+            ob_item = self.reverse_index_mapping[self.project_config.item_column.name][ob[self.project_config.item_column.name]]
+            arms.append(ob_item)
+            arms = list(np.unique(arms))
         return arms
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
@@ -876,6 +884,9 @@ class SupervisedModelTraining(TorchModelTraining):
         if hasattr(self, "_train_data_frame"):
             del self._train_data_frame
 
+        if hasattr(self, "_creating_index_mapping"):
+            del self._creating_index_mapping
+
         gc.collect()
 
     def _save_test_set_predictions(self, agent: BanditAgent) -> None:
@@ -922,13 +933,18 @@ class SupervisedModelTraining(TorchModelTraining):
 
         del obs
 
+        # Create evaluation file
         df = pd.read_csv(self.test_data_frame_path)
         df["sorted_actions"] = sorted_actions_list
         df["prob_actions"] = proba_actions_list
         df["action_scores"] = action_scores_list
+        
+        # join with train interaction information
+        df_train = self.get_data_frame_interactions()
+        df_train['trained'] = 1
+        df = df.merge(df_train, on = [self.project_config.user_column.name, self.project_config.item_column.name], how='left').fillna(0)
 
         self.plot_scores([score for arm_scores in arm_scores_list for score in arm_scores])
-
         self._to_csv_test_set_predictions(df)
 
     def _to_csv_test_set_predictions(self, df: pd.DataFrame) -> None:

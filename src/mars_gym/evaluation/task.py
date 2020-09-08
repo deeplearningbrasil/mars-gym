@@ -105,6 +105,7 @@ class BaseEvaluationTask(luigi.Task, metaclass=abc.ABCMeta):
 
 
 class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
+    # TODO transform this params in a dict params
     direct_estimator_class: str = luigi.Parameter(default="mars_gym.simulation.training.SupervisedModelTraining")
     direct_estimator_negative_proportion: int = luigi.FloatParameter(0)
     direct_estimator_batch_size: int = luigi.IntParameter(default=500)
@@ -112,12 +113,15 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     direct_estimator_extra_params: dict = luigi.DictParameter(default={})
 
     eval_cips_cap: int = luigi.IntParameter(default=15)
-
     policy_estimator_extra_params: dict = luigi.DictParameter(default={})
 
     num_processes: int = luigi.IntParameter(default=os.cpu_count())
 
     fairness_columns: List[str] = luigi.ListParameter(default=[])
+    rank_metrics: List[str] = luigi.ListParameter(default=[])
+
+    only_new_interactions: bool = luigi.BoolParameter(default=False)
+
 
     def get_direct_estimator(self, extra_params: dict) -> TorchModelTraining:
         assert self.direct_estimator_class is not None
@@ -210,10 +214,9 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         )  # .sample(10000)
 
         df["sorted_actions"] = parallel_literal_eval(df["sorted_actions"])
-        df["prob_actions"] = parallel_literal_eval(df["prob_actions"])
-        df["action_scores"] = parallel_literal_eval(df["action_scores"])
+        df["prob_actions"]   = parallel_literal_eval(df["prob_actions"])
+        df["action_scores"]  = parallel_literal_eval(df["action_scores"])
 
-        
         df["action"] = df["sorted_actions"].apply(
             lambda sorted_actions: str(sorted_actions[0])
         )
@@ -235,7 +238,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 )
             )
         
-
+        
         if self.model_training.metadata_data_frame is not None:
             df = pd.merge(
                 df,
@@ -284,12 +287,16 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             os.path.join(self.output().path, "fairness_df.csv"), index=False
         )
 
+
     def rank_metrics(self, df: pd.DataFrame):
-        #df[self.available_arms_column] = parallel_literal_eval(
-        #    df[self.available_arms_column])
+        df = df.copy()
 
         # Filter only disponível interaction 
         df = df[df.relevance_list.apply(max) > 0]
+
+        # Filter only new interactions, them not appear in trained dataset
+        if self.only_new_interactions:
+            df = df[df['trained'] == 0]
 
         with Pool(self.num_processes) as p:
             print("Calculating average precision...")
@@ -354,14 +361,14 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             #"MRR": df["MRR"].mean(),
             "precision_at_1": df["precision_at_1"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
-            "ndcg_at_10": df["ndcg_at_10"].mean(),
+            #"ndcg_at_10": df["ndcg_at_10"].mean(),
             #"ndcg_at_15": df["ndcg_at_15"].mean(),
             "ndcg_at_20": df["ndcg_at_20"].mean(),
             #"ndcg_at_50": df["ndcg_at_50"].mean(),
             "coverage_at_5": prediction_coverage_at_k(df["sorted_actions"], catalog, 5),
-            "coverage_at_10": prediction_coverage_at_k(
-                df["sorted_actions"], catalog, 10
-            ),
+            #"coverage_at_10": prediction_coverage_at_k(
+            #    df["sorted_actions"], catalog, 10
+            #),
             #"coverage_at_15": prediction_coverage_at_k(
             #    df["sorted_actions"], catalog, 15
             #),
@@ -372,7 +379,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             #    df["sorted_actions"], catalog, 50
             #),
             "personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
-            "personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
+            #"personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
             #"personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
             "personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
             #"personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
