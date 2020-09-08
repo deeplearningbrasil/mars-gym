@@ -272,7 +272,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             self._train_data_frame = preprocess_interactions_data_frame(
                 pd.read_csv(self.train_data_frame_path), self.project_config
             )
-
+        #from IPython import embed; embed()
         # Needed in case index_mapping was invoked before
         if not hasattr(self, "_creating_index_mapping") and not hasattr(
             self, "_train_data_frame_indexed"
@@ -706,9 +706,12 @@ class SupervisedModelTraining(TorchModelTraining):
     @property
     def unique_items(self) -> List[int]:
         if not hasattr(self, "_unique_items"):
-            self._unique_items = self.get_data_frame_for_indexing()[
-                self.project_config.item_column.name
-            ].unique()
+            # self.index_mapping
+            # self._unique_items = self.get_data_frame_for_indexing()[
+            #     self.project_config.item_column.name
+            # ].unique()
+            self._unique_items = list(self.index_mapping[self.project_config.item_column.name].keys())[1:-1]
+            self._unique_items = [x for x in self._unique_items if str(x) != 'nan']
         return self._unique_items
 
     @property
@@ -720,6 +723,7 @@ class SupervisedModelTraining(TorchModelTraining):
         return self._obs_columns
 
     def _get_arms(self, ob: dict) -> List[Any]:
+        #from IPython import embed; embed()
         if self.project_config.available_arms_column_name:
             arms = ob[self.project_config.available_arms_column_name]
             arms = random.sample(arms, len(arms))

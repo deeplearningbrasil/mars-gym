@@ -285,8 +285,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         )
 
     def rank_metrics(self, df: pd.DataFrame):
-        df[self.model_training.project_config.available_arms_column_name] = parallel_literal_eval(
-            df[self.model_training.project_config.available_arms_column_name])
+        #df[self.available_arms_column] = parallel_literal_eval(
+        #    df[self.available_arms_column])
 
         # Filter only disponível interaction 
         df = df[df.relevance_list.apply(max) > 0]

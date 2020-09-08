@@ -123,6 +123,7 @@ def to_array(xs):
 def _parallel_literal_eval(
     series: Union[pd.Series, np.ndarray], pool: Pool, use_tqdm: bool = True
 ) -> list:
+    
     if use_tqdm:
         return list(tqdm(pool.map(literal_eval_if_str, series), total=len(series)))
     else:
