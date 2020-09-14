@@ -22,10 +22,9 @@ def calculate_fairness_metrics(
 
         for sub in subs:
             sub_df = df[df[sub_key] == sub]
-
             y_true, y_pred = (
-                sub_df[ground_truth_key].astype(int),
-                sub_df[prediction_key].astype(int),
+                sub_df[ground_truth_key].astype(str),
+                sub_df[prediction_key].astype(str),
             )
             #from IPython import embed
             #embed()

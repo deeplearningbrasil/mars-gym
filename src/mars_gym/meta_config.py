@@ -54,7 +54,7 @@ class ProjectConfig(object):
         hist_view_column_name: str = "hist_view",
         hist_output_column_name: str = "hist_output",
         timestamp_column_name: str = "timestamp",
-        available_arms_column_name: str = None,
+        available_arms_column_name: str = "available_arms",
         propensity_score_column_name: str = "ps",
         n_users_column: str = "n_users",
         n_items_column: str = "n_items",

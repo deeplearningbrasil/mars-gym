@@ -125,6 +125,11 @@ class RandomPolicy(BanditPolicy):
         super().__init__(None)
         self._rng = RandomState(seed)
 
+    def calculate_scores(
+        self, arm_indices: List[int], arm_contexts: Tuple[np.ndarray, ...]
+    ) -> List[float]:
+        return list(np.random.rand(len(arm_indices)))
+
     def _select_idx(
         self,
         arm_indices: List[int],
@@ -133,11 +138,7 @@ class RandomPolicy(BanditPolicy):
         pos: int = 0,
     ) -> Union[int, Tuple[int, float]]:
 
-        n_arms = len(arm_indices)
-
-        arm_probas = np.ones(n_arms) / n_arms
-
-        action = self._rng.choice(n_arms, p=arm_probas)
+        action = int(np.argmax(arm_scores))
 
         return action
 

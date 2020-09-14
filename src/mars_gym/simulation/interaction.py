@@ -485,6 +485,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                             ob[self.project_config.available_arms_column_name]
                         ).tolist()
                     ]
+                #from IPython import embed; embed()
                 action, prob = self._act(self.agent, ob)
 
                 new_ob, reward, done, info = self.env.step(action)

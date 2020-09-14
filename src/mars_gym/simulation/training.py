@@ -183,6 +183,8 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             sampling_proportions=self.sampling_proportions,
             balance_fields=self.balance_fields
             or self.project_config.default_balance_fields,
+            item_column=self.project_config.item_column.name,
+            available_arms_column_name=self.project_config.available_arms_column_name,
             use_sampling_in_validation=self.use_sampling_in_validation,
             eq_filters=self.eq_filters,
             neq_filters=self.neq_filters,
@@ -734,10 +736,12 @@ class SupervisedModelTraining(TorchModelTraining):
             arms = ob[self.project_config.available_arms_column_name]
             arms = random.sample(arms, len(arms))
         else:
-            arms = random.sample(self.unique_items, min(99, len(self.unique_items)))
-            ob_item = self.reverse_index_mapping[self.project_config.item_column.name][ob[self.project_config.item_column.name]]
-            arms.append(ob_item)
-            arms = list(np.unique(arms))
+            raise("available_arms_column_name not exist")
+            # arms = random.sample(self.unique_items, min(99, len(self.unique_items)))
+            
+            # ob_item = self.reverse_index_mapping[self.project_config.item_column.name][ob[self.project_config.item_column.name]]
+            # arms.append(ob_item)
+            # arms = list(np.unique(arms))
         return arms
 
     def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
@@ -942,7 +946,8 @@ class SupervisedModelTraining(TorchModelTraining):
         # join with train interaction information
         df_train = self.get_data_frame_interactions()
         df_train['trained'] = 1
-        df = df.merge(df_train, on = [self.project_config.user_column.name, self.project_config.item_column.name], how='left').fillna(0)
+        df = df.merge(df_train, on = [self.project_config.user_column.name, self.project_config.item_column.name], how='left')
+        df['trained'] =  df['trained'].fillna(0)
 
         self.plot_scores([score for arm_scores in arm_scores_list for score in arm_scores])
         self._to_csv_test_set_predictions(df)

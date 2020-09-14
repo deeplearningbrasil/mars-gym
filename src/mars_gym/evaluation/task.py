@@ -464,7 +464,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         ]
 
         fairness_metrics = calculate_fairness_metrics(
-            fairness_df,
+            fairness_df.fillna("-"),
             self.fairness_columns,
             self.model_training.project_config.item_column.name,
             "action",
