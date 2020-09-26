@@ -2,4 +2,4 @@
 Authors
 =======
 
-* TODO authors - TODO website
+* MARS-Gym Authors - https://github.com/deeplearningbrasil/mars-gym

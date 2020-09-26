@@ -19,9 +19,9 @@ Overview
     :target: https://readthedocs.org/projects/mars-gym
     :alt: Documentation Status
 
-.. |travis| image:: https://api.travis-ci.org/mars-gym/mars-gym.svg?branch=master
+.. |travis| image:: https://api.travis-ci.org/deeplearningbrasil/mars-gym.svg?branch=master
     :alt: Travis-CI Build Status
-    :target: https://travis-ci.org/mars-gym/mars-gym
+    :target: https://travis-ci.org/deeplearningbrasil/mars-gym
 
 .. |version| image:: https://img.shields.io/pypi/v/mars-gym.svg
     :alt: PyPI Package latest release
@@ -39,22 +39,18 @@ Overview
     :alt: Supported implementations
     :target: https://pypi.org/project/mars-gym
 
-.. |commits-since| image:: https://img.shields.io/github/commits-since/mars-gym/mars-gym/v0.0.0.svg
+.. |commits-since| image:: https://img.shields.io/github/commits-since/deeplearningbrasil/mars-gym/v0.0.0.svg
     :alt: Commits since latest release
-    :target: https://github.com/mars-gym/mars-gym/compare/v0.0.0...master
+    :target: https://github.com/deeplearningbrasil/mars-gym/compare/v0.0.0...master
 
 
 
 .. end-badges
 
-Framework Code for the RecSys 2020 entitled 'MARS-Gym: A Gym framework to model, train, and evaluate recommendation systems for marketplaces'.
+MARS-Gym (MArketplace Recommender Systems Gym), a benchmark framework for modeling, training, and evaluating RL-based recommender systems for marketplaces.
 
 .. figure:: images/img1.jpg
    :alt: MDP
-
-   MDP
-
-MARS-Gym (MArketplace Recommender Systems Gym), a benchmark framework for modeling, training, and evaluating RL-based recommender systems for marketplaces.
 
 Three main components composes the framework:
 
@@ -107,7 +103,7 @@ Installation
 
 You can also install the in-development version with::
 
-    pip install https://github.com/mars-gym/mars-gym/archive/master.zip
+    pip install https://github.com/deeplearningbrasil/mars-gym/archive/master.zip
 
 
 Documentation

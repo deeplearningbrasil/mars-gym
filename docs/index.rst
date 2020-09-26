@@ -19,7 +19,7 @@ Three main components composes the framework:
 - Simulation Module: Holds an extensible module built on top of PyTorch to design learning architectures. It also possesses an OpenAI’s Gym environment that ingests the processed dataset to run a multi-agent system that simulates the targeted marketplace.
 - Evaluation Module: Provides a set of distinct perspectives on the agent’s performance. It presents traditional recommendation metrics, off-policy evaluation metrics, and fairness indicators. This component is powered by a user-friendly interface to facilitate the analysis and comparison betweenagents
 
-.. image:: ../../images/img2.jpg
+.. image:: ../images/img2.jpg
   :width: 700
 
 Table of contents

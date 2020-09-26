@@ -14,7 +14,7 @@ or from the repo:
 .. code-block:: console
 
 
-  $ git clone https://gitlab.com/deep-food/deep-reco-gym
+  $ git clone https://gitlab.com/deeplearningbrasil/deep-reco-gym
   $ cd mars-gym
   $ conda env create -f environment.yml
   $ conda activate mars-gym

@@ -3,25 +3,25 @@ Quick Start
 
 In this tutorial we will present a simple example using MARS. Each module will be explained in a superficial way with focus on the application.
 
-.. image:: ../../images/img2.jpg
+.. image:: ../images/img2.jpg
   :width: 700
   :align: center
 
 Three main components make the framework:
 
-* The first one is a highly customizable module where the consumer can ingest and process a massive amount of **data** for learning using spark jobs. 
+* The first one is a highly customizable module where the consumer can ingest and process a massive amount of **data** for learning using spark jobs.
 * The second component was designed for **training** purposes. It holds an extensible module built on top of PyTorch to design learning architectures. It also has an OpenAI Gym environment that ingests the processed dataset to simulate the targeted marketplace.
 * Finally, the last component is an **evaluation** module that provides a set of distinct perspectives on the agent’s performance. It presents not only traditional recommendation metrics but also off-policy evaluations, to account for the bias induced from the historical data representation.
 
-All code used in this guide is designed to ilustrate how each class must be implemented. They will 
-vary according to each project, but the consistent and necessary methods are displayed here. Some examples 
+All code used in this guide is designed to ilustrate how each class must be implemented. They will
+vary according to each project, but the consistent and necessary methods are displayed here. Some examples
 can be found at the :code:`samples` folder. These are used to run our examples, so make sure this folder is
 located in the same place you'll be running the commands from the following sections.
 
 Dataset
 *******
 
-MARS provides some datasets preprocessed as examples to test the framework. They are real datasets, 
+MARS provides some datasets preprocessed as examples to test the framework. They are real datasets,
 which contain interaction data between users and items and the metadata of the items to be recommended.
 
 * Trivago Dataset - http://recsys.trivago.cloud/challenge/dataset/
@@ -60,8 +60,8 @@ which contain interaction data between users and items and the metadata of the i
 Prepare data
 ************
 
-The Data Engineering Module is responsible for preprocessing the data and setting up interactions and metadata for 
-the simulation module. It uses `Luigi <https://github.com/spotify/luigi>`_ as a pipeline tool. 
+The Data Engineering Module is responsible for preprocessing the data and setting up interactions and metadata for
+the simulation module. It uses `Luigi <https://github.com/spotify/luigi>`_ as a pipeline tool.
 
 :code:`BasePrepareDataFrames` is the main class responsible for validating and preparing the data.
 
@@ -205,7 +205,7 @@ Before the simulation, we need to prepare a configuration file with the design p
 * :code:`item_column`: Column that identifies the item
 * :code:`other_input_columns`: Columns that will be used as input for the model and context
 * :code:`metadata_columns`: Metadata columns that will be used as input for the model and context
-* :code:`output_column`: Reward column, the column that defines wether the recommendation was sucessful or not  
+* :code:`output_column`: Reward column, the column that defines wether the recommendation was sucessful or not
 * :code:`available_arms_column_name`: Name of the column with items available for recommendation at the time of interaction. This column must contain a list of items the same type as :code:`item_column`. If this information is not available, MARS will randomly generate the items.
 
 .. note::
@@ -222,7 +222,7 @@ Reward Estimator
 
 In order to implement a Reward Estimator ρ(x, a) we use a Pytorch Model that will estimate a reward in a contextual bandit problem. It uses the context 'x' (all information passed from environment) and the available actions 'a' to estimate a reward for each action.
 
-.. .. image:: ../../images/math_reward_estimator.png
+.. .. image:: ../images/math_reward_estimator.png
 ..   :width: 300
 ..   :align: center
 
@@ -269,7 +269,7 @@ The model needs to inherit from RecommenderModule. This class receives through i
 
 This model will be trained using the Counterfactual Risk Minimization (CRM) [`1 <https://www.cs.cornell.edu/people/tj/publications/swaminathan_joachims_15b.pdf>`_] to reduce bias that came from the dataset. Everything about this training can be parameterized and easily altered.
 
-.. .. image:: ../../images/math_crm_loss.png
+.. .. image:: ../images/math_crm_loss.png
 ..   :width: 400
 ..   :align: center
 
@@ -339,7 +339,7 @@ Recommendation Policy
 
 We need to implement a Recommendation Policy π(a|x), this is a bandit strategy 'π' that will choose an action 'a' based on the context 'x'.
 
-.. image:: ../../images/math_policy_recommendation.png
+.. image:: ../images/math_policy_recommendation.png
   :width: 100
   :align: center
 
@@ -410,15 +410,15 @@ Simulation
 ##########
 
 MARS-Gym simulates the dynamics of the marketplace. This includes several processes.
-The framework filters only successful interactions. They are the only ones that 
-tell us what the users really want, thus they are used to compose the rewards. Each 
-simulation step is an interaction, with observations being the user's metadata, and 
-actions being the items to recommend. The sequence of steps follows the sequence of 
+The framework filters only successful interactions. They are the only ones that
+tell us what the users really want, thus they are used to compose the rewards. Each
+simulation step is an interaction, with observations being the user's metadata, and
+actions being the items to recommend. The sequence of steps follows the sequence of
 interactions in the filtered ground-truth dataset to maintain the temporal dynamic.
-Finally, the interactions between the proposed agent and the environment generate 
+Finally, the interactions between the proposed agent and the environment generate
 new interaction logs that are used in subsequent steps.
 
-.. image:: ../../images/img3.jpg
+.. image:: ../images/img3.jpg
   :width: 700
   :align: center
 
@@ -559,7 +559,7 @@ It is also possible to use MARS-gym for supervised learning. It is useful for va
   ...
 
 
-.. image:: ../../images/supervised_learning/history.jpg
+.. image:: ../images/supervised_learning/history.jpg
   :width: 400
   :align: center
 
@@ -568,9 +568,9 @@ It is also possible to use MARS-gym for supervised learning. It is useful for va
 Evaluation
 **********
 
-We have a specific command for evaluation. This task implements three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is 
-necessary to run a simulation or supervised training, after this we will use the :code:`task_id` provided by luigi, and also used as the folder name in 
-:code:`output/interaction/InteractionTraining/results/task_id`. For evaluation, we use the :code:`mars-gym evaluate` command, which has the :code:`mars-gym evaluate interaction` and 
+We have a specific command for evaluation. This task implements three rating categories: Rank Metrics, Fairness Metrics, and Off-policy Metrics. Before the evaluation, it is
+necessary to run a simulation or supervised training, after this we will use the :code:`task_id` provided by luigi, and also used as the folder name in
+:code:`output/interaction/InteractionTraining/results/task_id`. For evaluation, we use the :code:`mars-gym evaluate` command, which has the :code:`mars-gym evaluate interaction` and
 :code:`mars-gym evaluate supervised` variants.
 
 Each evaluation command generates many artifacts with metrics and metadata that can be used by the Evaluation Platform.
@@ -594,7 +594,7 @@ By default, every run of :code:`mars-gym evaluate` will compute Rank Metrics, su
   $ mars-gym evaluate interaction \
   --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__3fe8c849e3
 
-.. image:: ../../images/dataviz/rank.png
+.. image:: ../images/dataviz/rank.png
   :width: 500
 
 Notice that each evaluation command will receive its own :code:`task_id` preceded by the training's :code:`task_id`.
@@ -605,9 +605,9 @@ Off-policy Metrics
 
 For off-policy evaluation, MARS-Gym uses three main estimators [`3 <https://dl.acm.org/doi/10.5555/3104482.3104620>`_]:
 
-* Direct Method 
-* Inverse Propensity Score 
-* Doubly Robust 
+* Direct Method
+* Inverse Propensity Score
+* Doubly Robust
 
 All of which can be seen and compared with our Evaluation Platform.
 
@@ -619,7 +619,7 @@ In order to run these metrics, just add the flag :code:`--offpolicy-eval` to the
   --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__3fe8c849e3 \
   --offpolicy-eval
 
-.. image:: ../../images/dataviz/off.png
+.. image:: ../images/dataviz/off.png
   :width: 500
 
 [`3 <https://dl.acm.org/doi/10.5555/3104482.3104620>`_] Miroslav Dudík, John Langford, and Lihong Li. 2011. Doubly Robust Policy Evaluation and Learning. InProceedings of the 28th InternationalConference on International Conference on Machine Learning(Bellevue, Washington, USA)(ICML’11). Omnipress, Madison, WI, USA, 1097–1104.
@@ -631,19 +631,19 @@ Fairness Metrics
 In MARS-Gym, we consider three perspectives to measure fairness [`2 <https://doi.org/10.1145/3038912.3052660>`_]:
 
 * **Disparate Treatment**
-.. image:: ../../images/dataviz/treatment.png
+.. image:: ../images/dataviz/treatment.png
   :width: 500
 
 * **Disparate Impact**
-.. image:: ../../images/dataviz/impact.png
+.. image:: ../images/dataviz/impact.png
   :width: 500
 
 * **Disparate Mistreatment**
-.. image:: ../../images/dataviz/mistreatment.png
+.. image:: ../images/dataviz/mistreatment.png
   :width: 500
 
-To calculate the metrics of fairness, you need to pass the parameter 
-:code:`--fairness-columns`, this parameter receives an array of attributes according to 
+To calculate the metrics of fairness, you need to pass the parameter
+:code:`--fairness-columns`, this parameter receives an array of attributes according to
 which the metrics will be computed. Ex:
 
 .. code-block:: console
@@ -652,7 +652,7 @@ which the metrics will be computed. Ex:
   --model-task-id InteractionTraining____samples_trivago____epsilon___0_1__3fe8c849e3 \
   --fairness-columns '["pos_item_id"]'
 
-[`2 <https://doi.org/10.1145/3038912.3052660>`_] Zafar et. al, 2017. Fairness Beyond Disparate Treatment & Disparate Impact: Learning 
+[`2 <https://doi.org/10.1145/3038912.3052660>`_] Zafar et. al, 2017. Fairness Beyond Disparate Treatment & Disparate Impact: Learning
 Classification without Disparate Mistreatment https://doi.org/10.1145/3038912.3052660
 
 
@@ -661,7 +661,7 @@ Evaluation Platform
 
 The Evaluation Platform is a web application that centralizes all views of the evaluation metrics.
 
-.. image:: ../../images/dataviz/image1.png
+.. image:: ../images/dataviz/image1.png
   :width: 800
   :align: center
 
@@ -677,7 +677,7 @@ It is an external service made with `Streamlit <https://www.streamlit.io/>`_ lib
 In this platform you'll be able to select experiments, metrics, and visualize them in a number of ways, including the iteraction results from training.
 
 
-.. .. image:: ../../images/dataviz/image2.png
+.. .. image:: ../images/dataviz/image2.png
 ..   :width: 700
 
 
