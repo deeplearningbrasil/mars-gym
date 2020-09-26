@@ -21,9 +21,9 @@
 
 project = 'mars-gym'
 year = '2020'
-author = 'TODO authors'
+author = 'MARS-Gym Authors'
 copyright = '{0}, {1}'.format(year, author)
-version = release = '0.0.1'
+version = release = '0.0.0'
 
 
 # -- General configuration ---------------------------------------------------
