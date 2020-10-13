@@ -121,7 +121,8 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     rank_metrics: List[str] = luigi.ListParameter(default=[])
 
     only_new_interactions: bool = luigi.BoolParameter(default=False)
-
+    only_exist_items: bool = luigi.BoolParameter(default=False)
+    only_exist_users: bool = luigi.BoolParameter(default=False)
 
     def get_direct_estimator(self, extra_params: dict) -> TorchModelTraining:
         assert self.direct_estimator_class is not None
@@ -188,9 +189,14 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def propensity_score_column(self) -> str:
         return self.model_training.project_config.propensity_score_column_name
 
-    def get_catalog(self, df: pd.DataFrame) -> str:
+    def get_item_index(self)-> List[str]:
         indexed_list = list(self.model_training.index_mapping[self.model_training.project_config.item_column.name].keys())
         indexed_list = [x for x in indexed_list if x is not None and str(x) != 'nan']
+        return indexed_list
+
+    def get_catalog(self, df: pd.DataFrame) -> List[str]:
+        indexed_list = self.get_item_index()
+
         test_list    = list(df["sorted_actions"])
         test_list.append(indexed_list)
 
@@ -298,20 +304,40 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         if self.only_new_interactions:
             df = df[df['trained'] == 0]
 
+        # Filter only item indexed
+        if self.only_exist_items:
+            items = self.get_item_index()
+            df = df[df[self.model_training.project_config.item_column.name].isin(items)]
+
+
         with Pool(self.num_processes) as p:
             print("Calculating average precision...")
             df["average_precision"] = list(
                 tqdm(p.map(average_precision, df["relevance_list"]), total=len(df))
-            )
-            print("Calculating mean reciprocal rank...")
-            df["MRR"] = list(
-                tqdm(p.map(mean_reciprocal_rank, df["relevance_list"]), total=len(df))
             )
 
             print("Calculating precision at 1...")
             df["precision_at_1"] = list(
                 tqdm(
                     p.map(functools.partial(precision_at_k, k=1), df["relevance_list"]),
+                    total=len(df),
+                )
+            )
+
+            
+            print("Calculating MRR at 5 ...")
+            df["mrr_at_5"] = list(
+                tqdm(
+                    p.map(functools.partial(mean_reciprocal_rank, k=5), df["relevance_list"]),
+                    total=len(df),
+                )
+            )
+
+
+            print("Calculating MRR at 10 ...")
+            df["mrr_at_10"] = list(
+                tqdm(
+                    p.map(functools.partial(mean_reciprocal_rank, k=10), df["relevance_list"]),
                     total=len(df),
                 )
             )
@@ -359,7 +385,10 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             "count": len(df),
             "mean_average_precision": df["average_precision"].mean(),
             #"MRR": df["MRR"].mean(),
+
             "precision_at_1": df["precision_at_1"].mean(),
+            "mrr_at_5": df["mrr_at_5"].mean(),
+            "mrr_at_10": df["mrr_at_10"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
             #"ndcg_at_10": df["ndcg_at_10"].mean(),
             #"ndcg_at_15": df["ndcg_at_15"].mean(),
@@ -378,10 +407,10 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             #"coverage_at_50": prediction_coverage_at_k(
             #    df["sorted_actions"], catalog, 50
             #),
-            "personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
+            #"personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
             #"personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
             #"personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
-            "personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
+            #"personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
             #"personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
         }
 
