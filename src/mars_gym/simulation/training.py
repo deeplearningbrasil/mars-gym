@@ -41,7 +41,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
+import mars_gym
 from mars_gym.cuda import CudaRepository
 from mars_gym.data.dataset import (
     preprocess_interactions_data_frame,
@@ -59,7 +59,7 @@ from mars_gym.torch.init import lecun_normal_init, he_init
 from mars_gym.torch.loss import (
     ImplicitFeedbackBCELoss,
     CounterfactualRiskMinimization,
-    FocalLoss,
+    FocalLoss,DummyLoss
 )
 from mars_gym.torch.optimizer import RAdam
 from mars_gym.torch.summary import summary
@@ -101,10 +101,12 @@ TORCH_LOSS_FUNCTIONS = dict(
     mse=nn.MSELoss,
     nll=nn.NLLLoss,
     bce=nn.BCELoss,
+    ce=nn.CrossEntropyLoss,
     mlm=nn.MultiLabelMarginLoss,
     implicit_feedback_bce=ImplicitFeedbackBCELoss,
     crm=CounterfactualRiskMinimization,
     focal_loss=FocalLoss,
+    dummy=DummyLoss,
 )
 TORCH_ACTIVATION_FUNCTIONS = dict(
     relu=F.relu, selu=F.selu, tanh=F.tanh, sigmoid=F.sigmoid, linear=F.linear
@@ -118,6 +120,9 @@ SEED = 42
 
 DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+TRAIN_DATA = 'train_data'
+VAL_DATA = 'val_data'
+TEST_DATA = 'test_data'
 
 class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     project: str = luigi.Parameter(
@@ -149,6 +154,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     isin_filters: Dict[str, any] = luigi.DictParameter(default={})
     seed: int = luigi.IntParameter(default=SEED)
     observation: str = luigi.Parameter(default="")
+    load_index_mapping_path: str = luigi.Parameter(default=None)
 
     negative_proportion: int = luigi.FloatParameter(0.0)
 
@@ -274,7 +280,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             self._train_data_frame = preprocess_interactions_data_frame(
                 pd.read_csv(self.train_data_frame_path), self.project_config
             )
-        #from IPython import embed; embed()
+        
         # Needed in case index_mapping was invoked before
         if not hasattr(self, "_creating_index_mapping") and not hasattr(
             self, "_train_data_frame_indexed"
@@ -328,39 +334,58 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                                 usecols = [self.project_config.user_column.name, self.project_config.item_column.name])]).drop_duplicates()
 
     @property
+    def index_mapping_path(self) -> Optional[str]:
+        if self.load_index_mapping_path:
+            return get_index_mapping_path(self.load_index_mapping_path)
+        return get_index_mapping_path(self.output().path)
+
+    @property
     def index_mapping(self) -> Dict[str, Dict[Any, int]]:
         if not hasattr(self, "_index_mapping"):
-            index_mapping_path = get_index_mapping_path(self.output().path)
-            if os.path.exists(index_mapping_path):
-                with open(index_mapping_path, "rb") as f:
+            self._creating_index_mapping = True
+            df = self.get_data_frame_for_indexing()
+            
+            if os.path.exists(self.index_mapping_path):
+                with open(self.index_mapping_path, "rb") as f:
                     self._index_mapping = pickle.load(f)
             else:
-                self._creating_index_mapping = True
-                df = self.get_data_frame_for_indexing()
+                self._index_mapping = {}
 
-                self._index_mapping = {
-                    column.name: create_index_mapping(df[column.name].values)
-                    for column in self.project_config.all_columns
-                    if column.type == IOType.INDEXABLE and not column.same_index_as
+            keys_in_map = list(self._index_mapping.keys())
+            project_all_columns = [c for c in self.project_config.all_columns if c.name not in keys_in_map]
+
+            for column in project_all_columns:
+                if column.type == IOType.INDEXABLE and not column.same_index_as:
+                    self._index_mapping[column.name] = create_index_mapping(df[column.name].values)
+
+            # self._index_mapping = {
+            #     column.name: create_index_mapping(df[column.name].values)
+            #     for column in project_all_columns
+            #     if column.type == IOType.INDEXABLE and not column.same_index_as
+            # }
+
+            self._index_mapping.update(
+                {
+                    column.name: create_index_mapping_from_arrays(
+                        df[column.name].values
+                    )
+                    for column in project_all_columns
+                    if column.type == IOType.INDEXABLE_ARRAY
+                    and not column.same_index_as
                 }
-                self._index_mapping.update(
-                    {
-                        column.name: create_index_mapping_from_arrays(
-                            df[column.name].values
-                        )
-                        for column in self.project_config.all_columns
-                        if column.type == IOType.INDEXABLE_ARRAY
-                        and not column.same_index_as
-                    }
-                )
-                for column in self.project_config.all_columns:
-                    if column.same_index_as:
-                        self._index_mapping[column.name] = self._index_mapping[
-                            column.same_index_as
-                        ]
-                with open(index_mapping_path, "wb") as f:
-                    pickle.dump(self._index_mapping, f)
-                del self._creating_index_mapping
+            )
+
+            for column in project_all_columns:
+                if column.same_index_as:
+                    self._index_mapping[column.name] = self._index_mapping[
+                        column.same_index_as
+                    ]
+
+            del self._creating_index_mapping
+
+            with open(get_index_mapping_path(self.output().path), "wb") as f:
+                pickle.dump(self._index_mapping, f)
+                
         return self._index_mapping
 
     @property
@@ -379,6 +404,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 project_config=self.project_config,
                 index_mapping=self.index_mapping,
                 negative_proportion=self.negative_proportion,
+                data_key=TRAIN_DATA
             )
         return self._train_dataset
 
@@ -391,6 +417,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 project_config=self.project_config,
                 index_mapping=self.index_mapping,
                 negative_proportion=self.negative_proportion,
+                data_key=VAL_DATA
             )
         return self._val_dataset
 
@@ -403,6 +430,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                 project_config=self.project_config,
                 index_mapping=self.index_mapping,
                 negative_proportion=0.0,
+                data_key=TEST_DATA
             )
         return self._test_dataset
 
@@ -463,6 +491,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             if self.device == "cuda":
                 CudaRepository.put_available_device(self.device_id)
 
+    
 
 class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
     recommender_module_class: str = luigi.Parameter(
@@ -492,6 +521,8 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
     generator_workers: int = luigi.IntParameter(default=0)
     pin_memory: bool = luigi.BoolParameter(default=False)
     policy_estimator_extra_params: dict = luigi.DictParameter(default={})
+    run_evaluate: bool = luigi.BoolParameter(default=False, significant=False)
+    sample_size_eval: int = luigi.IntParameter(default=None)
 
     metrics = luigi.ListParameter(default=["loss"])
 
@@ -535,6 +566,9 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
         val_loader = self.get_val_generator()
         module = self.create_module()
 
+        print("train_data_frame:")
+        print(self.train_data_frame.describe())
+
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
             with redirect_stdout(summary_file):
@@ -544,8 +578,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
 
         sample_data = self.train_data_frame.sample(100, replace=True)
         sample_data.to_csv(os.path.join(self.output().path, "sample_train.csv"))
-        #from IPython import embed
-        #embed()
+        
         trial = self.create_trial(module)
 
         try:
@@ -592,6 +625,22 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
         print(
             json.dumps((trial.evaluate(data_key=torchbearer.VALIDATION_DATA)), indent=4)
         )
+
+        if self.run_evaluate:
+            self.run_evaluate_task()
+
+    # TODO generalize model task class name
+    def run_evaluate_task(self) -> None:
+        # os.system(
+        #     "PYTHONPATH=. luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions "
+        #     f"--model-task-class mars_gym.simulation.interaction.InteractionTraining {args_str} --local-scheduler"
+        # )
+
+        os.system(
+            "PYTHONPATH=. luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions "
+            f"--model-task-class mars_gym.simulation.training.SupervisedModelTraining --model-task-id {self.task_id} --only-new-interactions --only-exist-items --local-scheduler"
+        )        
+
 
     def create_trial(self, module: nn.Module) -> Trial:
         loss_function = self._get_loss_function()
@@ -753,27 +802,19 @@ class SupervisedModelTraining(TorchModelTraining):
             pin_memory=self.pin_memory if self.device == "cuda" else False,
         )
 
-        trial = (
-            Trial(
-                agent.bandit.reward_model,
-                criterion=lambda *args: torch.zeros(
-                    1, device=self.torch_device, requires_grad=True
-                ),
-            )
-            .with_test_generator(generator)
-            .to(self.torch_device)
-            .eval()
-        )
+        model = agent.bandit.reward_model
+        model.to(self.torch_device)
+        model.eval()
+        scores = []
 
         with torch.no_grad():
-            model_output: Union[torch.Tensor, Tuple[torch.Tensor]] = trial.predict(
-                verbose=0
-            )
+            for i, (x, _) in tqdm(enumerate(generator), total=len(generator)):
+                input_params = x if isinstance(x, list) or isinstance(x, tuple) else [x]
+                input_params = [t.to(self.torch_device) for t in input_params]
 
-        scores_tensor: torch.Tensor = model_output if isinstance(
-            model_output, torch.Tensor
-        ) else model_output[0][0]
-        scores: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
+                scores_tensor: torch.Tensor  = model.recommendation_score(*input_params)
+                scores_batch: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
+                scores.extend(scores_batch)
 
         return scores
 
@@ -895,7 +936,12 @@ class SupervisedModelTraining(TorchModelTraining):
 
     def _save_test_set_predictions(self, agent: BanditAgent) -> None:
         print("Saving test set predictions...")
-        obs: List[Dict[str, Any]] = self.test_data_frame.to_dict("records")
+        
+        if self.sample_size_eval:
+            obs: List[Dict[str, Any]] = self.test_data_frame.sample(self.sample_size_eval, random_state=self.seed).to_dict("records")
+        else:
+            obs: List[Dict[str, Any]] = self.test_data_frame.to_dict("records")
+
         self.clean()
 
         for ob in tqdm(obs, total=len(obs)):
@@ -938,7 +984,11 @@ class SupervisedModelTraining(TorchModelTraining):
         del obs
 
         # Create evaluation file
-        df = pd.read_csv(self.test_data_frame_path)
+        if self.sample_size_eval:
+            df = pd.read_csv(self.test_data_frame_path).sample(self.sample_size_eval, random_state=self.seed)
+        else:
+            df = pd.read_csv(self.test_data_frame_path)
+        
         df["sorted_actions"] = sorted_actions_list
         df["prob_actions"] = proba_actions_list
         df["action_scores"] = action_scores_list
@@ -959,6 +1009,55 @@ class SupervisedModelTraining(TorchModelTraining):
         if self.test_size > 0:
             self._save_test_set_predictions(self.create_agent())
 
+
+class DummyTraining(SupervisedModelTraining):
+    recommender_module_class: str = luigi.Parameter(
+        description="Should be like mars_gym.model.trivago.trivago_models.SimpleLinearModel", default=None
+    )
+    '''
+    Dummy Training
+    '''
+
+    @abc.abstractmethod
+    def fit(self, df_train: pd.DataFrame):
+        pass
+
+    @abc.abstractmethod
+    def get_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
+        pass
+
+    def train(self):
+        print("train_data_frame:")
+        print(self.train_data_frame.describe())
+
+        sample_data = self.train_data_frame.sample(100, replace=True)
+        sample_data.to_csv(os.path.join(self.output().path, "sample_train.csv"))
+        
+        self.fit(df_train=pd.concat([self.train_data_frame, self.val_data_frame]))
+        self.after_fit()
+        self.evaluate()
+        self.cache_cleanup()
+
+    def _get_arm_scores(self, agent: BanditAgent, ob_dataset: Dataset) -> List[float]:
+        return self.get_scores(agent, ob_dataset)
+
+    def create_module(self) -> nn.Module:
+        return None
+
+    def get_trained_module(self) -> nn.Module:
+        return self     
+
+    def evaluate(self):
+        print("evaluate....")
+
+        if self.run_evaluate:
+            self.run_evaluate_task()
+
+    def run_evaluate_task(self) -> None:
+        os.system(
+            "PYTHONPATH=. luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions "
+            f"--model-task-class train.MostPopularTraining --model-task-id {self.task_id} --only-new-interactions --only-exist-items --local-scheduler"
+        )     
 
 def load_torch_model_training_from_task_dir(
     model_cls: Type[TorchModelTraining], task_dir: str

@@ -102,3 +102,16 @@ class CounterfactualRiskMinimization(_Loss):
             return loss.sum()
         else:
             return loss
+
+
+class DummyLoss(_Loss):
+    def __init__(self, size_average=None, reduce=None, reduction="mean"):
+        super().__init__(size_average, reduce, reduction)
+
+    def forward(self, loss, target):
+        if self.reduction == "mean":
+            return loss.mean()
+        elif self.reduction == "sum":
+            return loss.sum()
+        elif self.reduction == "none":
+            return loss    

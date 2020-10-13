@@ -15,3 +15,7 @@ class RecommenderModule(nn.Module, metaclass=abc.ABCMeta):
         self._project_config = project_config
         self._n_users = max(index_mapping[project_config.user_column.name].values()) + 1
         self._n_items = max(index_mapping[project_config.item_column.name].values()) + 1
+
+    
+    def recommendation_score(self, *args):
+        return self.forward(*args)
