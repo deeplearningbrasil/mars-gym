@@ -228,7 +228,7 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
                 )
         else:
             train_df, test_df = df, df[:0]
-
+        
         if self.val_size:
             if self.dataset_split_method == "holdout":
                 train_df, val_df = self.random_train_test_split(

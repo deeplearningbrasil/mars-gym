@@ -107,6 +107,7 @@ class InteractionsDataset(Dataset):
         **kwargs
     ) -> None:
         self._project_config = project_config
+        self._index_mapping  = index_mapping
         self._input_columns: List[Column] = project_config.input_columns
         if project_config.item_is_input:
             self._item_input_index = self._input_columns.index(
