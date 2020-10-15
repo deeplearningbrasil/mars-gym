@@ -178,15 +178,13 @@ Please cite the associated paper for this work if you use this code:
 
 ::
 
-    @article{santana2020mars,
-      title={MARS-Gym: A Gym framework to model, train, and evaluate recommendation systems for marketplaces},
-      author={Marlesson R. O. de Santana and
-              Luckeciano C. Melo and
-              Fernando H. F. Camargo and
-              Bruno Brandão and
-              Renan Oliveira and
-              Sandor Caetano and
-              Anderson Soares},
-      journal={},
-      year={2020}
+    @misc{santana2020marsgym,
+          title={MARS-Gym: A Gym framework to model, train, and evaluate Recommender Systems for Marketplaces}, 
+          author={Marlesson R. O. Santana and Luckeciano C. Melo and Fernando H. F. Camargo and Bruno Brandão and Anderson Soares and Renan M. Oliveira and Sandor Caetano},
+          year={2020},
+          eprint={2010.07035},
+          archivePrefix={arXiv},
+          primaryClass={cs.IR}
     }
+
+
