@@ -201,9 +201,9 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
 
         for field, value in self.isin_filters.items():
             df = df[df[field].isin(value)]
-
+        
         self.create_available_arms(df)
-
+        
         self.train_df, self.val_df, self.test_df = self.split_dataset(df)
 
         self.transform_data_frame(self.train_df, data_key=self.TRAIN_DATA).to_csv(
@@ -255,15 +255,16 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         return train_df, val_df, test_df
 
     def create_available_arms(self, df: pd.DataFrame) -> pd.DataFrame:
-        if self.available_arms_column_name not in df.columns:
+        return df
+        # if self.available_arms_column_name not in df.columns:
 
-            def add_arms(arm, item_unique):
-                arms = random.sample(item_unique, min(99, len(item_unique)))
-                arms.append(arm)
-                arms = list(np.unique(arms))   
-                return arms       
-            item_unique = list(df[self.item_column].drop_duplicates().values)
-            df[self.available_arms_column_name] = df.apply(lambda row: add_arms(row[self.item_column], item_unique), axis=1)
+        #     def add_arms(arm, item_unique):
+        #         arms = random.sample(item_unique, min(99, len(item_unique)))
+        #         arms.append(arm)
+        #         arms = list(np.unique(arms))   
+        #         return arms       
+        #     item_unique = list(df[self.item_column].drop_duplicates().values)
+        #     df[self.available_arms_column_name] = df.apply(lambda row: add_arms(row[self.item_column], item_unique), axis=1)
 
     def transform_data_frame(self, df: pd.DataFrame, data_key: str) -> pd.DataFrame:
         return df

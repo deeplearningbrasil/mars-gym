@@ -8,9 +8,8 @@ from torch.utils.data import Dataset
 
 from mars_gym.meta_config import ProjectConfig, IOType, Column
 from mars_gym.utils.index_mapping import map_array
-from mars_gym.utils.utils import parallel_literal_eval
-
-
+from mars_gym.utils.utils import parallel_literal_eval, reduce_df_mem
+import gc
 def literal_eval_array_columns(data_frame: pd.DataFrame, columns: List[Column]):
     for column in columns:
         if (
@@ -26,12 +25,14 @@ def preprocess_interactions_data_frame(
 ):
     if len(data_frame) == 0:
         return data_frame
+
     data_frame[project_config.user_column.name] = data_frame[
         project_config.user_column.name
     ].astype(str)
     data_frame[project_config.item_column.name] = data_frame[
         project_config.item_column.name
     ].astype(str)
+
     literal_eval_array_columns(
         data_frame,
         [
@@ -42,13 +43,14 @@ def preprocess_interactions_data_frame(
         + [input_column for input_column in project_config.other_input_columns]\
         + [input_column for input_column in project_config.auxiliar_output_columns],
     )
+    #from IPython import embed; embed()
     if project_config.available_arms_column_name and isinstance(
         data_frame.iloc[0][project_config.available_arms_column_name], str
     ):
         data_frame[project_config.available_arms_column_name] = parallel_literal_eval(
             data_frame[project_config.available_arms_column_name]
         )
-
+    
     return data_frame
 
 

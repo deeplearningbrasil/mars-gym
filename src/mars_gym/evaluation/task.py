@@ -299,16 +299,14 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
         # Filter only disponível interaction 
         df = df[df.relevance_list.apply(max) > 0]
-
+        
         # Filter only new interactions, them not appear in trained dataset
         if self.only_new_interactions:
             df = df[df['trained'] == 0]
-
+        
         # Filter only item indexed
         if self.only_exist_items:
-            items = self.get_item_index()
-            df = df[df[self.model_training.project_config.item_column.name].isin(items)]
-
+            df = df[df['item_indexed']]
 
         with Pool(self.num_processes) as p:
             print("Calculating average precision...")
@@ -384,16 +382,15 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             "model_task": self.model_task_id,
             "count": len(df),
             "mean_average_precision": df["average_precision"].mean(),
-            #"MRR": df["MRR"].mean(),
 
             "precision_at_1": df["precision_at_1"].mean(),
             "mrr_at_5": df["mrr_at_5"].mean(),
             "mrr_at_10": df["mrr_at_10"].mean(),
             "ndcg_at_5": df["ndcg_at_5"].mean(),
-            #"ndcg_at_10": df["ndcg_at_10"].mean(),
-            #"ndcg_at_15": df["ndcg_at_15"].mean(),
+            "ndcg_at_10": df["ndcg_at_10"].mean(),
+            "ndcg_at_15": df["ndcg_at_15"].mean(),
             "ndcg_at_20": df["ndcg_at_20"].mean(),
-            #"ndcg_at_50": df["ndcg_at_50"].mean(),
+            "ndcg_at_50": df["ndcg_at_50"].mean(),
             "coverage_at_5": prediction_coverage_at_k(df["sorted_actions"], catalog, 5),
             #"coverage_at_10": prediction_coverage_at_k(
             #    df["sorted_actions"], catalog, 10
