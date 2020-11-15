@@ -547,6 +547,8 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
     pin_memory: bool = luigi.BoolParameter(default=False)
     policy_estimator_extra_params: dict = luigi.DictParameter(default={})
     run_evaluate: bool = luigi.BoolParameter(default=False, significant=False)
+    run_evaluate_extra_params: str = luigi.Parameter(default=" --only-new-interactions --only-exist-items", significant=False)
+
     sample_size_eval: int = luigi.IntParameter(default=None)
 
     metrics = luigi.ListParameter(default=["loss"])
@@ -593,7 +595,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
 
         print("train_data_frame:")
         print(self.train_data_frame.describe())
-
+        
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
             with redirect_stdout(summary_file):
@@ -656,7 +658,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
 
     def run_evaluate_task(self) -> None:
         os.system(
-            "PYTHONPATH=. luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-task-class {}.{} --model-task-id {} --only-new-interactions --only-exist-items --local-scheduler".format(self.__module__, type(self).__name__, self.task_id)
+            "PYTHONPATH=. luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-task-class {}.{} --model-task-id {} --local-scheduler {}".format(self.__module__, type(self).__name__, self.task_id, self.run_evaluate_extra_params)
         )      
 
 
@@ -832,7 +834,7 @@ class SupervisedModelTraining(TorchModelTraining):
         with torch.no_grad():
             for i, (x, _) in tqdm(enumerate(generator), total=len(generator)):
                 input_params = x if isinstance(x, list) or isinstance(x, tuple) else [x]
-                input_params = [t.to(self.torch_device) for t in input_params]
+                input_params = [t.to(self.torch_device) if isinstance(t, torch.Tensor) else t for t in input_params]
 
                 scores_tensor: torch.Tensor  = model.recommendation_score(*input_params)
                 scores_batch: List[float] = scores_tensor.cpu().numpy().reshape(-1).tolist()
@@ -1079,7 +1081,7 @@ class DummyTraining(SupervisedModelTraining):
 
     def run_evaluate_task(self) -> None:
         os.system(
-            "PYTHONPATH=. luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-task-class {}.{} --model-task-id {} --only-new-interactions --only-exist-items --local-scheduler".format(self.__module__, type(self).__name__, self.task_id)
+            "PYTHONPATH=. luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-task-class {}.{} --model-task-id {} --local-scheduler {}".format(self.__module__, type(self).__name__, self.task_id, self.run_evaluate_extra_params)
         )     
 
 def load_torch_model_training_from_task_dir(
