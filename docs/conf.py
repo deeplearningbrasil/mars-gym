@@ -23,7 +23,7 @@ project = 'mars-gym'
 year = '2020'
 author = 'MARS-Gym Authors'
 copyright = '{0}, {1}'.format(year, author)
-version = release = '0.0.0'
+version = release = '0.1.0'
 
 
 # -- General configuration ---------------------------------------------------

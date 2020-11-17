@@ -25,7 +25,7 @@ def read(*names, **kwargs):
 
 setup(
     name="mars-gym",
-    version="0.0.0",
+    version="0.1.0",
     license="MIT",
     description="Framework Code for the RecSys 2020 entitled 'MARS-Gym: A Gym framework to model, train, and evaluate recommendationsystems for marketplaces'.",
     long_description="%s\n%s" % (
