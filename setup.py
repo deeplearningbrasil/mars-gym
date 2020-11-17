@@ -63,7 +63,6 @@ setup(
         # "Programming Language :: Python :: Implementation :: Jython",
         # "Programming Language :: Python :: Implementation :: Stackless",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
-        "Private :: Do Not Upload",
     ],
     project_urls={
         "Documentation": "https://mars-gym.readthedocs.io/",
