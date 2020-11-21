@@ -13,18 +13,25 @@ def create_index_mapping(
     indexable_values: Iterable, include_unkown: bool = True, include_none: bool = True
 ) -> Dict[Any, int]:
     indexable_values = list(
-        sorted(set(value for value in indexable_values if not pd.isnull(value)))
+        sorted(set(str(value) for value in indexable_values if not pd.isnull(value)))
     )
+    include_pad = True
+    #if include_pad:
+    #    indexable_values = [-1] + indexable_values
     if include_none:
-        indexable_values = [None] + indexable_values
+        indexable_values = [None, -1] + indexable_values
+    
     if include_unkown:
         indices = np.arange(1, len(indexable_values) + 1)
         mapping = defaultdict(int, zip(indexable_values, indices))  # Unkown = 0
     else:
         indices = np.arange(0, len(indexable_values))
         mapping = dict(zip(indexable_values, indices))
+    
     if include_none:
         mapping[np.nan] = 1  # Both None and nan are treated the same
+        mapping["-1"]   = 2  # Both pad -1 and "-1"
+    
     return mapping
 
 
@@ -33,7 +40,7 @@ def create_index_mapping_from_arrays(
     include_unkown: bool = True,
     include_none: bool = True,
 ) -> Dict[Any, int]:
-    all_values = set(value for values in indexable_arrays for value in values)
+    all_values = set(str(value) for values in indexable_arrays for value in values)
     return create_index_mapping(all_values, include_unkown, include_none)
 
 
@@ -46,7 +53,7 @@ def transform_with_indexing(
     print("transform_with_indexing...")
     if df is None:
         return None
-
+    #from IPython import embed; embed()
     with Pool(os.cpu_count()) as pool:
         for key, mapping in index_mapping.items():
             

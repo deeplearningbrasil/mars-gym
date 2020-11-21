@@ -205,7 +205,7 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         self.create_available_arms(df)
         
         self.train_df, self.val_df, self.test_df = self.split_dataset(df)
-
+        
         self.transform_data_frame(self.train_df, data_key=self.TRAIN_DATA).to_csv(
             self.output()[0].path, index=False
         )
@@ -217,6 +217,7 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         )
 
     def split_dataset(self, df):
+        
         if self.test_size:
             if self.test_split_type == "random":
                 train_df, test_df = self.random_train_test_split(
@@ -251,7 +252,7 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
             train_df = self.balance_dataset(train_df)
             if self.use_sampling_in_validation:
                 val_df = self.balance_dataset(val_df)
-
+        
         return train_df, val_df, test_df
 
     def create_available_arms(self, df: pd.DataFrame) -> pd.DataFrame:

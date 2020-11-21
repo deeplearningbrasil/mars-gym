@@ -280,19 +280,13 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
         if not hasattr(self, "_train_data_frame"):
             print("train_data_frame:")
             self._train_data_frame = preprocess_interactions_data_frame(
-                pd.read_csv(self.train_data_frame_path), self.project_config
+                pd.read_csv(self.train_data_frame_path, 
+                    usecols = [c.name for c in self.project_config.all_columns]), self.project_config
             )
         
-        # Needed in case index_mapping was invoked before
-        if not hasattr(self, "_creating_index_mapping") and not hasattr(
-            self, "_train_data_frame_indexed"
-        ):
             transform_with_indexing(
                 self._train_data_frame, self.index_mapping, self.project_config
             )
-
-            self._train_data_frame_indexed = True
-            #self._train_data_frame.to_csv('_train_data_frame.csv')
 
         return self._train_data_frame
 
@@ -301,18 +295,14 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
         if not hasattr(self, "_val_data_frame"):
             print("val_data_frame:")
             self._val_data_frame = preprocess_interactions_data_frame(
-                pd.read_csv(self.val_data_frame_path), self.project_config
+                pd.read_csv(self.val_data_frame_path, 
+                    usecols = [c.name for c in self.project_config.all_columns]), self.project_config
             )
 
-        # Needed in case index_mapping was invoked before
-        if not hasattr(self, "_creating_index_mapping") and not hasattr(
-            self, "_val_data_frame_indexed"
-        ):
             transform_with_indexing(
                 self._val_data_frame, self.index_mapping, self.project_config
             )
 
-            self._val_data_frame_indexed = True
         return self._val_data_frame
 
     @property
@@ -320,26 +310,26 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
         if not hasattr(self, "_test_data_frame"):
             print("test_data_frame:")
             self._test_data_frame = preprocess_interactions_data_frame(
-                pd.read_csv(self.test_data_frame_path), self.project_config
+                pd.read_csv(self.test_data_frame_path, 
+                    usecols = [c.name for c in self.project_config.all_columns]), self.project_config
             )
-        # Needed in case index_mapping was invoked before
-        if not hasattr(self, "_creating_index_mapping") and not hasattr(
-            self, "_test_data_frame_indexed"
-        ):
+
             transform_with_indexing(
                 self._test_data_frame, self.index_mapping, self.project_config
             )
 
-            self._test_data_frame_indexed = True
         return self._test_data_frame
 
     def get_data_frame_for_indexing(self) -> pd.DataFrame:
-        return pd.concat([self.train_data_frame, self.val_data_frame])
+        return pd.concat([pd.read_csv(self.train_data_frame_path, 
+                                usecols = [c.name for c in self.project_config.all_columns]), 
+                         pd.read_csv(self.val_data_frame_path, 
+                                usecols = [c.name for c in self.project_config.all_columns])]).drop_duplicates()
 
     def get_data_frame_interactions(self) ->  pd.DataFrame:
         return pd.concat([pd.read_csv(self.train_data_frame_path, 
                                 usecols = [self.project_config.user_column.name, self.project_config.item_column.name]), 
-                        pd.read_csv(self.val_data_frame_path, 
+                         pd.read_csv(self.val_data_frame_path, 
                                 usecols = [self.project_config.user_column.name, self.project_config.item_column.name])]).drop_duplicates()
 
     @property
@@ -352,12 +342,16 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     def index_mapping(self) -> Dict[str, Dict[Any, int]]:
         if not hasattr(self, "_index_mapping"):
             print("index_mapping...")
+            
             self._creating_index_mapping = True
-            df = self.get_data_frame_for_indexing()
+            df = preprocess_interactions_data_frame(
+                    self.get_data_frame_for_indexing(), self.project_config
+                )
 
             if os.path.exists(self.index_mapping_path):
                 with open(self.index_mapping_path, "rb") as f:
                     self._index_mapping = pickle.load(f)
+                #del self._creating_index_mapping
             else:
                 self._index_mapping = {}
 
@@ -374,7 +368,6 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             #     for column in project_all_columns
             #     if column.type == IOType.INDEXABLE and not column.same_index_as
             # }
-
             print("indexing create_index_mapping_from_arrays...")
             self._index_mapping.update(
                 {
@@ -395,6 +388,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
                     ]
 
             del self._creating_index_mapping
+            del df
 
             with open(get_index_mapping_path(self.output().path), "wb") as f:
                 pickle.dump(self._index_mapping, f)
@@ -475,6 +469,10 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             )
         return self._n_items
 
+    def index_mapping_max_value(self, key: str) -> int:
+        return max(self.index_mapping[key].values())
+
+
     @abc.abstractmethod
     def train(self):
         pass
@@ -495,9 +493,6 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
 
     def before_run(self):
         self.index_mapping
-        self.train_data_frame
-        self.val_data_frame
-        self.test_data_frame
 
     def run(self):
         os.makedirs(self.output().path, exist_ok=True)
@@ -579,6 +574,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
         return self.recommender_extra_params
 
     def create_module(self) -> nn.Module:
+        #from IPython import embed; embed()
         return self.module_class(
             project_config=self.project_config,
             index_mapping=self.index_mapping,
@@ -632,7 +628,8 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
         pass
 
     def evaluate(self):
-        module = self.get_trained_module()
+        self.cache_cleanup()
+        module     = self.get_trained_module()
         val_loader = self.get_val_generator()
 
         print("================== Evaluate ========================")
@@ -810,6 +807,7 @@ class SupervisedModelTraining(TorchModelTraining):
             if ob[self.project_config.item_column.name] in self.reverse_index_mapping[self.project_config.item_column.name]:
                 ob_item = self.reverse_index_mapping[self.project_config.item_column.name][ob[self.project_config.item_column.name]]
                 arms = random.sample(self.unique_items, min(101, len(self.unique_items)))
+                #from IPython import embed; embed()
                 arms.append(ob_item)
                 arms = list(np.unique(arms))
             else:
@@ -900,10 +898,15 @@ class SupervisedModelTraining(TorchModelTraining):
         else:
             arm_indices_list = cast(List[List[int]], arms_list)
 
-        ob_dfs = [
-            self._create_ob_data_frame(ob, arm_indices)
-            for ob, arm_indices in zip(obs, arm_indices_list)
-        ]
+        ob_dfs = []
+        for ob, arm_indices in tqdm(zip(obs, arm_indices_list), total=len(obs)):
+            ob_dfs.append(self._create_ob_data_frame(ob, arm_indices))
+        
+        # ob_dfs = [
+        #     self._create_ob_data_frame(ob, arm_indices)
+        #     for ob, arm_indices in zip(obs, arm_indices_list)
+        # ]
+
         obs_dataset = InteractionsDataset(
             pd.concat(ob_dfs),
             obs[0][ITEM_METADATA_KEY],
@@ -943,20 +946,20 @@ class SupervisedModelTraining(TorchModelTraining):
 
         return agent.act(arm_indices_list[0], arm_contexts_list[0], arm_scores_list[0])
 
-    def clean(self):
-        if hasattr(self, "_train_dataset"):
-            del self._train_dataset
+    # def clean(self):
+    #     if hasattr(self, "_train_dataset"):
+    #         del self._train_dataset
 
-        if hasattr(self, "_test_dataset"):
-            del self._test_dataset
+    #     if hasattr(self, "_test_dataset"):
+    #         del self._test_dataset
 
-        if hasattr(self, "_train_data_frame"):
-            del self._train_data_frame
+    #     if hasattr(self, "_train_data_frame"):
+    #         del self._train_data_frame
 
-        if hasattr(self, "_creating_index_mapping"):
-            del self._creating_index_mapping
+    #     # if hasattr(self, "_creating_index_mapping"):
+    #     #     del self._creating_index_mapping
 
-        gc.collect()
+    #     gc.collect()
 
     def _save_test_set_predictions(self, agent: BanditAgent) -> None:
         print("Saving test set predictions...")
@@ -966,7 +969,6 @@ class SupervisedModelTraining(TorchModelTraining):
         else:
             obs: List[Dict[str, Any]] = self.test_data_frame.to_dict("records")
 
-        self.clean()
         for ob in tqdm(obs, total=len(obs)):
             if self.embeddings_for_metadata is not None:
                 ob[ITEM_METADATA_KEY] = self.embeddings_for_metadata
@@ -980,13 +982,15 @@ class SupervisedModelTraining(TorchModelTraining):
                     ob[self.project_config.item_column.name]
                 ]
 
+        print("...prepare_for_agent")
         (
             arm_contexts_list,
             arms_list,
             arm_indices_list,
             arm_scores_list,
         ) = self._prepare_for_agent(agent, obs)
-
+        print("...")
+        
         sorted_actions_list = []
         proba_actions_list  = []
 
