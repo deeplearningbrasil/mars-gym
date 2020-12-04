@@ -64,7 +64,7 @@ class TestYoochoose(unittest.TestCase):
 
         print(metrics)
         self.assertEqual(metrics["model_task"], job_train.task_id)
-        self.assertEqual(metrics["count"], 30643)
+        self.assertEqual(metrics["count"], 33051)
         self.assertEqual(np.round(metrics["precision_at_1"], 2), 0.05)
 
     # Data Evaluation
@@ -84,7 +84,7 @@ class TestYoochoose(unittest.TestCase):
         )
         luigi.build([job_train], local_scheduler=True)
 
-        ## PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-module samples.yoochoose.simulation  --model-cls YoochoseModelTraining --model-task-id YoochoseModelTraining____model____70b1aa0735 --fairness-columns "[]" --no-offpolicy
+        # PYTHONPATH="." luigi --module mars_gym.evaluation.task EvaluateTestSetPredictions --model-module samples.yoochoose.simulation  --model-cls YoochoseModelTraining --model-task-id YoochoseModelTraining____model____70b1aa0735 --fairness-columns "[]" --no-offpolicy
         job_eval = EvaluateTestSetPredictions(
             model_task_id=job_train.task_id,
             model_task_class="mars_gym.simulation.interaction.InteractionTraining",

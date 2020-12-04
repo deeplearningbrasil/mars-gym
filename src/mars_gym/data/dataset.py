@@ -44,7 +44,9 @@ def preprocess_interactions_data_frame(
         + [input_column for input_column in project_config.auxiliar_output_columns],
     )
     #from IPython import embed; embed()
-    if project_config.available_arms_column_name and isinstance(
+
+    if project_config.available_arms_column_name and \
+        project_config.available_arms_column_name in data_frame.columns and isinstance(
         data_frame.iloc[0][project_config.available_arms_column_name], str
     ):
         data_frame[project_config.available_arms_column_name] = parallel_literal_eval(
@@ -57,7 +59,8 @@ def preprocess_interactions_data_frame(
 def preprocess_metadata_data_frame(
     metadata_data_frame: pd.DataFrame, project_config: ProjectConfig
 ) -> Dict[str, np.ndarray]:
-    # from IPython import embed; embed()
+    NON_UTIL_UID = 3
+
     metadata_data_frame = metadata_data_frame[
         metadata_data_frame[project_config.item_column.name] != 0
     ]  # Remove unkown
@@ -65,9 +68,9 @@ def preprocess_metadata_data_frame(
     metadata_data_frame = metadata_data_frame.set_index(
         project_config.item_column.name, drop=False
     ).sort_index()
-
+    
     if not (
-        np.arange(2, len(metadata_data_frame.index) + 2) == metadata_data_frame.index
+        np.arange(NON_UTIL_UID, len(metadata_data_frame.index) + NON_UTIL_UID) == metadata_data_frame.index
     ).all():
         raise ValueError("The item index is not contiguous")
 
@@ -76,7 +79,7 @@ def preprocess_metadata_data_frame(
 
         emb = metadata_data_frame[metadata_column.name].values.tolist()
         embedding = np.array(emb, dtype=metadata_column.type.dtype)
-        pad = np.zeros((2,) + embedding.shape[1:])
+        pad = np.zeros((NON_UTIL_UID,) + embedding.shape[1:])
         #
         embedding = np.concatenate((pad, embedding))
         embeddings_for_metadata[metadata_column.name] = embedding
@@ -129,7 +132,7 @@ class InteractionsDataset(Dataset):
             ).intersection(data_frame.columns)
         ]
         self._embeddings_for_metadata = embeddings_for_metadata
-        # from IPython import embed; embed()
+        self.__getitem__([0,1])
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]
@@ -154,8 +157,9 @@ class InteractionsDataset(Dataset):
 
         inputs = tuple(
             self._convert_dtype(rows[column.name].values, column.type)
-            for column in self._input_columns
+            for column in self._input_columns if column.name in self._data_frame.columns
         )
+        
         if (
             self._project_config.item_is_input
             and self._embeddings_for_metadata is not None
@@ -165,7 +169,8 @@ class InteractionsDataset(Dataset):
                 self._embeddings_for_metadata[column.name][item_indices]
                 for column in self._project_config.metadata_columns
             )
-
+        #from IPython import embed; embed()
+        #
         output = self._convert_dtype(
             rows[self._project_config.output_column.name].values,
             self._project_config.output_column.type,

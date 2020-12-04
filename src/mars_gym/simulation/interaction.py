@@ -146,7 +146,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             ps_val = self._calulate_propensity_score_with_probs(ob, action)
 
         new_row = {**ob, item_column: action, output_column: reward, ps_column: ps_val}
-
+        
         self._known_observations_data_frame = self.known_observations_data_frame.append(
             new_row, ignore_index=True
         )
@@ -477,6 +477,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             while True:
                 interactions += 1
 
+                # TODO
                 if self.project_config.available_arms_column_name in ob:
                     # The Env returns a binary array to be compatible with OpenAI Gym API but the actual items are needed
                     ob[self.project_config.available_arms_column_name] = [
@@ -485,12 +486,12 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                             ob[self.project_config.available_arms_column_name]
                         ).tolist()
                     ]
-                #from IPython import embed; embed()
+
+                
                 action, prob = self._act(self.agent, ob)
 
                 new_ob, reward, done, info = self.env.step(action)
                 rewards.append(reward)
-                
                 self._accumulate_known_observations(ob, action, prob, reward)
 
                 if done:

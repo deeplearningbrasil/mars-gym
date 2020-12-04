@@ -74,12 +74,12 @@ class TestTrivagoRio(unittest.TestCase):
                 "metadata_size": 148,
                 "window_hist_size": 5,
             },
-            batch_size=1,
+            batch_size=100,
             epochs=1,
-            sample_size=100,
+            sample_size=1000,
             test_size=0.01,
             num_episodes=1,
-            obs_batch_size=10,
+            obs_batch_size=100,
         )
 
         luigi.build([job_train], local_scheduler=True)
@@ -96,7 +96,7 @@ class TestTrivagoRio(unittest.TestCase):
             metrics = json.loads(f.read())
         print(metrics)
         self.assertEqual(metrics['model_task'], job_train.task_id)
-        self.assertEqual(metrics['count'], 88)
+        self.assertEqual(metrics['count'], 93)
 
 
 if __name__ == "__main__":

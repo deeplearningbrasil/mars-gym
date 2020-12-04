@@ -105,7 +105,8 @@ class ProjectConfig(object):
             self.item_column,
             *self.other_input_columns,
             *self.auxiliar_output_columns,
-            *self.metadata_columns
+            *self.metadata_columns,
+            self.output_column
         ]
 
     def get_column_by_name(self, name: str) -> Optional[Column]:

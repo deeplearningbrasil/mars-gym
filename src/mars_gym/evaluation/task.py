@@ -207,13 +207,6 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     def run(self):
         os.makedirs(self.output().path)
 
-        # df: pd.DataFrame = preprocess_interactions_data_frame(
-        #     pd.read_csv(
-        #         get_test_set_predictions_path(self.model_training.output().path)
-        #     ),
-        #     self.model_training.project_config,
-        # )  # .sample(10000)
-
         df: pd.DataFrame = pd.read_csv(
             get_test_set_predictions_path(self.model_training.output().path),
             dtype = {self.model_training.project_config.item_column.name : "str"}

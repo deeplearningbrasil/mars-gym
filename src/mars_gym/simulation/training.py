@@ -276,12 +276,19 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
         return self._embeddings_for_metadata
 
     @property
+    def dataset_read_columns(self) -> List[str]:
+        except_columns = [self.project_config.propensity_score_column_name, *[c.name for c in self.project_config.metadata_columns]]
+        columns        = [c.name for c in self.project_config.all_columns if c.name not in except_columns]
+        columns        += [self.project_config.available_arms_column_name]
+        return columns
+
+    @property
     def train_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_train_data_frame"):
             print("train_data_frame:")
             self._train_data_frame = preprocess_interactions_data_frame(
                 pd.read_csv(self.train_data_frame_path, 
-                    usecols = [c.name for c in self.project_config.all_columns]), self.project_config
+                    usecols = self.dataset_read_columns), self.project_config
             )
         
             transform_with_indexing(
@@ -296,7 +303,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             print("val_data_frame:")
             self._val_data_frame = preprocess_interactions_data_frame(
                 pd.read_csv(self.val_data_frame_path, 
-                    usecols = [c.name for c in self.project_config.all_columns]), self.project_config
+                    usecols = self.dataset_read_columns), self.project_config
             )
 
             transform_with_indexing(
@@ -311,7 +318,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             print("test_data_frame:")
             self._test_data_frame = preprocess_interactions_data_frame(
                 pd.read_csv(self.test_data_frame_path, 
-                    usecols = [c.name for c in self.project_config.all_columns]), self.project_config
+                    usecols = self.dataset_read_columns), self.project_config
             )
 
             transform_with_indexing(
@@ -322,15 +329,15 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
 
     def get_data_frame_for_indexing(self) -> pd.DataFrame:
         return pd.concat([pd.read_csv(self.train_data_frame_path, 
-                                usecols = [c.name for c in self.project_config.all_columns]), 
+                                usecols = self.dataset_read_columns), 
                          pd.read_csv(self.val_data_frame_path, 
-                                usecols = [c.name for c in self.project_config.all_columns])]).drop_duplicates()
+                                usecols = self.dataset_read_columns)]).drop_duplicates()
 
     def get_data_frame_interactions(self) ->  pd.DataFrame:
         return pd.concat([pd.read_csv(self.train_data_frame_path, 
-                                usecols = [self.project_config.user_column.name, self.project_config.item_column.name]), 
+                                usecols = self.dataset_read_columns), 
                          pd.read_csv(self.val_data_frame_path, 
-                                usecols = [self.project_config.user_column.name, self.project_config.item_column.name])]).drop_duplicates()
+                                usecols = self.dataset_read_columns)]).drop_duplicates()
 
     @property
     def index_mapping_path(self) -> Optional[str]:
@@ -802,12 +809,11 @@ class SupervisedModelTraining(TorchModelTraining):
         if self.project_config.available_arms_column_name:
             arms = ob[self.project_config.available_arms_column_name]
             arms = random.sample(arms, len(arms))
-        else:
+        else: # Only Supervised Mode
             #raise("available_arms_column_name not exist")
             if ob[self.project_config.item_column.name] in self.reverse_index_mapping[self.project_config.item_column.name]:
                 ob_item = self.reverse_index_mapping[self.project_config.item_column.name][ob[self.project_config.item_column.name]]
                 arms = random.sample(self.unique_items, min(101, len(self.unique_items)))
-                #from IPython import embed; embed()
                 arms.append(ob_item)
                 arms = list(np.unique(arms))
             else:
@@ -828,7 +834,8 @@ class SupervisedModelTraining(TorchModelTraining):
         model.to(self.torch_device)
         model.eval()
         scores = []
-
+        
+        #from IPython import embed; embed()
         with torch.no_grad():
             for i, (x, _) in tqdm(enumerate(generator), total=len(generator)):
                 input_params = x if isinstance(x, list) or isinstance(x, tuple) else [x]
@@ -842,7 +849,16 @@ class SupervisedModelTraining(TorchModelTraining):
 
     def plot_scores(self, scores):
         plt.figure()
-        sns_plot = sns.distplot(scores, hist=False, color="g", kde_kws={"shade": True})
+
+        try:
+            sns_plot = sns.distplot(scores, hist=False, color="g", kde_kws={"shade": True})
+        except RuntimeError as re:
+            if str(re).startswith("Selected KDE bandwidth is 0. Cannot estimate density."):
+                sns_plot = sns.distplot(scores, hist=False, color="g", kde_kws={'bw': 0.1})
+            else:
+                raise re
+        
+
         figure = sns_plot.get_figure()
         figure.savefig(os.path.join(self.output().path, "scores.png"))
         plt.close(figure)
@@ -897,15 +913,17 @@ class SupervisedModelTraining(TorchModelTraining):
             ]
         else:
             arm_indices_list = cast(List[List[int]], arms_list)
-
-        ob_dfs = []
-        for ob, arm_indices in tqdm(zip(obs, arm_indices_list), total=len(obs)):
-            ob_dfs.append(self._create_ob_data_frame(ob, arm_indices))
+        # from IPython import embed; embed()
+        # print("A")
+        # ob_dfs = []
+        # for ob, arm_indices in tqdm(zip(obs, arm_indices_list), total=len(obs)):
+        #     ob_dfs.append(self._create_ob_data_frame(ob, arm_indices))
+        # print("B")
+        ob_dfs = [
+            self._create_ob_data_frame(ob, arm_indices)
+            for ob, arm_indices in zip(obs, arm_indices_list)
+        ]
         
-        # ob_dfs = [
-        #     self._create_ob_data_frame(ob, arm_indices)
-        #     for ob, arm_indices in zip(obs, arm_indices_list)
-        # ]
 
         obs_dataset = InteractionsDataset(
             pd.concat(ob_dfs),
@@ -934,6 +952,7 @@ class SupervisedModelTraining(TorchModelTraining):
                     arm_indices_list, arm_contexts_list
                 )
             ]
+        #print("C")
         return arm_contexts_list, arms_list, arm_indices_list, arm_scores_list
 
     def _act(self, agent: BanditAgent, ob: dict) -> int:
@@ -975,13 +994,6 @@ class SupervisedModelTraining(TorchModelTraining):
             else:
                 ob[ITEM_METADATA_KEY] = None
 
-            if (self.project_config.available_arms_column_name
-                and len(ob[self.project_config.available_arms_column_name]) == 0):
-                
-                ob[self.project_config.available_arms_column_name] = [
-                    ob[self.project_config.item_column.name]
-                ]
-
         print("...prepare_for_agent")
         (
             arm_contexts_list,
@@ -1011,17 +1023,16 @@ class SupervisedModelTraining(TorchModelTraining):
         del obs
 
         # Create evaluation file
+        df = pd.read_csv(self.test_data_frame_path, usecols = self.dataset_read_columns)
         if self.sample_size_eval and len(self.test_data_frame) > self.sample_size_eval:
-            df = pd.read_csv(self.test_data_frame_path).sample(self.sample_size_eval, random_state=self.seed)
-        else:
-            df = pd.read_csv(self.test_data_frame_path)
+            df = df.sample(self.sample_size_eval, random_state=self.seed)
         
         df["sorted_actions"] = sorted_actions_list
         df["prob_actions"]   = proba_actions_list
         df["action_scores"]  = action_scores_list
         
         # join with train interaction information
-        df_train = self.get_data_frame_interactions()
+        df_train = self.get_data_frame_interactions()[[self.project_config.user_column.name, self.project_config.item_column.name]]
         df_train['trained'] = 1
         df = df.merge(df_train, on = [self.project_config.user_column.name, self.project_config.item_column.name], how='left')
         df['trained'] =  df['trained'].fillna(0)
@@ -1029,7 +1040,9 @@ class SupervisedModelTraining(TorchModelTraining):
         # Add indexed information
         df['item_indexed'] = df[self.project_config.item_column.name].apply(lambda i: self.index_mapping[self.project_config.item_column.name][str(i)] > 0)
         
-        self.plot_scores([score for arm_scores in arm_scores_list for score in arm_scores])
+        scores = [score for arm_scores in arm_scores_list for score in arm_scores]
+        self.plot_scores(scores)
+
         self._to_csv_test_set_predictions(df)
 
     def _to_csv_test_set_predictions(self, df: pd.DataFrame) -> None:
