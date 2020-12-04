@@ -132,7 +132,6 @@ class InteractionsDataset(Dataset):
             ).intersection(data_frame.columns)
         ]
         self._embeddings_for_metadata = embeddings_for_metadata
-        self.__getitem__([0,1])
 
     def __len__(self) -> int:
         return self._data_frame.shape[0]

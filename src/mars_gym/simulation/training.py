@@ -837,7 +837,7 @@ class SupervisedModelTraining(TorchModelTraining):
         
         #from IPython import embed; embed()
         with torch.no_grad():
-            for i, (x, _) in tqdm(enumerate(generator), total=len(generator)):
+            for i, (x, _) in tqdm(enumerate(generator), total=len(generator), disable=(len(generator) <= 1)):
                 input_params = x if isinstance(x, list) or isinstance(x, tuple) else [x]
                 input_params = [t.to(self.torch_device) if isinstance(t, torch.Tensor) else t for t in input_params]
 
@@ -1023,7 +1023,7 @@ class SupervisedModelTraining(TorchModelTraining):
         del obs
 
         # Create evaluation file
-        df = pd.read_csv(self.test_data_frame_path, usecols = self.dataset_read_columns)
+        df = pd.read_csv(self.test_data_frame_path)
         if self.sample_size_eval and len(self.test_data_frame) > self.sample_size_eval:
             df = df.sample(self.sample_size_eval, random_state=self.seed)
         
