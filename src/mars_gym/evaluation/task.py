@@ -170,6 +170,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                 data_frames_preparation_extra_params=self.model_training.data_frames_preparation_extra_params,
                 **self.policy_estimator_extra_params,
             )
+            #from IPython import embed; embed()            
         return self._policy_estimator
 
     def requires(self):
@@ -408,7 +409,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
 
     def offpolice_metrics(self, df: pd.DataFrame):
         metrics = {}
-
+        
         if not self.offpolicy_eval:
             return pd.DataFrame(), metrics
         
@@ -527,16 +528,18 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         df["item_idx_rhat_rewards"] = rewards
 
     def _direct_estimator_predict(self, df):
+        #from IPython import embed; embed()
         _df = preprocess_interactions_data_frame(
             df.copy(), 
             self.direct_estimator.project_config
         )
+
         transform_with_indexing(
             _df, 
             self.direct_estimator.index_mapping, 
             self.direct_estimator.project_config
         )
-
+        
         dataset = InteractionsDataset(
             data_frame=_df,
             embeddings_for_metadata=self.direct_estimator.embeddings_for_metadata,
@@ -547,7 +550,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             dataset, self.direct_estimator.batch_size, shuffle=False
         )
         data_loader = NoAutoCollationDataLoader(dataset, batch_sampler=batch_sampler)
-
+        #from IPython import embed; embed()
         trial = (
             Trial(
                 self.direct_estimator.get_trained_module(),

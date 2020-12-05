@@ -41,7 +41,8 @@ def preprocess_interactions_data_frame(
             project_config.output_column,
         ]
         + [input_column for input_column in project_config.other_input_columns]\
-        + [input_column for input_column in project_config.auxiliar_output_columns],
+        + [input_column for input_column in project_config.auxiliar_output_columns]\
+        + [input_column for input_column in project_config.metadata_columns],
     )
     #from IPython import embed; embed()
 
@@ -114,12 +115,13 @@ class InteractionsDataset(Dataset):
         self._project_config = project_config
         self._index_mapping  = index_mapping
         self._input_columns: List[Column] = project_config.input_columns
+        input_column_names = [input_column.name for input_column in self._input_columns]
+
         if project_config.item_is_input:
             self._item_input_index = self._input_columns.index(
                 project_config.item_column
             )
 
-        input_column_names = [input_column.name for input_column in self._input_columns]
         auxiliar_output_column_names = [
             auxiliar_output_column.name
             for auxiliar_output_column in project_config.auxiliar_output_columns
@@ -166,7 +168,7 @@ class InteractionsDataset(Dataset):
             item_indices = inputs[self._item_input_index]
             inputs += tuple(
                 self._embeddings_for_metadata[column.name][item_indices]
-                for column in self._project_config.metadata_columns
+                for column in self._project_config.metadata_columns if column.name not in self._data_frame.columns
             )
         #from IPython import embed; embed()
         #

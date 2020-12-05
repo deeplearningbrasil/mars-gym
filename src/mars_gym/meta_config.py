@@ -95,7 +95,8 @@ class ProjectConfig(object):
             self._item_input_index = len(input_columns)
             input_columns.append(self.item_column)
         input_columns.extend(self.other_input_columns)
-        input_columns.extend(self.metadata_columns)
+        if self.item_is_input:
+            input_columns.extend(self.metadata_columns)
         return input_columns
 
     @property
