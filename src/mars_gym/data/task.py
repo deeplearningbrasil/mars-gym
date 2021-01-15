@@ -70,6 +70,7 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
     )
     item_column: str = luigi.Parameter(default="none")
     available_arms_column_name: str = luigi.Parameter(default='available_arms')
+    available_arms_size: int = luigi.IntParameter(default=100)
     n_splits: int = luigi.IntParameter(default=10)
     split_index: int = luigi.IntParameter(default=0)
     val_size: float = luigi.FloatParameter(default=0.2)
@@ -260,11 +261,11 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
         #from IPython import embed; embed()
         if self.available_arms_column_name not in df.columns:
             def add_arms(arm, item_unique):
-                arms = random.sample(item_unique, min(99, len(item_unique)))
+                arms = random.sample(item_unique, min(self.available_arms_size-1, len(item_unique)))
                 arms.append(arm)
                 arms = list(np.unique(arms))   
                 return arms       
-
+            
             item_unique = list(df[self.item_column].drop_duplicates().values)
             df[self.available_arms_column_name] = df.apply(lambda row: add_arms(row[self.item_column], item_unique), axis=1)
 

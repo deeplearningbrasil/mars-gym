@@ -36,6 +36,7 @@ from torchbearer.callbacks.early_stopping import EarlyStopping
 from torchbearer.callbacks.tensor_board import TensorBoard
 from tqdm import tqdm
 import matplotlib
+from torch.nn.modules.loss import _Loss
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -65,6 +66,7 @@ from mars_gym.torch.optimizer import RAdam
 from mars_gym.torch.summary import summary
 from mars_gym.utils.files import (
     get_params_path,
+    get_metrics_path,
     get_weights_path,
     get_interaction_dir,
     get_params,
@@ -294,7 +296,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             transform_with_indexing(
                 self._train_data_frame, self.index_mapping, self.project_config
             )
-
+        #from IPython import embed; embed()
         return self._train_data_frame
 
     @property
@@ -535,6 +537,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
     )
     optimizer_params: dict = luigi.DictParameter(default={})
     learning_rate: float = luigi.FloatParameter(1e-3)
+    loss_function_class: str = luigi.Parameter(default=None)
     loss_function: str = luigi.ChoiceParameter(
         choices=TORCH_LOSS_FUNCTIONS.keys(), default="bce"
     )
@@ -653,9 +656,10 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
             .eval()
         )
 
-        print(
-            json.dumps((trial.evaluate(data_key=torchbearer.VALIDATION_DATA)), indent=4)
-        )
+        valid_metrics = trial.evaluate(data_key=torchbearer.VALIDATION_DATA)
+        with open(get_metrics_path(self.output().path), "w") as metric_file:
+            json.dump(valid_metrics, metric_file, default=lambda o: dict(o), indent=4)
+        print(json.dumps(valid_metrics, indent=4))
 
         if self.run_evaluate:
             self.run_evaluate_task()
@@ -680,7 +684,13 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
         return trial
 
     def _get_loss_function(self):
-        return TORCH_LOSS_FUNCTIONS[self.loss_function](**self.loss_function_params)
+        if self.loss_function_class:
+            self._loss_class = load_attr(
+                self.loss_function_class, Type[_Loss]
+            )
+            return self._loss_class(**self.loss_function_params)
+        else:        
+            return TORCH_LOSS_FUNCTIONS[self.loss_function](**self.loss_function_params)
 
     def _get_optimizer(self, module) -> Optimizer:
         return TORCH_OPTIMIZERS[self.optimizer](

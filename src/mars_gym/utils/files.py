@@ -9,6 +9,8 @@ OUTPUT_PATH = os.environ["OUTPUT_PATH"] if "OUTPUT_PATH" in os.environ else "out
 def get_params_path(task_dir: str) -> str:
     return os.path.join(task_dir, "params.json")
 
+def get_metrics_path(task_dir: str) -> str:
+    return os.path.join(task_dir, "metrics.json")
 
 def get_params(task_dir: str) -> dict:
     with open(get_params_path(task_dir), "r") as params_file:
