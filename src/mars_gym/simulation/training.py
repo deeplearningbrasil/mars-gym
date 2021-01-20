@@ -686,7 +686,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
     def _get_loss_function(self):
         if self.loss_function_class:
             self._loss_class = load_attr(
-                self.loss_function_class, Type[_Loss]
+                self.loss_function_class, Type[nn.Module]
             )
             return self._loss_class(**self.loss_function_params)
         else:        
