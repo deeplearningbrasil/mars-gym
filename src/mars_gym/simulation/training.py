@@ -406,14 +406,17 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
 
     @property
     def reverse_index_mapping(self) -> Dict[str, Dict[int, Any]]:
-        rev = {
-            key: {value_: key_ for key_, value_ in mapping.items()}
-            for key, mapping in self.index_mapping.items()
-        }
-        # add nothing 0
-        for key, mapping in self.index_mapping.items():
-            rev[key][0] = 0 
-        return rev
+        if not hasattr(self, "_reverse_index_mapping"):
+
+            rev = {
+                key: {value_: key_ for key_, value_ in mapping.items()}
+                for key, mapping in self.index_mapping.items()
+            }
+            # add nothing 0
+            for key, mapping in self.index_mapping.items():
+                rev[key][0] = 0 
+            self._reverse_index_mapping = rev
+        return self._reverse_index_mapping
 
     @property
     def train_dataset(self) -> Dataset:
@@ -924,17 +927,15 @@ class SupervisedModelTraining(TorchModelTraining):
         else:
             arm_indices_list = cast(List[List[int]], arms_list)
         # from IPython import embed; embed()
-        # print("A")
         # ob_dfs = []
         # for ob, arm_indices in tqdm(zip(obs, arm_indices_list), total=len(obs)):
         #     ob_dfs.append(self._create_ob_data_frame(ob, arm_indices))
-        # print("B")
+        
         ob_dfs = [
             self._create_ob_data_frame(ob, arm_indices)
             for ob, arm_indices in zip(obs, arm_indices_list)
         ]
         
-
         obs_dataset = InteractionsDataset(
             pd.concat(ob_dfs),
             obs[0][ITEM_METADATA_KEY],

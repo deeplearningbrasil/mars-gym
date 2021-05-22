@@ -107,28 +107,28 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             )
         return self._hist_data_frame
 
-    def _fill_hist_columns(self, ob_df: pd.DataFrame) -> pd.DataFrame:
-        if len(self.known_observations_data_frame) > 0:
-            ob_df = ob_df.drop(
-                columns=[
-                    self.project_config.hist_view_column_name,
-                    self.project_config.hist_output_column_name,
-                ],
-                errors="ignore",
-            )
-            ob_df = ob_df.merge(
-                self.hist_data_frame,
-                how="left",
-                left_on=[
-                    self.project_config.user_column.name,
-                    self.project_config.item_column.name,
-                ],
-                right_index=True,
-            ).fillna(0)
-        else:
-            ob_df[self.project_config.hist_view_column_name] = 0
-            ob_df[self.project_config.hist_output_column_name] = 0
-        return ob_df
+    # def _fill_hist_columns(self, ob_df: pd.DataFrame) -> pd.DataFrame:
+    #     if len(self.known_observations_data_frame) > 0:
+    #         ob_df = ob_df.drop(
+    #             columns=[
+    #                 self.project_config.hist_view_column_name,
+    #                 self.project_config.hist_output_column_name,
+    #             ],
+    #             errors="ignore",
+    #         )
+    #         ob_df = ob_df.merge(
+    #             self.hist_data_frame,
+    #             how="left",
+    #             left_on=[
+    #                 self.project_config.user_column.name,
+    #                 self.project_config.item_column.name,
+    #             ],
+    #             right_index=True,
+    #         ).fillna(0)
+    #     else:
+    #         ob_df[self.project_config.hist_view_column_name] = 0
+    #         ob_df[self.project_config.hist_output_column_name] = 0
+    #     return ob_df
 
     def _accumulate_known_observations(
         self, ob: dict, action: int, prob: float, reward: float
@@ -146,22 +146,25 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             ps_val = self._calulate_propensity_score_with_probs(ob, action)
 
         new_row = {**ob, item_column: action, output_column: reward, ps_column: ps_val}
-        
-        self._known_observations_data_frame = self.known_observations_data_frame.append(
-            new_row, ignore_index=True
-        )
 
-        user_index = ob[user_column]
-        if (user_index, action) not in self.hist_data_frame.index:
-            self.hist_data_frame.loc[(user_index, action), hist_view_column] = 1
-            self.hist_data_frame.loc[(user_index, action), hist_output_column] = int(
-                reward
-            )
-        else:
-            self.hist_data_frame.loc[(user_index, action), hist_view_column] += 1
-            self.hist_data_frame.loc[(user_index, action), hist_output_column] += int(
-                reward
-            )
+        self._known_observations_data_frame = pd.concat([self.known_observations_data_frame, 
+                                                            pd.DataFrame.from_records([new_row])], sort=True)
+   
+        # self._known_observations_data_frame = self.known_observations_data_frame.append(
+        #     new_row, ignore_index=True
+        # )
+
+        # user_index = ob[user_column]
+        # if (user_index, action) not in self.hist_data_frame.index:
+        #     self.hist_data_frame.loc[(user_index, action), hist_view_column] = 1
+        #     self.hist_data_frame.loc[(user_index, action), hist_output_column] = int(
+        #         reward
+        #     )
+        # else:
+        #     self.hist_data_frame.loc[(user_index, action), hist_view_column] += 1
+        #     self.hist_data_frame.loc[(user_index, action), hist_output_column] += int(
+        #         reward
+        #     )
 
     def _calulate_propensity_score(self, ob: dict, prob: float) -> float:
         df = self.known_observations_data_frame
@@ -522,7 +525,9 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
                     # print(k, "===>", interactions, np.mean(rewards), np.sum(rewards))
                     k += 1
                     self._save_log()
-
+                
+                #if k > 4:
+                #    break
         self.env.close()
         self.end_time = time.time()
         # Save logs
