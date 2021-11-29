@@ -253,7 +253,6 @@ class BasePrepareDataFrames(luigi.Task, metaclass=abc.ABCMeta):
             train_df = self.balance_dataset(train_df)
             if self.use_sampling_in_validation:
                 val_df = self.balance_dataset(val_df)
-        
         return train_df, val_df, test_df
 
     def create_available_arms(self, df: pd.DataFrame) -> pd.DataFrame:

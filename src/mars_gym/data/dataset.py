@@ -181,7 +181,6 @@ class InteractionsDataset(Dataset):
                 self._convert_dtype(rows[column.name].values, column.type)
                 for column in self._project_config.auxiliar_output_columns
             )
-        # print(inputs)
         return inputs, output
 
 
@@ -208,6 +207,7 @@ class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
         )
         self._negative_proportion = negative_proportion
         self._max_item_idx = data_frame[project_config.item_column.name].max()
+        self.__getitem__([1,2])
 
     def __len__(self) -> int:
         return super().__len__() + int(
@@ -261,7 +261,7 @@ class InteractionsWithNegativeItemGenerationDataset(InteractionsDataset):
         else:
             input_ = positive_input
             output = positive_output
-
+        #print(output.mean())   
         return input_, output
 
 

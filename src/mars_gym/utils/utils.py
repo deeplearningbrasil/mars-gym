@@ -14,6 +14,7 @@ from tqdm import tqdm
 import shutil
 from random import randrange
 from pyspark.sql.functions import udf
+from collections import MutableMapping
 
 from mars_gym.utils.files import get_params, get_task_dir
 
@@ -26,6 +27,20 @@ import string
 valid_filename_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
 char_limit = 255
 
+ 
+# code to convert ini_dict to flattened dictionary
+# default seperator '_'
+import collections
+
+def dict2flatten(d, parent_key='', sep='_'):
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, collections.MutableMapping):
+            items.extend(dict2flatten(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
 
 # UDF Spark similar to array_position
 def array_index(x, y):

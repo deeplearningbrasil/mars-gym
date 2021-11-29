@@ -37,6 +37,7 @@ from torchbearer.callbacks.tensor_board import TensorBoard
 from tqdm import tqdm
 import matplotlib
 from torch.nn.modules.loss import _Loss
+import wandb
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -83,8 +84,10 @@ from mars_gym.utils.index_mapping import (
     map_array,
 )
 from mars_gym.utils.plot import plot_history
+from mars_gym.utils.utils import dict2flatten
 from mars_gym.utils import files
 from mars_gym.utils.reflection import load_attr
+from mars_gym.torch.callbacks import wandb_callback_logger
 
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
@@ -131,7 +134,8 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     project: str = luigi.Parameter(
         description="Should be like config.trivago_contextual_bandit",
     )
-
+    wandb_key: str = luigi.Parameter(default="")
+    wandb_project: str = luigi.Parameter(default=None)
     sample_size: int = luigi.IntParameter(default=-1)
     minimum_interactions: int = luigi.FloatParameter(default=5)
     session_test_size: float = luigi.FloatParameter(default=0.10)
@@ -158,6 +162,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     seed: int = luigi.IntParameter(default=SEED)
     observation: str = luigi.Parameter(default="")
     load_index_mapping_path: str = luigi.Parameter(default=None)
+    load_task_id: str = luigi.Parameter(default=None)
 
     negative_proportion: int = luigi.FloatParameter(0.0)
 
@@ -177,7 +182,9 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
         return self.prepare_data_frames
 
     @property
+
     def prepare_data_frames(self):
+        
         return self.project_config.prepare_data_frames_task(
             session_test_size=self.session_test_size,
             sample_size=self.sample_size,
@@ -227,6 +234,13 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             json.dump(
                 self.param_kwargs, params_file, default=lambda o: dict(o), indent=4
             )
+
+    def _config_wandb(self, model):
+        if self.wandb_key != "":
+            wandb.login(key=self.wandb_key)
+            wandb.init(project=str(self.__class__) if self.wandb_project is None else self.wandb_project, name=self.task_id)
+            wandb.config.update(dict2flatten(self.param_kwargs))
+            wandb.watch(model)
 
     @property
     def train_data_frame_path(self) -> str:
@@ -296,7 +310,6 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
             transform_with_indexing(
                 self._train_data_frame, self.index_mapping, self.project_config
             )
-        #from IPython import embed; embed()
         return self._train_data_frame
 
     @property
@@ -345,6 +358,13 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
     def index_mapping_path(self) -> Optional[str]:
         if self.load_index_mapping_path:
             return get_index_mapping_path(self.load_index_mapping_path)
+        if self.load_task_id:
+            trained_module = load_torch_model_training_from_task_id(
+                    load_attr("mars_gym.simulation.training.SupervisedModelTraining", Type[TorchModelTraining]), 
+                    self.load_task_id
+            )  
+            return get_index_mapping_path(trained_module.output().path)
+
         return get_index_mapping_path(self.output().path)
 
     @property
@@ -556,7 +576,6 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
     policy_estimator_extra_params: dict = luigi.DictParameter(default={})
     run_evaluate: bool = luigi.BoolParameter(default=False, significant=False)
     run_evaluate_extra_params: str = luigi.Parameter(default=" --only-new-interactions --only-exist-items", significant=False)
-
     sample_size_eval: int = luigi.IntParameter(default=None)
 
     metrics = luigi.ListParameter(default=["loss"])
@@ -587,35 +606,56 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
         return self.recommender_extra_params
 
     def create_module(self) -> nn.Module:
-        #from IPython import embed; embed()
-        return self.module_class(
-            project_config=self.project_config,
-            index_mapping=self.index_mapping,
-            **self.all_recommender_extra_params,
-        )
+        if self.load_task_id:        
+            trained_module = load_torch_model_training_from_task_id(
+                    load_attr("mars_gym.simulation.training.SupervisedModelTraining", Type[TorchModelTraining]), 
+                    self.load_task_id
+            )  
+
+            module = self.module_class(
+                project_config=self.project_config,
+                index_mapping=trained_module.index_mapping,
+                **self.all_recommender_extra_params,
+            )
+            state_dict = torch.load(
+                get_weights_path(trained_module.output().path), map_location=self.torch_device
+            )
+            module.load_state_dict(state_dict["model"])
+            return module
+        else:
+            return self.module_class(
+                project_config=self.project_config,
+                index_mapping=self.index_mapping,
+                **self.all_recommender_extra_params,
+            )
 
     def train(self):
         if self.device == "cuda":
             torch.cuda.set_device(self.device_id)
 
         train_loader = self.get_train_generator()
-        val_loader = self.get_val_generator()
-        module = self.create_module()
+        val_loader   = self.get_val_generator()
+        module       = self.create_module()
 
-        print("train_data_frame:")
+        print("\ndescribe:")
         print(self.train_data_frame.describe())
-        
+        print("\nexample:")
+        print(self.train_data_frame.iloc[0])
+
         summary_path = os.path.join(self.output().path, "summary.txt")
         with open(summary_path, "w") as summary_file:
+            sample_input = self.get_sample_batch()
             with redirect_stdout(summary_file):
-                sample_input = self.get_sample_batch()
                 summary(module, sample_input)
+
             summary(module, sample_input)
 
         sample_data = self.train_data_frame.sample(100, replace=True)
         sample_data.to_csv(os.path.join(self.output().path, "sample_train.csv"))
         
         trial = self.create_trial(module)
+
+        self._config_wandb(module)
 
         try:
             trial.with_generators(
@@ -660,6 +700,7 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
         )
 
         valid_metrics = trial.evaluate(data_key=torchbearer.VALIDATION_DATA)
+        valid_metrics["task_id"] = self.task_id
         with open(get_metrics_path(self.output().path), "w") as metric_file:
             json.dump(valid_metrics, metric_file, default=lambda o: dict(o), indent=4)
         print(json.dumps(valid_metrics, indent=4))
@@ -718,6 +759,10 @@ class TorchModelTraining(_BaseModelTraining, metaclass=abc.ABCMeta):
             CSVLogger(get_history_path(self.output().path)),
             TensorBoard(get_tensorboard_logdir(self.task_id), write_graph=False),
         ]
+
+        if self.wandb_key != "":
+            callbacks.append(wandb_callback_logger)
+
         if self.gradient_norm_clipping:
             callbacks.append(
                 GradientNormClipping(

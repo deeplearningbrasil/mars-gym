@@ -130,6 +130,33 @@ def precision_at_k(r, k):
         raise ValueError("Relevance score length < k")
     return np.mean(r)
 
+def hitrate_at_k(r, k):
+    """Score is precision @ k
+    Relevance is binary (nonzero is relevant).
+    >>> r = [0, 0, 1]
+    >>> hit_rate_at_k(r, 1)
+    0.0
+    >>> hit_rate_at_k(r, 2)
+    0.0
+    >>> hit_rate_at_k(r, 3)
+    0.33333333333333331
+    >>> hit_rate_at_k(r, 4)
+    Traceback (most recent call last):
+        File "<stdin>", line 1, in ?
+    ValueError: Relevance score length < k
+    Args:
+        r: Relevance scores (list or numpy) in rank order
+            (first element is the first item)
+    Returns:
+        Precision @ k
+    Raises:
+        ValueError: len(r) must be >= k
+    """
+    assert k >= 1
+    r = np.asarray(r)[:k] != 0
+    if r.size != k:
+        raise ValueError("Relevance score length < k")
+    return int(np.mean(r) > 0)
 
 def average_precision(r):
     """Score is average precision (area under PR curve)

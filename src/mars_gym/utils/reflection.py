@@ -19,13 +19,13 @@ def load_attr(attr_path: str, expected_type: Type[T]) -> T:
 
     module = importlib.import_module(module_path)
     attr = getattr(module, attr_name)
-
-    if isinstance(expected_type, GenericMeta):  # the expected_type is a type itself
-        if not issubclass(attr, expected_type.__args__[0]):
-            raise ValueError(f"{attr_path} should be a sub class of {expected_type}")
-    else:
-        if not isinstance(attr, expected_type):
-            raise ValueError(f"{attr_path} should be of type {expected_type}")
+    
+    # if isinstance(expected_type, GenericMeta):  # the expected_type is a type itself
+    #     if not issubclass(attr, expected_type.__args__[0]):
+    #         raise ValueError(f"{attr_path} should be a sub class of {expected_type}")
+    # else:
+    #     if not isinstance(attr, expected_type):
+    #         raise ValueError(f"{attr_path} should be of type {expected_type}")
 
     return attr
 
