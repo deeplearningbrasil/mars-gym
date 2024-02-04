@@ -265,6 +265,7 @@ class _BaseModelTraining(luigi.Task, metaclass=abc.ABCMeta):
 
     @property
     def embeddings_for_metadata(self) -> Optional[Dict[str, np.ndarray]]:
+        
         if not hasattr(self, "_embeddings_for_metadata"):
             self._embeddings_for_metadata = (
                 preprocess_metadata_data_frame(
@@ -1052,6 +1053,33 @@ class SupervisedModelTraining(TorchModelTraining):
         if self.test_size > 0:
             self._save_test_set_predictions(self.create_agent())
 
+        self._save_embeddings()
+
+    def _save_embeddings(self):
+        model = self.get_trained_module()
+        path  = os.path.join(self.output().path, "embeddings")
+        os.makedirs(path, exist_ok=True)
+
+        # Embeddings
+        for l in dict(model.named_modules()).items():
+            if isinstance(l[1], nn.Embedding):
+                print(f"Save embedding {l[0]} {l[1].weight.shape}")
+                np.savetxt(os.path.join(path, f"{l[0]}.csv"), l[1].weight.data.numpy(), delimiter='\t') 
+
+        # Item Metadata
+        df_item = self.metadata_data_frame.groupby(self.project_config.item_column.name).first()
+        # Add dummy index
+        df_item.loc[1] = df_item.loc[0]
+        df_item.loc[2] = df_item.loc[0]
+
+        (
+            df_item.sort_index()
+            .sort_values(self.project_config.item_column.name)
+            .groupby(self.project_config.item_column.name).first()
+            .to_csv(os.path.join(path, f"item_metadata.csv"), sep="\t")
+        )
+
+        
 
 class DummyTraining(SupervisedModelTraining):
     recommender_module_class: str = luigi.Parameter(

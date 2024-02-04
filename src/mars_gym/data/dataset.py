@@ -84,7 +84,6 @@ def preprocess_metadata_data_frame(
         #
         embedding = np.concatenate((pad, embedding))
         embeddings_for_metadata[metadata_column.name] = embedding
-        # from IPython import embed; embed()
     return embeddings_for_metadata
 
 

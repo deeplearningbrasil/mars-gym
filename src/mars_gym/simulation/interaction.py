@@ -57,6 +57,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
     crm_ps_strategy: str = luigi.ChoiceParameter(
         choices=["bandit", "dataset"], default="bandit"
     )
+    fairness_column: str = luigi.Parameter(default="")
 
     obs_batch_size: int = luigi.IntParameter(default=1000)
     num_episodes: int = luigi.IntParameter(default=1)
@@ -74,6 +75,8 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
     def output(self):
         return luigi.LocalTarget(get_interaction_dir(self.__class__, self.task_id))
 
+
+    
     @property
     def known_observations_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_known_observations_data_frame"):
@@ -144,8 +147,10 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             ps_val = self._calulate_propensity_score(ob, prob)
         else:
             ps_val = self._calulate_propensity_score_with_probs(ob, action)
+        
+        propfair = self._calculate_propfair(action)
 
-        new_row = {**ob, item_column: action, output_column: reward, ps_column: ps_val}
+        new_row = {**ob, item_column: action, output_column: reward, ps_column: ps_val, 'propfair': propfair}
         
         self._known_observations_data_frame = self.known_observations_data_frame.append(
             new_row, ignore_index=True
@@ -162,6 +167,25 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             self.hist_data_frame.loc[(user_index, action), hist_output_column] += int(
                 reward
             )
+
+    def _calculate_propfair(self, action: int) -> float:
+        groups  = sorted(np.unique(list(self.fairness_groups.values())))
+        weights = np.full(len(groups), 1/len(groups))
+
+        x_g = self._known_observations_data_frame[self.project_config.item_column.name].map(self.fairness_groups).value_counts(normalize=True).to_dict()
+
+        for g in groups:
+            if g not in x_g:
+                x_g[g] = 0
+
+        metric = np.sum(
+            weights
+            * np.log(
+                1 + np.array(list(x_g.values()))
+            )
+        )
+        
+        return metric
 
     def _calulate_propensity_score(self, ob: dict, prob: float) -> float:
         df = self.known_observations_data_frame
@@ -191,19 +215,6 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
 
         return ps
 
-    def _create_hist_columns(self):
-        df = self.known_observations_data_frame
-
-        user_column = self.project_config.user_column.name
-        item_column = self.project_config.item_column.name
-        output_column = self.project_config.output_column.name
-        hist_view_column = self.project_config.hist_view_column_name
-        hist_output_column = self.project_config.hist_output_column_name
-        ps_column = self.project_config.propensity_score_column_name
-
-        # ----
-        df[ps_column] = ps_value
-
     # def _calcule_propensity_score(self, df) -> None:
     def _save_result(self) -> None:
         print("Saving logs...")
@@ -229,7 +240,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
             self.project_config.user_column.name,
             self.project_config.item_column.name,
             self.project_config.output_column.name,
-            self.project_config.propensity_score_column_name,
+            self.project_config.propensity_score_column_name
         ]
 
         # Env Dataset
@@ -240,8 +251,8 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
 
         # Simulator Dataset
         sim_df = self.known_observations_data_frame.reset_index(drop=True)
-        sim_df = sim_df[columns]
-        sim_df.columns = ["user", "item", "reward", "ps"]
+        sim_df = sim_df[columns + ['propfair']]
+        sim_df.columns = ["user", "item", "reward", "ps", "propfair"]
         sim_df["index_env"] = env_data_duplicate_df["index"]
 
         # All Dataset
@@ -313,6 +324,12 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
     def get_data_frame_for_indexing(self) -> pd.DataFrame:
         return self.interactions_data_frame
 
+    @property
+    def fairness_groups(self) -> dict:
+        if not hasattr(self, "_fairness_groups"):
+            self._fairness_groups = self.metadata_data_frame[["item_idx", self.fairness_column]].set_index("item_idx").to_dict()[self.fairness_column]
+        return self._fairness_groups
+    
     @property
     def interactions_data_frame(self) -> pd.DataFrame:
         if not hasattr(self, "_interactions_data_frame"):
@@ -452,7 +469,7 @@ class InteractionTraining(SupervisedModelTraining, metaclass=abc.ABCMeta):
         self._save_params()
         print("DataFrame: env_data_frame, ", self.env_data_frame.shape)
         print("DataFrame: interactions_data_frame, ", self.interactions_data_frame.shape)
-
+        print("DataFrame: embeddings_for_metadata, ", len(self.embeddings_for_metadata.keys()))
         self.env: RecSysEnv = gym.make(
             "recsys-v0",
             dataset=self.env_data_frame,

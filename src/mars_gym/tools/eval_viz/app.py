@@ -226,7 +226,7 @@ def load_all_iteraction_metrics(iteractions, sample_size):
         metric["iteraction"] = iteraction
         metrics.append(metric)
 
-    return pd.concat(metrics)
+    return pd.concat(metrics, sort=True)
 
 
 def display_compare_results():

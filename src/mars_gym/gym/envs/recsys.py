@@ -137,3 +137,6 @@ class RecSysEnv(gym.Env, utils.EzPickle):
 
     def close(self):
         pass
+    
+    def seed(self, _seed_: int):
+        pass

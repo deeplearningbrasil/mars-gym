@@ -74,7 +74,7 @@ setup(
     ],
     python_requires=">=3.6",
     install_requires=[
-        "luigi>=2.8,<3.0", "gym>=0.15,<1",
+        "luigi>=2.8,<3.0", "gym>=0.15,<=0.15.17",
         "numpy>=1.17,<2", "scipy>=1.3,<2", "pandas>=0.25,<1", "pyspark>=2.4,<3",
         "matplotlib>=2.2,<3", "seaborn>=0.8,<1", "plotly>=4.4,<5", "streamlit==0.67.1",
         "torch==1.2", "torchbearer==0.5", "pytorch-nlp>=0.4",

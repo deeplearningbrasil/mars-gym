@@ -12,7 +12,41 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 from sklearn.metrics.pairwise import cosine_similarity
+import math
 
+def prop_fair_at_k(predicted: List[list], group_map: dict(), weights: List[float] = None, k: int = 5) -> float:
+    return prop_fair(pd.Series(_get_predicted_at_k(predicted, k)), group_map, weights)
+
+def prop_fair(predicted: List[list],  group_map: dict(), weights: List[float] = None):
+    """
+    Parameters
+    ----------
+    predicted : a list of lists
+        Ordered predictions
+        example: [['X', 'Y', 'Z'], ['X', 'Y', 'Z']]
+    group_map :  a dict Group -> Item   
+    weights : a list of floats with the same group size
+    """
+    # group_map.setdefault(-1)
+    groups = sorted(np.unique(list(group_map.values())))
+    
+    if weights == None:
+        weights = np.full(len(groups), 1/len(groups))
+
+    # inv_group_map = { value: key for key, value in group_map.items() }
+    g_predicted   = predicted.apply(lambda row: np.nan_to_num(np.array([*map(group_map.get, row)], dtype=np.float), nan=len(groups)).astype(int))
+
+    x_t   = np.array([i[:len(groups)] for i in g_predicted.apply(lambda x: np.bincount(x, minlength=len(groups))).values])
+    x_g   = x_t.sum(axis=0)/x_t.sum()
+    # propfair
+    metric = np.sum(
+        weights
+        * np.log(
+            1 + x_g
+        )
+    )
+
+    return metric
 
 def mean_reciprocal_rank(rs, k):
     """Score is reciprocal of the rank of the first relevant item

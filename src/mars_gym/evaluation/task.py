@@ -4,6 +4,7 @@ import os
 from multiprocessing.pool import Pool
 from typing import List, Tuple, Type, Any
 import pprint
+from collections import defaultdict
 
 import abc
 import luigi
@@ -34,6 +35,7 @@ from mars_gym.evaluation.metrics.rank import (
     precision_at_k,
     ndcg_at_k,
     personalization_at_k,
+    prop_fair, prop_fair_at_k,
     prediction_coverage_at_k,
 )
 from mars_gym.simulation.training import (
@@ -123,6 +125,7 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
     only_new_interactions: bool = luigi.BoolParameter(default=False)
     only_exist_items: bool = luigi.BoolParameter(default=False)
     only_exist_users: bool = luigi.BoolParameter(default=False)
+    seed: int = luigi.IntParameter(default=42)
 
     def get_direct_estimator(self, extra_params: dict) -> TorchModelTraining:
         assert self.direct_estimator_class is not None
@@ -194,6 +197,12 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
         indexed_list = list(self.model_training.index_mapping[self.model_training.project_config.item_column.name].keys())
         indexed_list = [x for x in indexed_list if x is not None and str(x) != 'nan']
         return indexed_list
+
+    def group_catalog_map(self, df: pd.DataFrame) -> List[str]:
+        map_dict = {}
+        for c in self.fairness_columns:
+            map_dict[c] = self.model_training.metadata_data_frame[["item_idx", c]].set_index("item_idx").to_dict()[c]
+        return map_dict
 
     def get_catalog(self, df: pd.DataFrame) -> List[str]:
         indexed_list = self.get_item_index()
@@ -369,9 +378,11 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
                     total=len(df),
                 )
             )
-        #
-        catalog = self.get_catalog(df)
         
+        # 
+        catalog     = self.get_catalog(df)
+        group_map   = self.group_catalog_map(df) 
+
         metrics = {
             "model_task": self.model_task_id,
             "count": len(df),
@@ -398,12 +409,18 @@ class EvaluateTestSetPredictions(FillPropensityScoreMixin, BaseEvaluationTask):
             #"coverage_at_50": prediction_coverage_at_k(
             #    df["sorted_actions"], catalog, 50
             #),
-            #"personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
+            "personalization_at_5": personalization_at_k(df["sorted_actions"], 5),
             #"personalization_at_10": personalization_at_k(df["sorted_actions"], 10),
             #"personalization_at_15": personalization_at_k(df["sorted_actions"], 15),
             #"personalization_at_20": personalization_at_k(df["sorted_actions"], 20),
             #"personalization_at_50": personalization_at_k(df["sorted_actions"], 50),
         }
+
+        for i in self.fairness_columns:
+            metrics[f"propfair_at_1 {i}"] = prop_fair_at_k(df["sorted_actions"], group_map[i], None, k=1)
+            metrics[f"propfair_at_5 {i}"] = prop_fair_at_k(df["sorted_actions"], group_map[i], None, k=5)
+            metrics[f"propfair_at_10 {i}"] = prop_fair_at_k(df["sorted_actions"], group_map[i], None, k=10)
+
 
         return df, metrics
 
